@@ -1,11 +1,42 @@
-:root {
-  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Noto Sans KR', system-ui, -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo',
+    'Malgun Gothic', Arial, sans-serif;
+
+   /* primary*/
+  --color-primary-100: #ff7a3d;
+
+  /* surface (카드 배경) */
+  --color-surface-100: #FFF3EC;
+  --color-surface-200: #FFFBF7;
+
+  /* accent (강조 / 포인트) */
+  --color-accent-100: #0e1a3d;
 }
 
-* {
-  box-sizing: border-box;
-}
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
 
-body {
-  margin: 0;
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
 }
