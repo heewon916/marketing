@@ -5,6 +5,7 @@ import HomePage from '../pages/home/HomePage.jsx'
 import PostCreatePage from '../pages/postCreate/PostCreatePage.jsx'
 import MyPage from '../pages/mypage/MyPage.jsx'
 import AuthPage from '../pages/auth/AuthPage.jsx'
+import OnboardingPage from '../pages/auth/onboarding/OnboardingPage.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -16,6 +17,7 @@ export const router = createBrowserRouter([
       { path: 'post-create', element: <PostCreatePage /> },
       { path: 'mypage', element: <MyPage /> },
       { path: 'auth', element: <AuthPage /> },
+      { path: 'auth/onboarding', element: <OnboardingPage /> }
     ],
   },
   {
