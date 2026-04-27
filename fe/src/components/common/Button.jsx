@@ -1,6 +1,6 @@
 const sizeStyles = {
-  sm: 'min-w-[170px] px-15 py-4 text-xl rounded-xl',
-  lg: 'min-w-[330px] px-20 py-4 text-xl rounded-xl',
+  sm: 'w-[150px] h-[56px] text-xl rounded-xl',
+  lg: 'w-[330px] h-[56px] text-xl rounded-xl',
 };
 
 const variantStyles = {
@@ -28,7 +28,7 @@ export default function Button({
   return (
     <button
       className={`
-        font-semibold
+        font-medium
         transition-colors
         disabled:opacity-50 disabled:cursor-not-allowed
         ${sizeStyles[size]}
