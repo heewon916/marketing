@@ -1,0 +1,89 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout Info') {
+            steps {
+                sh '''
+                    echo "===== Current Directory ====="
+                    pwd
+
+                    echo "===== Files ====="
+                    ls -al
+
+                    echo "===== Git Branch ====="
+                    git branch -a
+                '''
+            }
+        }
+
+        stage('Prepare Env') {
+            steps {
+                withCredentials([string(credentialsId: 'marketing-env', variable: 'ENV_FILE')]) {
+                    sh '''
+                        echo "===== Create .env from Jenkins Credentials ====="
+                        printf "%s" "$ENV_FILE" > .env
+                        chmod 600 .env
+
+                        echo ".env created"
+                    '''
+                }
+            }
+        }
+
+        stage('Check Docker') {
+            steps {
+                sh '''
+                    echo "===== Docker Version ====="
+                    docker version
+
+                    echo "===== Docker Compose Version ====="
+                    docker compose version
+                '''
+            }
+        }
+
+        stage('Validate Compose') {
+            steps {
+                sh '''
+                    echo "===== Validate compose.yaml ====="
+                    docker compose -p marketing -f compose.yaml config
+                '''
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh '''
+                    echo "===== Stop old containers ====="
+                    docker compose -p marketing -f compose.yaml down
+
+                    echo "===== Build and start containers ====="
+                    docker compose -p marketing -f compose.yaml up -d --build
+                '''
+            }
+        }
+
+        stage('Check Containers') {
+            steps {
+                sh '''
+                    echo "===== Running containers ====="
+                    docker ps
+
+                    echo "===== Nginx config test ====="
+                    docker exec project-nginx nginx -t
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deploy success.'
+        }
+
+        failure {
+            echo 'Deploy failed. Check console output.'
+        }
+    }
+}

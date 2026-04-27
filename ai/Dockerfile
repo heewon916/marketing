@@ -1,16 +1,14 @@
-FROM python:3.11-slim
-
-ENV PYTHONUNBUFFERED=1
-
-COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY ai/pyproject.toml /app/pyproject.toml
-RUN uv sync --no-dev
+RUN pip install --no-cache-dir uv
 
-COPY ai/app /app/app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
 
-ENV PATH="/app/.venv/Scripts:/app/.venv/bin:$PATH"
+COPY . .
 
-CMD ["fastapi", "run", "app/main.py", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000
+
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
