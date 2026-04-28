@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str | None = None
     S3_REGION: str | None = None
     CLOUDFRONT_DOMAIN: str | None = None
+    ORIENTATION_MODEL_WEIGHTS_PATH: str | None = None
+    ORIENTATION_MODEL_NAME: str = "vit"
 
     @computed_field
     @property

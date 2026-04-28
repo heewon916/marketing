@@ -14,10 +14,16 @@ from app.db.redis import close_redis, get_redis_client
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.schemas import ExtractorConfig
+from app.orientation.predictor import OrientationPredictor
 from app.services.frame_extraction import (
     FrameExtractionService,
     S3DraftUploader,
     S3VideoDownloader,
+)
+from app.services.final_edit import (
+    FinalEditService,
+    S3DraftImageDownloader,
+    S3FinalImageUploader,
 )
 
 
@@ -51,6 +57,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         downloader=S3VideoDownloader(),
         uploader=S3DraftUploader(),
         temp_root=temp_root,
+    )
+    app.state.final_edit_service = FinalEditService(
+        predictor=OrientationPredictor(
+            model_name=settings.ORIENTATION_MODEL_NAME,
+            weights_path=settings.ORIENTATION_MODEL_WEIGHTS_PATH,
+        ),
+        downloader=S3DraftImageDownloader(),
+        uploader=S3FinalImageUploader(),
+        temp_root=temp_root / "final-edit",
     )
 
     try:

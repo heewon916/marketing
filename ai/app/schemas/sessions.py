@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Annotated
 from typing import Literal
 from uuid import UUID
 
@@ -33,3 +34,17 @@ class ExtractFramesResponse(BaseModel):
     session_id: str
     status: Literal["FRAME_EXTRACTED", "TEXT_GENERATED"]
     drafts: list[str] = Field(default_factory=list, max_length=3)
+
+
+class FinalEditRequest(BaseModel):
+    session_id: UUID
+    drafts: list[Annotated[str, Field(min_length=1)]] = Field(
+        default_factory=list,
+        max_length=3,
+    )
+
+
+class FinalEditResponse(BaseModel):
+    session_id: str
+    status: Literal["FRAME_EXTRACTED", "PHOTO_EDITED"]
+    results: list[str] = Field(default_factory=list, max_length=3)

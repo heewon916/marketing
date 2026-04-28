@@ -7,3 +7,5 @@ htmlcov/
 *.pyc
 .env
 data/**/
+ai/weights/
+*.h5
