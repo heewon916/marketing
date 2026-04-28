@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     SESSION_TTL_SECONDS: int = 3600
 
+    S3_SECRET_KEY: str | None = None
+    S3_ACCESS_KEY: str | None = None
+    S3_BUCKET_NAME: str | None = None
+    S3_REGION: str | None = None
+    CLOUDFRONT_DOMAIN: str | None = None
+
     @computed_field
     @property
     def postgres_dsn(self) -> str:
@@ -52,6 +58,18 @@ class Settings(BaseSettings):
     def redis_url(self) -> str:
         auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
         return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+
+    @computed_field
+    @property
+    def s3_configured(self) -> bool:
+        return all(
+            [
+                self.S3_SECRET_KEY,
+                self.S3_ACCESS_KEY,
+                self.S3_BUCKET_NAME,
+                self.S3_REGION,
+            ]
+        )
 
 
 settings = Settings()

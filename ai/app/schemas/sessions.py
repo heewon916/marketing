@@ -1,7 +1,8 @@
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 
 class WeatherInfo(BaseModel):
@@ -21,3 +22,14 @@ class ProcessUtteranceResponse(BaseModel):
     session_id: str
     guide_text: str
     keywords: list[str] | None = None
+
+
+class ExtractFramesRequest(BaseModel):
+    store_id: UUID
+    input_video_s3_url: AnyHttpUrl
+
+
+class ExtractFramesResponse(BaseModel):
+    session_id: str
+    status: Literal["SUCESS", "FAIL"]
+    drafts: list[str] = Field(default_factory=list, max_length=3)
