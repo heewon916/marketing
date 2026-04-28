@@ -6,7 +6,6 @@ import asyncio
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.request import urlopen
 
 from fastapi import Request
 from redis.asyncio import Redis
@@ -16,10 +15,9 @@ from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
 from app.schemas.sessions import ExtractFramesRequest
-from app.services.sessions import STATUS_STARTED, session_key, upsert_content_session
+from app.services.sessions import STATUS_STARTED, STATUS_TEXT_GENERATED, session_key, upsert_content_session
 
-STATUS_SUCESS = "SUCESS"
-STATUS_FAIL = "FAIL"
+STATUS_FAIL = STATUS_TEXT_GENERATED
 STATUS_FRAME_EXTRACTED = "FRAME_EXTRACTED"
 
 
@@ -47,23 +45,30 @@ class S3DraftUploader:
         session_id: str,
         frame: Image,
         workdir: Path,
+        draft_index: int = 1,
     ) -> str | None:
         if not self.is_configured:
             return None
 
+        filename = f"draft-{draft_index:03d}.jpg"
         image_path = await asyncio.to_thread(
             OpenCVImage.save_image,
             frame,
             workdir,
             ImageExtension.JPG,
-            "draft-001.jpg",
+            filename,
         )
-        return await asyncio.to_thread(self._upload_file, session_id, image_path)
+        return await asyncio.to_thread(
+            self._upload_file,
+            session_id,
+            image_path,
+            draft_index,
+        )
 
-    def _upload_file(self, session_id: str, image_path: Path) -> str:
+    def _upload_file(self, session_id: str, image_path: Path, draft_index: int) -> str:
         import boto3
 
-        object_key = f"ai-drafts/{session_id}/draft-001.jpg"
+        object_key = f"ai-drafts/{session_id}/draft-{draft_index:03d}.jpg"
         client = boto3.client(
             "s3",
             region_name=self._settings.S3_REGION,
@@ -76,17 +81,36 @@ class S3DraftUploader:
             object_key,
             ExtraArgs={"ContentType": "image/jpeg"},
         )
-        return self._build_public_url(object_key)
+        return f"/{object_key}"
 
-    def _build_public_url(self, object_key: str) -> str:
-        if self._settings.CLOUDFRONT_DOMAIN:
-            return f"https://{self._settings.CLOUDFRONT_DOMAIN.strip('/')}/{object_key}"
-        if self._settings.S3_REGION == "us-east-1":
-            return f"https://{self._settings.S3_BUCKET_NAME}.s3.amazonaws.com/{object_key}"
-        return (
-            f"https://{self._settings.S3_BUCKET_NAME}.s3."
-            f"{self._settings.S3_REGION}.amazonaws.com/{object_key}"
+
+class S3VideoDownloader:
+    """Download source videos from S3 using configured credentials."""
+
+    def __init__(self) -> None:
+        self._settings = settings
+
+    @property
+    def is_configured(self) -> bool:
+        return self._settings.s3_configured
+
+    async def download_video(self, video_key: str, destination: Path) -> None:
+        await asyncio.to_thread(self._download_video, video_key, destination)
+
+    def _download_video(self, video_key: str, destination: Path) -> None:
+        import boto3
+
+        client = boto3.client(
+            "s3",
+            region_name=self._settings.S3_REGION,
+            aws_access_key_id=self._settings.S3_ACCESS_KEY,
+            aws_secret_access_key=self._settings.S3_SECRET_KEY,
         )
+        client.download_file(self._settings.S3_BUCKET_NAME, self._normalize_key(video_key), str(destination))
+
+    @staticmethod
+    def _normalize_key(video_key: str) -> str:
+        return video_key.lstrip("/")
 
 
 class FrameExtractionService:
@@ -96,25 +120,34 @@ class FrameExtractionService:
         self,
         extractor_config: ExtractorConfig,
         extractor: BestFrameExtractor,
+        downloader: S3VideoDownloader,
         uploader: S3DraftUploader,
         temp_root: Path,
     ) -> None:
         self.config = extractor_config
         self.extractor = extractor
+        self.downloader = downloader
         self.uploader = uploader
         self.temp_root = temp_root
 
     async def extract_and_upload(
         self,
         session_id: str,
-        input_video_url: str,
+        video_key: str,
     ) -> ExtractFramesResult:
         session_dir = self.temp_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         video_path = session_dir / "input-video.mp4"
 
         try:
-            await asyncio.to_thread(self._download_video, input_video_url, video_path)
+            if not self.downloader.is_configured or not self.uploader.is_configured:
+                return ExtractFramesResult(
+                    status=STATUS_FAIL,
+                    drafts=[],
+                    failure_reason="s3_unavailable",
+                )
+
+            await self.downloader.download_video(video_key, video_path)
             frame = await asyncio.to_thread(self.extractor.extract_best_frame, video_path)
             if frame is None:
                 return ExtractFramesResult(
@@ -123,15 +156,15 @@ class FrameExtractionService:
                     failure_reason="frame_extraction_failed",
                 )
 
-            uploaded_url = await self.uploader.upload_frame(session_id, frame, session_dir)
-            if uploaded_url is None:
+            uploaded_path = await self.uploader.upload_frame(session_id, frame, session_dir)
+            if uploaded_path is None:
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
                     drafts=[],
                     failure_reason="s3_upload_unavailable",
                 )
 
-            return ExtractFramesResult(status=STATUS_SUCESS, drafts=[uploaded_url])
+            return ExtractFramesResult(status=STATUS_FRAME_EXTRACTED, drafts=[uploaded_path])
         except Exception as exc:
             return ExtractFramesResult(
                 status=STATUS_FAIL,
@@ -140,11 +173,6 @@ class FrameExtractionService:
             )
         finally:
             shutil.rmtree(session_dir, ignore_errors=True)
-
-    @staticmethod
-    def _download_video(input_video_url: str, destination: Path) -> None:
-        with urlopen(input_video_url) as response:
-            destination.write_bytes(response.read())
 
 
 def get_frame_extraction_service(request: Request) -> FrameExtractionService:
@@ -166,15 +194,14 @@ async def process_extract_frames(
 
     result = await frame_service.extract_and_upload(
         session_id=session_id,
-        input_video_url=str(payload.input_video_s3_url),
+        video_key=payload.video,
     )
 
     existing_status = await redis.hget(session_key(session_id), "status")
     redis_payload = {
         "session_id": session_id,
-        "store_id": str(payload.store_id),
-        "video": str(payload.input_video_s3_url),
-        "status": STATUS_FRAME_EXTRACTED if result.status == STATUS_SUCESS else (existing_status or STATUS_STARTED),
+        "video": payload.video,
+        "status": result.status if result.status == STATUS_FRAME_EXTRACTED else (existing_status or STATUS_TEXT_GENERATED),
     }
 
     await upsert_content_session(

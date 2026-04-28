@@ -19,8 +19,8 @@ VALID_PAYLOAD = {
 }
 
 VALID_EXTRACT_PAYLOAD = {
-    "store_id": str(uuid4()),
-    "input_video_s3_url": "https://s3-bucket/input/store-video.mp4",
+    "session_id": str(uuid4()),
+    "video": "/inputs/test-session/test-video.mp4",
 }
 
 
@@ -32,9 +32,9 @@ class FakeFrameExtractionService:
     async def extract_and_upload(
         self,
         session_id: str,
-        input_video_url: str,
+        video_key: str,
     ) -> ExtractFramesResult:
-        self.calls.append((session_id, input_video_url))
+        self.calls.append((session_id, video_key))
         return self.result
 
 
@@ -160,19 +160,20 @@ def test_extract_frames_returns_success_and_persists_result(
     fake_redis_sync: fakeredis.FakeStrictRedis,
 ) -> None:
     original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
     fake_service = FakeFrameExtractionService(
         ExtractFramesResult(
-            status="SUCESS",
-            drafts=["https://s3-bucket/ai-drafts/session-123/draft-001.jpg"],
+            status="FRAME_EXTRACTED",
+            drafts=["/ai-drafts/session-123/draft-001.jpg"],
         )
     )
     app.state.frame_extraction_service = fake_service
-    session_id = "extract-session-1"
+    payload = {"session_id": session_id, "video": "/inputs/test-session/test-video.mp4"}
 
     try:
         response = client.post(
             f"/ai/sessions/{session_id}/extract-frames",
-            json=VALID_EXTRACT_PAYLOAD,
+            json=payload,
         )
     finally:
         app.state.frame_extraction_service = original_service
@@ -180,17 +181,14 @@ def test_extract_frames_returns_success_and_persists_result(
     assert response.status_code == 200
     body = response.json()
     assert body["session_id"] == session_id
-    assert body["status"] == "SUCESS"
-    assert body["drafts"] == ["https://s3-bucket/ai-drafts/session-123/draft-001.jpg"]
-    assert fake_service.calls == [
-        (session_id, VALID_EXTRACT_PAYLOAD["input_video_s3_url"])
-    ]
+    assert body["status"] == "FRAME_EXTRACTED"
+    assert body["drafts"] == ["/ai-drafts/session-123/draft-001.jpg"]
+    assert fake_service.calls == [(session_id, payload["video"])]
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["status"] == "FRAME_EXTRACTED"
-    assert saved["draft:1"] == "https://s3-bucket/ai-drafts/session-123/draft-001.jpg"
-    assert saved["store_id"] == VALID_EXTRACT_PAYLOAD["store_id"]
-    assert saved["video"] == VALID_EXTRACT_PAYLOAD["input_video_s3_url"]
+    assert saved["draft:1"] == "/ai-drafts/session-123/draft-001.jpg"
+    assert saved["video"] == payload["video"]
 
 
 def test_extract_frames_returns_fail_when_service_fails(
@@ -198,43 +196,41 @@ def test_extract_frames_returns_fail_when_service_fails(
     fake_redis_sync: fakeredis.FakeStrictRedis,
 ) -> None:
     original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
     fake_service = FakeFrameExtractionService(
         ExtractFramesResult(
-            status="FAIL",
+            status="TEXT_GENERATED",
             drafts=[],
             failure_reason="s3_upload_unavailable",
         )
     )
     app.state.frame_extraction_service = fake_service
-    session_id = "extract-session-2"
+    payload = {"session_id": session_id, "video": "/inputs/test-session/test-video.mp4"}
 
     try:
         response = client.post(
             f"/ai/sessions/{session_id}/extract-frames",
-            json=VALID_EXTRACT_PAYLOAD,
+            json=payload,
         )
     finally:
         app.state.frame_extraction_service = original_service
 
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "FAIL"
+    assert body["status"] == "TEXT_GENERATED"
     assert body["drafts"] == []
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["status"] == "STARTED"
+    assert saved["status"] == "TEXT_GENERATED"
     assert "draft:1" not in saved
-    assert saved["video"] == VALID_EXTRACT_PAYLOAD["input_video_s3_url"]
+    assert saved["video"] == payload["video"]
 
 
-def test_extract_frames_rejects_invalid_url(client: TestClient) -> None:
+def test_extract_frames_rejects_mismatched_session_id(client: TestClient) -> None:
     payload = dict(VALID_EXTRACT_PAYLOAD)
-    payload["input_video_s3_url"] = "not-a-url"
+    payload["session_id"] = str(uuid4())
 
-    response = client.post(
-        "/ai/sessions/extract-session-3/extract-frames",
-        json=payload,
-    )
+    response = client.post("/ai/sessions/extract-session-3/extract-frames", json=payload)
 
     assert response.status_code == 422
 
@@ -243,7 +239,7 @@ def test_extract_frames_response_limits_drafts_to_three() -> None:
     with pytest.raises(ValidationError):
         ExtractFramesResponse(
             session_id="sess",
-            status="SUCESS",
+            status="FRAME_EXTRACTED",
             drafts=["1", "2", "3", "4"],
         )
 

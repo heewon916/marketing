@@ -14,7 +14,11 @@ from app.db.redis import close_redis, get_redis_client
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.schemas import ExtractorConfig
-from app.services.frame_extraction import FrameExtractionService, S3DraftUploader
+from app.services.frame_extraction import (
+    FrameExtractionService,
+    S3DraftUploader,
+    S3VideoDownloader,
+)
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -44,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.frame_extraction_service = FrameExtractionService(
         extractor_config=extractor_config,
         extractor=extractor,
+        downloader=S3VideoDownloader(),
         uploader=S3DraftUploader(),
         temp_root=temp_root,
     )

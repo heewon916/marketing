@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 
 from app.core.config import settings
@@ -48,6 +48,12 @@ async def extract_frames_endpoint(
     request: Request,
     redis: Redis = Depends(get_redis),
 ) -> ExtractFramesResponse:
+    if str(payload.session_id) != session_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Path session_id and body session_id must match.",
+        )
+
     frame_service = get_frame_extraction_service(request)
     result = await process_extract_frames(session_id, payload, redis, frame_service)
     return ExtractFramesResponse(
