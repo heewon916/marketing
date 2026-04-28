@@ -33,9 +33,24 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     FRONTEND_HOST: str = "http://localhost:5173"
     BACKEND_CORS_ORIGINS: Annotated[list[str] | str, BeforeValidator(parse_cors)] = []
-    AI_PROVIDER: str = "openai"
+    PROVIDER: str = "openai"
     DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str | None = None
+
+    DEBUG: bool = False
+
+    POSTGRES_HOST: str = "maketing_postgres"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "postgres"
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"
+
+    REDIS_HOST: str = "maketing_redis"
+    REDIS_PORT: int = 6379
+    REDIS_PASSWORD: str | None = None
+    REDIS_DB: int = 0
+
+    SESSION_TTL_SECONDS: int = 3600
 
     @computed_field
     @property
@@ -44,6 +59,20 @@ class Settings(BaseSettings):
         if isinstance(origins, str):
             origins = [origins]
         return [origin.rstrip("/") for origin in origins] + [self.FRONTEND_HOST.rstrip("/")]
+
+    @computed_field
+    @property
+    def postgres_dsn(self) -> str:
+        return (
+            f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+            f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+        )
+
+    @computed_field
+    @property
+    def redis_url(self) -> str:
+        auth = f":{self.REDIS_PASSWORD}@" if self.REDIS_PASSWORD else ""
+        return f"redis://{auth}{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
 
 
 settings = Settings()
