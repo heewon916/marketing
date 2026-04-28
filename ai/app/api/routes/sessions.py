@@ -6,7 +6,7 @@ from app.db.redis import get_redis
 from app.schemas.sessions import ProcessUtteranceRequest, ProcessUtteranceResponse
 from app.services.sessions import process_utterance
 
-router = APIRouter(prefix="/ai/sessions", tags=["ai-sessions"])
+router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
 
 
 @router.post(

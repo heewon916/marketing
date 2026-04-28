@@ -20,17 +20,15 @@ ENV_FILE = ROOT_DIR.parent / ".env"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=str(ENV_FILE),
-        env_prefix="AI_",
         env_ignore_empty=True,
         extra="ignore",
     )
 
-    API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "AI Service"
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str = "DEBUG"
     FRONTEND_HOST: str = "http://localhost:5173"
     BACKEND_CORS_ORIGINS: Annotated[list[str] | str, BeforeValidator(parse_cors)] = []
     PROVIDER: str = "openai"
@@ -39,13 +37,13 @@ class Settings(BaseSettings):
 
     DEBUG: bool = False
 
-    POSTGRES_HOST: str = "maketing_postgres"
+    POSTGRES_HOST: str = "project-postgres"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "postgres"
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_DB: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
 
-    REDIS_HOST: str = "maketing_redis"
+    REDIS_HOST: str = "project-redis"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str | None = None
     REDIS_DB: int = 0

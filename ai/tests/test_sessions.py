@@ -19,7 +19,7 @@ def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> N
     session_id = "redis-session-id-123"
 
     response = client.post(
-        f"/api/v1/ai/sessions/{session_id}/process-utterance",
+        f"/ai/sessions/{session_id}/process-utterance",
         json=VALID_PAYLOAD,
     )
 
@@ -32,7 +32,7 @@ def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> N
 
 def test_keywords_hidden_when_debug_off(client: TestClient) -> None:
     response = client.post(
-        "/api/v1/ai/sessions/sess-1/process-utterance",
+        "/ai/sessions/sess-1/process-utterance",
         json=VALID_PAYLOAD,
     )
 
@@ -44,7 +44,7 @@ def test_keywords_exposed_when_debug_on(
     client: TestClient, debug_mode: None
 ) -> None:
     response = client.post(
-        "/api/v1/ai/sessions/sess-2/process-utterance",
+        "/ai/sessions/sess-2/process-utterance",
         json=VALID_PAYLOAD,
     )
 
@@ -60,7 +60,7 @@ def test_empty_utterance_rejected(client: TestClient) -> None:
     payload["utterance"] = ""
 
     response = client.post(
-        "/api/v1/ai/sessions/sess-3/process-utterance",
+        "/ai/sessions/sess-3/process-utterance",
         json=payload,
     )
 
@@ -71,7 +71,7 @@ def test_missing_owner_persona_rejected(client: TestClient) -> None:
     payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "owner_persona"}
 
     response = client.post(
-        "/api/v1/ai/sessions/sess-4/process-utterance",
+        "/ai/sessions/sess-4/process-utterance",
         json=payload,
     )
 
@@ -83,7 +83,7 @@ def test_invalid_temperature_rejected(client: TestClient) -> None:
     payload["weather"] = {"condition": "비", "temperature": "hot"}
 
     response = client.post(
-        "/api/v1/ai/sessions/sess-5/process-utterance",
+        "/ai/sessions/sess-5/process-utterance",
         json=payload,
     )
 
@@ -96,7 +96,7 @@ def test_redis_payload_persisted(
     session_id = "sess-redis-1"
 
     response = client.post(
-        f"/api/v1/ai/sessions/{session_id}/process-utterance",
+        f"/ai/sessions/{session_id}/process-utterance",
         json=VALID_PAYLOAD,
     )
 
@@ -124,7 +124,7 @@ def test_redis_ttl_set(
     session_id = "sess-ttl-1"
 
     response = client.post(
-        f"/api/v1/ai/sessions/{session_id}/process-utterance",
+        f"/ai/sessions/{session_id}/process-utterance",
         json=VALID_PAYLOAD,
     )
     assert response.status_code == 200
