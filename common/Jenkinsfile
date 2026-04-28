@@ -53,7 +53,7 @@ pipeline {
                 withCredentials([string(credentialsId: 'marketing-env', variable: 'ENV_FILE')]) {
                     sh '''
                         echo "===== Create .env from Jenkins Credentials ====="
-                        printf "%s" "$ENV_FILE" > "${DEPLOY_DIR}/.env"
+                        printf "%s" "$ENV_FILE" | tr -d '\\\\r' > "${DEPLOY_DIR}/.env"
                         chmod 600 "${DEPLOY_DIR}/.env"
 
                         echo ".env created at ${DEPLOY_DIR}/.env"
