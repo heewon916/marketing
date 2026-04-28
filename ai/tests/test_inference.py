@@ -6,7 +6,7 @@ client = TestClient(app)
 
 
 def test_inference_placeholder() -> None:
-    response = client.post("/api/v1/inference", json={"prompt": "hello"})
+    response = client.post("/ai/inference", json={"prompt": "hello"})
 
     assert response.status_code == 200
     body = response.json()
