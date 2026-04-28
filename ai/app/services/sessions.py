@@ -98,6 +98,7 @@ async def upsert_content_session(
     keywords: list[str] | None = None,
     drafts: list[str] | None = None,
     photos: list[str] | None = None,
+    debug_fields: dict[str, str] | None = None,
 ) -> None:
     key = session_key(session_id)
     ttl = settings.SESSION_TTL_SECONDS
@@ -112,6 +113,13 @@ async def upsert_content_session(
         await _replace_prefixed_fields(redis, key, "draft:", drafts)
     if photos is not None:
         await _replace_prefixed_fields(redis, key, "photo:", photos)
+    if debug_fields is not None:
+        existing_fields = await redis.hkeys(key)
+        stale_fields = [field for field in existing_fields if field.startswith("debug:")]
+        if stale_fields:
+            await redis.hdel(key, *stale_fields)
+        if debug_fields:
+            await redis.hset(key, mapping=debug_fields)
 
     await redis.expire(key, ttl)
 

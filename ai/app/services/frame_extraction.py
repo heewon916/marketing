@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,7 @@ from app.services.sessions import STATUS_STARTED, STATUS_TEXT_GENERATED, session
 
 STATUS_FAIL = STATUS_TEXT_GENERATED
 STATUS_FRAME_EXTRACTED = "FRAME_EXTRACTED"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -28,6 +30,7 @@ class ExtractFramesResult:
     status: str
     drafts: list[str]
     failure_reason: str | None = None
+    debug_fields: dict[str, str] | None = None
 
 
 class S3DraftUploader:
@@ -138,38 +141,120 @@ class FrameExtractionService:
         session_dir = self.temp_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         video_path = session_dir / "input-video.mp4"
+        debug_fields = {
+            "debug:video_key": video_key,
+            "debug:session_dir": str(session_dir),
+            "debug:video_path": str(video_path),
+        }
 
         try:
             if not self.downloader.is_configured or not self.uploader.is_configured:
+                debug_fields["debug:stage"] = "s3_config_check"
+                debug_fields["debug:s3_downloader_configured"] = str(self.downloader.is_configured).lower()
+                debug_fields["debug:s3_uploader_configured"] = str(self.uploader.is_configured).lower()
+                logger.warning(
+                    "Frame extraction aborted because S3 is unavailable.",
+                    extra={
+                        "session_id": session_id,
+                        "video_key": video_key,
+                        "downloader_configured": self.downloader.is_configured,
+                        "uploader_configured": self.uploader.is_configured,
+                    },
+                )
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
                     drafts=[],
                     failure_reason="s3_unavailable",
+                    debug_fields=debug_fields,
                 )
 
+            debug_fields["debug:stage"] = "download_video"
             await self.downloader.download_video(video_key, video_path)
+            debug_fields["debug:downloaded"] = str(video_path.exists()).lower()
+            if video_path.exists():
+                debug_fields["debug:video_size_bytes"] = str(video_path.stat().st_size)
+
+            logger.info(
+                "Video downloaded for frame extraction.",
+                extra={
+                    "session_id": session_id,
+                    "video_key": video_key,
+                    "video_path": str(video_path),
+                    "video_exists": video_path.exists(),
+                    "video_size_bytes": video_path.stat().st_size if video_path.exists() else 0,
+                },
+            )
+
+            debug_fields["debug:stage"] = "extract_frame"
             frame = await asyncio.to_thread(self.extractor.extract_best_frame, video_path)
             if frame is None:
+                debug_fields["debug:extractor_result"] = "none"
+                logger.warning(
+                    "Frame extraction returned no frame.",
+                    extra={
+                        "session_id": session_id,
+                        "video_key": video_key,
+                        "video_path": str(video_path),
+                    },
+                )
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
                     drafts=[],
                     failure_reason="frame_extraction_failed",
+                    debug_fields=debug_fields,
                 )
 
+            debug_fields["debug:extractor_result"] = "frame_found"
+            debug_fields["debug:frame_shape"] = "x".join(str(dimension) for dimension in frame.shape)
+            debug_fields["debug:stage"] = "upload_frame"
             uploaded_path = await self.uploader.upload_frame(session_id, frame, session_dir)
             if uploaded_path is None:
+                debug_fields["debug:upload_result"] = "none"
+                logger.warning(
+                    "Frame upload returned no draft path.",
+                    extra={
+                        "session_id": session_id,
+                        "video_key": video_key,
+                    },
+                )
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
                     drafts=[],
                     failure_reason="s3_upload_unavailable",
+                    debug_fields=debug_fields,
                 )
 
-            return ExtractFramesResult(status=STATUS_FRAME_EXTRACTED, drafts=[uploaded_path])
+            debug_fields["debug:upload_result"] = uploaded_path
+            debug_fields["debug:stage"] = "completed"
+            logger.info(
+                "Frame extraction completed successfully.",
+                extra={
+                    "session_id": session_id,
+                    "video_key": video_key,
+                    "draft_path": uploaded_path,
+                },
+            )
+            return ExtractFramesResult(
+                status=STATUS_FRAME_EXTRACTED,
+                drafts=[uploaded_path],
+                debug_fields=debug_fields,
+            )
         except Exception as exc:
+            debug_fields["debug:stage"] = "exception"
+            debug_fields["debug:exception_type"] = exc.__class__.__name__
+            debug_fields["debug:exception_message"] = str(exc)
+            logger.exception(
+                "Frame extraction failed with an exception.",
+                extra={
+                    "session_id": session_id,
+                    "video_key": video_key,
+                },
+            )
             return ExtractFramesResult(
                 status=STATUS_FAIL,
                 drafts=[],
                 failure_reason=str(exc),
+                debug_fields=debug_fields,
             )
         finally:
             shutil.rmtree(session_dir, ignore_errors=True)
@@ -209,5 +294,6 @@ async def process_extract_frames(
         session_id,
         scalar_fields=redis_payload,
         drafts=result.drafts,
+        debug_fields=result.debug_fields,
     )
     return result
