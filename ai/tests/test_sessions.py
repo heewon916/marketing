@@ -425,3 +425,4 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.frame_extraction_service is not None
     assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor
     assert app.state.final_edit_service is not None
+    assert app.state.final_edit_service.predictor.weights_path is not None

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     CLOUDFRONT_DOMAIN: str | None = None
     ORIENTATION_MODEL_WEIGHTS_PATH: str | None = None
     ORIENTATION_MODEL_NAME: str = "vit"
+    ORIENTATION_MODEL_DOWNLOAD_URL: str = (
+        "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
+    )
 
     @computed_field
     @property
@@ -72,6 +75,17 @@ class Settings(BaseSettings):
                 self.S3_REGION,
             ]
         )
+
+    @computed_field
+    @property
+    def orientation_model_weights_path(self) -> Path:
+        configured = self.ORIENTATION_MODEL_WEIGHTS_PATH
+        if configured:
+            candidate = Path(configured)
+            if candidate.is_absolute():
+                return candidate
+            return ROOT_DIR.parent / candidate
+        return ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
 
 
 settings = Settings()
