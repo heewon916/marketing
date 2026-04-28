@@ -51,17 +51,18 @@ pipeline {
 
         stage('Prepare Env') {
             steps {
-                withCredentials([string(credentialsId: 'marketing-env', variable: 'ENV_FILE')]) {
+                withCredentials([file(credentialsId: 'marketing-env-file', variable: 'ENV_FILE_PATH')]) {
                     sh '''
-                set +x
-
-                echo "===== Create .env from Jenkins Credentials ====="
-
-                printf "%s\\n" "$ENV_FILE" | perl -pe 's/\\r\\n?|\\n/\\n/g' > "${DEPLOY_DIR}/.env"
-                chmod 600 "${DEPLOY_DIR}/.env"
-
-                echo ".env created at ${DEPLOY_DIR}/.env"
-            '''
+                        set +x
+        
+                        echo "===== Create .env from Jenkins Secret File ====="
+        
+                        cp "$ENV_FILE_PATH" "${DEPLOY_DIR}/.env"
+                        sed -i 's/\\r$//' "${DEPLOY_DIR}/.env"
+                        chmod 600 "${DEPLOY_DIR}/.env"
+        
+                        echo ".env created at ${DEPLOY_DIR}/.env"
+                    '''
                 }
             }
         }
@@ -76,6 +77,15 @@ pipeline {
         
                     ENV_PATH="${DEPLOY_DIR}/.env"
                     test -s "$ENV_PATH"
+                    
+                    echo "===== .env keys only ====="
+                    awk -F= \'
+                      /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ {
+                        key=$1
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                        print "line " NR ": " key
+                      }
+                    ' "$ENV_PATH"
         
                     # CRLF 방지
                     if grep -q "$(printf '\\r')" "$ENV_PATH"; then
