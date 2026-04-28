@@ -1,44 +1,63 @@
 import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
+import OnboardingLayout from '../components/OnboardingLayout.jsx';
+import OnboardingHeader from '../components/OnboardingHeader.jsx';
 
-function InstagramConnectStep({ onNext, onPrev }) {
+// 개발 환경 (나중에 false로 변경)
+const IS_DEV = true;
+
+function InstagramConnectStep({ onNext, setFormData }) {
+
+  const handleConnect = () => {
+    if (IS_DEV) {
+      // mock 처리
+      setFormData((prev) => ({
+        ...prev,
+        isInstagramConnected: true,
+      }));
+
+      onNext();
+    } else {
+      // 실제 OAuth
+      window.location.href = 'https://api.yourdomain.com/oauth/instagram';
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center text-center px-6">
-      
-      {/* 캐릭터 */}
-      <img
-        src={Character}
-        alt="character"
-        className="w-full max-w-[280px] mb-8"
-      />
-
-      {/* 텍스트 */}
-      <h1 className="text-2xl font-bold text-accent-100 mb-2">
-        인스타그램 계정을 연결해주세요
-      </h1>
-
-      <p className="text-gray-500 text-base mb-10">
-        마케팅 자동화를 위해<br />
-        인스타그램 계정 연결이 필요해요
-      </p>
-
-      {/* 인스타 연결 버튼 */}
-      <Button
-        onClick={onNext}
-        className="w-full max-w-[340px] font-bold shadow-lg shadow-primary-100/40 mb-4"
-      >
-        인스타그램 연결하기
-      </Button>
-
-      {/* 뒤로가기 */}
-      <button
-        onClick={onPrev}
-        className="text-gray-400 text-sm"
-      >
-        이전으로
-      </button>
-
-    </div>
+    <OnboardingLayout
+      currentStep={1}
+      totalStep={7}
+      contentAlign="left"
+      header={
+        <OnboardingHeader
+          title={
+            <>
+              마케팅 이용을 위해
+              <br />
+              <span className="text-primary-100 font-extrabold">
+                인스타그램 계정 연동
+              </span>
+              이
+              <br />
+              필요해요
+            </>
+          }
+        />
+      }
+      footer={
+        <Button onClick={handleConnect} className="w-full font-bold">
+          인스타그램 연동하기
+        </Button>
+      }
+    >
+      <div className="w-full flex justify-center mt-10">
+        <img
+          src={Character}
+          alt="character"
+          className="w-full max-w-[320px]"
+        />
+      </div>
+    </OnboardingLayout>
   );
 }
 

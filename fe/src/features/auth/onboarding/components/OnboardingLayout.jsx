@@ -14,7 +14,7 @@ export default function OnboardingLayout({
       : 'items-center text-center';
 
   return (
-    <div className="min-h-screen flex flex-col px-10 pt-16 pb-18 bg-white">
+    <div className="min-h-screen w-full flex flex-col px-4 pt-18 pb-20 bg-white">
       {/* 1. 상단 프로그레스 바 영역 */}
       <div className="mb-10">
         <StepProgress current={currentStep} total={totalStep} />
@@ -22,7 +22,7 @@ export default function OnboardingLayout({
 
       {/* 2. 헤더(제목 및 설명) 영역 */}
       {header && (
-        <div className="w-full text-left mb-12">
+        <div className="w-full text-left mb-12 min-h-[140px]">
           {header}
         </div>
       )}

@@ -31,7 +31,7 @@ function StartStep({ onNext }) {
       }
       footer={
         <Button onClick={onNext} className="w-full font-bold">
-          인스타그램 연동하기
+          확인했어요!
         </Button>
       }
     >

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import StartStep from '@/features/auth/onboarding/steps/StartStep.jsx';
 import InstagramConnectStep from '@/features/auth/onboarding/steps/InstagramConnectStep.jsx';
-import InstagramLoginStep from '@/features/auth/onboarding/steps/InstagramLoginStep.jsx';
 import InstagramSuccessStep from '@/features/auth/onboarding/steps/InstagramSuccessStep.jsx';
 import PosConnectStep from '@/features/auth/onboarding/steps/PosConnectStep.jsx';
 import CodeInputStep from '@/features/auth/onboarding/steps/CodeInputStep.jsx';
@@ -17,6 +16,18 @@ import CompleteStep from '@/features/auth/onboarding/steps/CompleteStep.jsx';
 function OnboardingPage() {
   const [step, setStep] = useState(1);
 
+  const getProgressStep = (step) => {
+    if (step <= 3) return 1;        // 인스타 연동
+    if (step <= 6) return 2;        // POS 연결
+    if (step === 7) return 3;       // 로딩
+    if (step === 8) return 4;       // 매장 선택
+    if (step === 9) return 5;       // 이름 입력
+    if (step <= 11) return 6;       // 위치/업종
+    return 7;                       // 완료
+  };
+
+  const progressStep = getProgressStep(step);
+
   const [formData, setFormData] = useState({
     storeId: '',
     merchantId: '',
@@ -31,33 +42,47 @@ function OnboardingPage() {
     operatingHours: {},
     menus: [],
     authCode: '',
+    isInstagramConnected: false,
   });
 
   const nextStep = () => setStep((prev) => prev + 1);
   const prevStep = () => setStep((prev) => prev - 1);
 
+  const commonProps = {
+    onNext: nextStep,
+    onPrev: prevStep,
+    progressStep,
+  };
+
   const renderStep = () => {
     switch (step) {
       case 1:
-        return <StartStep onNext={nextStep} />;
+        return <StartStep {...commonProps} />;
 
       case 2:
-        return <InstagramConnectStep onNext={nextStep} onPrev={prevStep} />;
+        return (
+          <InstagramConnectStep
+            {...commonProps}
+            setFormData={setFormData}
+          />
+        );
 
       case 3:
-        return <InstagramLoginStep onNext={nextStep} onPrev={prevStep} />;
-
-      case 4:
-        return <InstagramSuccessStep onNext={nextStep} />;
-
-      case 5:
-        return <PosConnectStep onNext={nextStep} onPrev={prevStep} />;
-
-      case 6:
         return (
-          <CodeInputStep
+          <InstagramSuccessStep
             onNext={nextStep}
             onPrev={prevStep}
+            progressStep={progressStep}
+          />
+        );
+
+      case 4:
+        return <PosConnectStep {...commonProps} />;
+
+      case 5:
+        return (
+          <CodeInputStep
+            {...commonProps}
             value={formData.authCode}
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, authCode: value }))
@@ -65,20 +90,19 @@ function OnboardingPage() {
           />
         );
 
+      case 6:
+        return <QRStep {...commonProps} />;
+
       case 7:
-        return <QRStep onNext={nextStep} onPrev={prevStep} />;
+        return <LoadingStep {...commonProps} />;
 
       case 8:
-        return <LoadingStep onNext={nextStep} />;
+        return <StoreSelectStep {...commonProps} />;
 
       case 9:
-        return <StoreSelectStep onNext={nextStep} onPrev={prevStep} />;
-
-      case 10:
         return (
           <BusinessNameStep
-            onNext={nextStep}
-            onPrev={prevStep}
+            {...commonProps}
             value={formData.storeName}
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, storeName: value }))
@@ -86,11 +110,10 @@ function OnboardingPage() {
           />
         );
 
-      case 11:
+      case 10:
         return (
           <BusinessTypeStep
-            onNext={nextStep}
-            onPrev={prevStep}
+            {...commonProps}
             value={formData.category}
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, category: value }))
@@ -98,11 +121,10 @@ function OnboardingPage() {
           />
         );
 
-      case 12:
+      case 11:
         return (
           <LocationStep
-            onNext={nextStep}
-            onPrev={prevStep}
+            {...commonProps}
             value={formData.naverPlaceId}
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, naverPlaceId: value }))
@@ -110,11 +132,10 @@ function OnboardingPage() {
           />
         );
 
-      case 13:
+      case 12:
         return (
           <TimeStep
-            onNext={nextStep}
-            onPrev={prevStep}
+            {...commonProps}
             value={formData.operatingHours}
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, operatingHours: value }))
@@ -122,8 +143,8 @@ function OnboardingPage() {
           />
         );
 
-      case 14:
-        return <CompleteStep />;
+      case 13:
+        return <CompleteStep progressStep={progressStep} />;
 
       default:
         return <div>잘못된 접근입니다</div>;
