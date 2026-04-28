@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import shutil
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -18,10 +16,11 @@ from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
 from app.schemas.sessions import ExtractFramesRequest
-from app.services.sessions import session_key
+from app.services.sessions import STATUS_STARTED, session_key, upsert_content_session
 
 STATUS_SUCESS = "SUCESS"
 STATUS_FAIL = "FAIL"
+STATUS_FRAME_EXTRACTED = "FRAME_EXTRACTED"
 
 
 @dataclass
@@ -170,22 +169,18 @@ async def process_extract_frames(
         input_video_url=str(payload.input_video_s3_url),
     )
 
-    ttl = settings.SESSION_TTL_SECONDS
-    expires_at = (datetime.now(UTC) + timedelta(seconds=ttl)).isoformat()
+    existing_status = await redis.hget(session_key(session_id), "status")
     redis_payload = {
         "session_id": session_id,
         "store_id": str(payload.store_id),
-        "input_video_s3_url": str(payload.input_video_s3_url),
-        "status": result.status,
-        "drafts": result.drafts,
-        "expires_at": expires_at,
+        "video": str(payload.input_video_s3_url),
+        "status": STATUS_FRAME_EXTRACTED if result.status == STATUS_SUCESS else (existing_status or STATUS_STARTED),
     }
-    if result.failure_reason:
-        redis_payload["failure_reason"] = result.failure_reason
 
-    await redis.set(
-        session_key(session_id),
-        json.dumps(redis_payload, ensure_ascii=False),
-        ex=ttl,
+    await upsert_content_session(
+        redis,
+        session_id,
+        scalar_fields=redis_payload,
+        drafts=result.drafts,
     )
     return result

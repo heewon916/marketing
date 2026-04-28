@@ -1,4 +1,3 @@
-import json
 from uuid import uuid4
 
 import fakeredis
@@ -126,20 +125,19 @@ def test_redis_payload_persisted(
 
     assert response.status_code == 200
 
-    raw = fake_redis_sync.get(session_key(session_id))
-    assert raw is not None
-    saved = json.loads(raw)
+    saved = fake_redis_sync.hgetall(session_key(session_id))
 
     assert saved["session_id"] == session_id
     assert saved["store_id"] == VALID_PAYLOAD["store_id"]
-    assert saved["status"] == "GUIDE_CREATED"
-    assert isinstance(saved["keywords"], list) and len(saved["keywords"]) > 0
-    assert isinstance(saved["draft_caption"], str)
-    assert isinstance(saved["draft_hashtags"], list)
+    assert saved["status"] == "TEXT_GENERATED"
+    assert saved["caption"]
     assert saved["owner_persona"] == "aesthetic"
-    assert saved["weather"] == {"condition": "rainy", "temperature": 18.5}
+    assert saved["weather_condition"] == "rainy"
+    assert saved["weather_temperature"] == "18.5"
     assert saved["date"] == "2026-04-27"
     assert "expires_at" in saved
+    keyword_fields = [field for field in saved if field.startswith("keyword:")]
+    assert keyword_fields
 
 
 def test_redis_ttl_set(
@@ -188,12 +186,11 @@ def test_extract_frames_returns_success_and_persists_result(
         (session_id, VALID_EXTRACT_PAYLOAD["input_video_s3_url"])
     ]
 
-    raw = fake_redis_sync.get(session_key(session_id))
-    assert raw is not None
-    saved = json.loads(raw)
-    assert saved["status"] == "SUCESS"
-    assert saved["drafts"] == ["https://s3-bucket/ai-drafts/session-123/draft-001.jpg"]
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "FRAME_EXTRACTED"
+    assert saved["draft:1"] == "https://s3-bucket/ai-drafts/session-123/draft-001.jpg"
     assert saved["store_id"] == VALID_EXTRACT_PAYLOAD["store_id"]
+    assert saved["video"] == VALID_EXTRACT_PAYLOAD["input_video_s3_url"]
 
 
 def test_extract_frames_returns_fail_when_service_fails(
@@ -224,11 +221,10 @@ def test_extract_frames_returns_fail_when_service_fails(
     assert body["status"] == "FAIL"
     assert body["drafts"] == []
 
-    raw = fake_redis_sync.get(session_key(session_id))
-    assert raw is not None
-    saved = json.loads(raw)
-    assert saved["status"] == "FAIL"
-    assert saved["failure_reason"] == "s3_upload_unavailable"
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "STARTED"
+    assert "draft:1" not in saved
+    assert saved["video"] == VALID_EXTRACT_PAYLOAD["input_video_s3_url"]
 
 
 def test_extract_frames_rejects_invalid_url(client: TestClient) -> None:
