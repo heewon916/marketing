@@ -1,4 +1,3 @@
-import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -8,8 +7,9 @@ from redis.asyncio import Redis
 from app.core.config import settings
 from app.schemas.sessions import ProcessUtteranceRequest
 
-SESSION_KEY_PREFIX = "ai:session"
-STATUS_GUIDE_CREATED = "GUIDE_CREATED"
+CONTENTS_KEY_PREFIX = "contents"
+STATUS_STARTED = "STARTED"
+STATUS_TEXT_GENERATED = "TEXT_GENERATED"
 
 _KOREAN_PARTICLES = (
     "은", "는", "이", "가", "을", "를", "에", "와", "과", "도", "만",
@@ -72,7 +72,56 @@ def build_guide_text(keywords: list[str]) -> str:
 
 
 def session_key(session_id: str) -> str:
-    return f"{SESSION_KEY_PREFIX}:{session_id}"
+    return f"{CONTENTS_KEY_PREFIX}:{session_id}"
+
+
+async def _replace_prefixed_fields(
+    redis: Redis,
+    key: str,
+    prefix: str,
+    values: list[str],
+) -> None:
+    existing_fields = await redis.hkeys(key)
+    stale_fields = [field for field in existing_fields if field.startswith(prefix)]
+    if stale_fields:
+        await redis.hdel(key, *stale_fields)
+
+    if values:
+        mapping = {f"{prefix}{index}": value for index, value in enumerate(values, start=1)}
+        await redis.hset(key, mapping=mapping)
+
+
+async def upsert_content_session(
+    redis: Redis,
+    session_id: str,
+    scalar_fields: dict[str, str],
+    keywords: list[str] | None = None,
+    drafts: list[str] | None = None,
+    photos: list[str] | None = None,
+    debug_fields: dict[str, str] | None = None,
+) -> None:
+    key = session_key(session_id)
+    ttl = settings.SESSION_TTL_SECONDS
+    expires_at = (datetime.now(UTC) + timedelta(seconds=ttl)).isoformat()
+
+    mapping = {"status": STATUS_STARTED, **scalar_fields, "expires_at": expires_at}
+    await redis.hset(key, mapping=mapping)
+
+    if keywords is not None:
+        await _replace_prefixed_fields(redis, key, "keyword:", keywords)
+    if drafts is not None:
+        await _replace_prefixed_fields(redis, key, "draft:", drafts)
+    if photos is not None:
+        await _replace_prefixed_fields(redis, key, "photo:", photos)
+    if debug_fields is not None:
+        existing_fields = await redis.hkeys(key)
+        stale_fields = [field for field in existing_fields if field.startswith("debug:")]
+        if stale_fields:
+            await redis.hdel(key, *stale_fields)
+        if debug_fields:
+            await redis.hset(key, mapping=debug_fields)
+
+    await redis.expire(key, ttl)
 
 
 @dataclass
@@ -96,29 +145,22 @@ async def process_utterance(
     )
     guide_text = build_guide_text(keywords)
 
-    ttl = settings.SESSION_TTL_SECONDS
-    expires_at = (datetime.now(UTC) + timedelta(seconds=ttl)).isoformat()
-
     redis_payload = {
         "session_id": session_id,
         "store_id": str(payload.store_id),
-        "status": STATUS_GUIDE_CREATED,
-        "keywords": keywords,
-        "draft_caption": draft_caption,
-        "draft_hashtags": draft_hashtags,
+        "status": STATUS_TEXT_GENERATED,
+        "caption": draft_caption,
         "owner_persona": payload.owner_persona,
-        "weather": {
-            "condition": payload.weather.condition,
-            "temperature": payload.weather.temperature,
-        },
+        "weather_condition": payload.weather.condition,
+        "weather_temperature": str(payload.weather.temperature),
         "date": payload.date.isoformat(),
-        "expires_at": expires_at,
     }
 
-    await redis.set(
-        session_key(session_id),
-        json.dumps(redis_payload, ensure_ascii=False),
-        ex=ttl,
+    await upsert_content_session(
+        redis,
+        session_id,
+        scalar_fields=redis_payload,
+        keywords=keywords,
     )
 
     return ProcessUtteranceResult(

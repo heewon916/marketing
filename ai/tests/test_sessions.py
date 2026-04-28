@@ -1,18 +1,41 @@
-import json
 from uuid import uuid4
 
 import fakeredis
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from app.main import app
+from app.schemas.sessions import ExtractFramesResponse
+from app.services.frame_extraction import ExtractFramesResult
 from app.services.sessions import session_key
 
 VALID_PAYLOAD = {
     "store_id": str(uuid4()),
-    "utterance": "오늘 가게에 찻잔, 곰돌이 인형, 원목 찬장을 자랑하고 싶어",
+    "utterance": "warm lighting cozy table signature menu",
     "owner_persona": "aesthetic",
     "date": "2026-04-27",
-    "weather": {"condition": "비", "temperature": 18.5},
+    "weather": {"condition": "rainy", "temperature": 18.5},
 }
+
+VALID_EXTRACT_PAYLOAD = {
+    "session_id": str(uuid4()),
+    "video": "/inputs/test-session/test-video.mp4",
+}
+
+
+class FakeFrameExtractionService:
+    def __init__(self, result: ExtractFramesResult) -> None:
+        self.result = result
+        self.calls: list[tuple[str, str]] = []
+
+    async def extract_and_upload(
+        self,
+        session_id: str,
+        video_key: str,
+    ) -> ExtractFramesResult:
+        self.calls.append((session_id, video_key))
+        return self.result
 
 
 def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> None:
@@ -80,7 +103,7 @@ def test_missing_owner_persona_rejected(client: TestClient) -> None:
 
 def test_invalid_temperature_rejected(client: TestClient) -> None:
     payload = dict(VALID_PAYLOAD)
-    payload["weather"] = {"condition": "비", "temperature": "hot"}
+    payload["weather"] = {"condition": "rainy", "temperature": "hot"}
 
     response = client.post(
         "/ai/sessions/sess-5/process-utterance",
@@ -102,20 +125,19 @@ def test_redis_payload_persisted(
 
     assert response.status_code == 200
 
-    raw = fake_redis_sync.get(session_key(session_id))
-    assert raw is not None
-    saved = json.loads(raw)
+    saved = fake_redis_sync.hgetall(session_key(session_id))
 
     assert saved["session_id"] == session_id
     assert saved["store_id"] == VALID_PAYLOAD["store_id"]
-    assert saved["status"] == "GUIDE_CREATED"
-    assert isinstance(saved["keywords"], list) and len(saved["keywords"]) > 0
-    assert isinstance(saved["draft_caption"], str)
-    assert isinstance(saved["draft_hashtags"], list)
+    assert saved["status"] == "TEXT_GENERATED"
+    assert saved["caption"]
     assert saved["owner_persona"] == "aesthetic"
-    assert saved["weather"] == {"condition": "비", "temperature": 18.5}
+    assert saved["weather_condition"] == "rainy"
+    assert saved["weather_temperature"] == "18.5"
     assert saved["date"] == "2026-04-27"
     assert "expires_at" in saved
+    keyword_fields = [field for field in saved if field.startswith("keyword:")]
+    assert keyword_fields
 
 
 def test_redis_ttl_set(
@@ -131,3 +153,101 @@ def test_redis_ttl_set(
 
     ttl = fake_redis_sync.ttl(session_key(session_id))
     assert ttl > 0
+
+
+def test_extract_frames_returns_success_and_persists_result(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
+    fake_service = FakeFrameExtractionService(
+        ExtractFramesResult(
+            status="FRAME_EXTRACTED",
+            drafts=["/ai-drafts/session-123/draft-001.jpg"],
+        )
+    )
+    app.state.frame_extraction_service = fake_service
+    payload = {"session_id": session_id, "video": "/inputs/test-session/test-video.mp4"}
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/extract-frames",
+            json=payload,
+        )
+    finally:
+        app.state.frame_extraction_service = original_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["session_id"] == session_id
+    assert body["status"] == "FRAME_EXTRACTED"
+    assert body["drafts"] == ["/ai-drafts/session-123/draft-001.jpg"]
+    assert fake_service.calls == [(session_id, payload["video"])]
+
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "FRAME_EXTRACTED"
+    assert saved["draft:1"] == "/ai-drafts/session-123/draft-001.jpg"
+    assert saved["video"] == payload["video"]
+
+
+def test_extract_frames_returns_fail_when_service_fails(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
+    fake_service = FakeFrameExtractionService(
+        ExtractFramesResult(
+            status="TEXT_GENERATED",
+            drafts=[],
+            failure_reason="s3_upload_unavailable",
+        )
+    )
+    app.state.frame_extraction_service = fake_service
+    payload = {"session_id": session_id, "video": "/inputs/test-session/test-video.mp4"}
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/extract-frames",
+            json=payload,
+        )
+    finally:
+        app.state.frame_extraction_service = original_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "TEXT_GENERATED"
+    assert body["drafts"] == []
+
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "TEXT_GENERATED"
+    assert "draft:1" not in saved
+    assert saved["video"] == payload["video"]
+
+
+def test_extract_frames_rejects_mismatched_session_id(client: TestClient) -> None:
+    payload = dict(VALID_EXTRACT_PAYLOAD)
+    payload["session_id"] = str(uuid4())
+
+    response = client.post("/ai/sessions/extract-session-3/extract-frames", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_extract_frames_response_limits_drafts_to_three() -> None:
+    with pytest.raises(ValidationError):
+        ExtractFramesResponse(
+            session_id="sess",
+            status="FRAME_EXTRACTED",
+            drafts=["1", "2", "3", "4"],
+        )
+
+
+def test_frame_extraction_singletons_initialized_on_app_state(
+    client: TestClient,
+) -> None:
+    assert app.state.frame_extractor_config is not None
+    assert app.state.best_frame_extractor is not None
+    assert app.state.frame_extraction_service is not None
+    assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor

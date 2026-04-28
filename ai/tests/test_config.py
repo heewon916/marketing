@@ -16,6 +16,11 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REDIS_DB", "2")
     monkeypatch.setenv("SESSION_TTL_SECONDS", "1800")
     monkeypatch.setenv("DEBUG", "true")
+    monkeypatch.setenv("S3_ACCESS_KEY", "access")
+    monkeypatch.setenv("S3_SECRET_KEY", "secret")
+    monkeypatch.setenv("S3_BUCKET_NAME", "bucket")
+    monkeypatch.setenv("S3_REGION", "ap-northeast-2")
+    monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
 
 
 def test_settings_parses_infra_fields(env_setup: None) -> None:
@@ -70,3 +75,22 @@ def test_default_container_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.POSTGRES_HOST == "project-postgres"
     assert settings.REDIS_HOST == "project-redis"
+
+
+def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.s3_configured is True
+    assert settings.CLOUDFRONT_DOMAIN == "cdn.example.com"
+
+
+def test_s3_not_configured_when_bucket_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("S3_ACCESS_KEY", "access")
+    monkeypatch.setenv("S3_SECRET_KEY", "secret")
+    monkeypatch.setenv("S3_REGION", "ap-northeast-2")
+    monkeypatch.delenv("S3_BUCKET_NAME", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.s3_configured is False

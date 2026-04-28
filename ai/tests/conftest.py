@@ -42,11 +42,11 @@ def client(
         return fake_redis_async
 
     app.dependency_overrides[get_redis] = _get_redis
-    test_client = TestClient(app)
-    try:
-        yield test_client
-    finally:
-        app.dependency_overrides.clear()
+    with TestClient(app) as test_client:
+        try:
+            yield test_client
+        finally:
+            app.dependency_overrides.clear()
 
 
 @pytest.fixture

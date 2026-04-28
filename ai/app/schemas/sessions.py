@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -21,3 +22,14 @@ class ProcessUtteranceResponse(BaseModel):
     session_id: str
     guide_text: str
     keywords: list[str] | None = None
+
+
+class ExtractFramesRequest(BaseModel):
+    session_id: UUID
+    video: str = Field(..., min_length=1)
+
+
+class ExtractFramesResponse(BaseModel):
+    session_id: str
+    status: Literal["FRAME_EXTRACTED", "TEXT_GENERATED"]
+    drafts: list[str] = Field(default_factory=list, max_length=3)
