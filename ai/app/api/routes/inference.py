@@ -22,7 +22,7 @@ class InferenceResponse(BaseModel):
 def run_inference(payload: InferenceRequest) -> InferenceResponse:
     resolved_model = payload.model or settings.DEFAULT_MODEL
     return InferenceResponse(
-        provider=settings.AI_PROVIDER,
+        provider=settings.PROVIDER,
         model=resolved_model,
         prompt=payload.prompt,
         message="Inference pipeline scaffolded. Connect your model runtime here.",
