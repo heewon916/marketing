@@ -2,12 +2,6 @@ import { useRef, useState } from "react"
 import { TiMicrophone } from "react-icons/ti"
 
 /**
- * 상태 1 (idle)     : 흰 배경 + 연한 오렌지 링
- * 상태 2 (recording): 연한 오렌지(surface-100) 배경 + 펄스 링
- *
- * 녹음 시작: MediaRecorder로 마이크 스트림 캡처
- * 녹음 종료: WebM 파일로 자동 다운로드
- * 
  * 일단 파일로 저장하지만, 추후 서버 업로드 기능 추가 예정
  */
 function Record({ onToggle }) {
@@ -36,7 +30,6 @@ function Record({ onToggle }) {
         a.click()
         URL.revokeObjectURL(url)
 
-        // 스트림 트랙 종료
         stream.getTracks().forEach((track) => track.stop())
       }
 

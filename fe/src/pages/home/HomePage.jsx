@@ -12,11 +12,11 @@ function HomePage() {
   const isActive = isTyping || isRecording
 
   return (
-    <main className="relative flex min-h-screen justify-center bg-surface-50">
-      <div className="min-h-screen w-full max-w-md px-5 py-6 pb-60">
+    <main className="relative flex h-dvh overflow-hidden justify-center bg-surface-50">
+      <div className="h-full w-full max-w-md px-5 py-6 pb-60">
         {/* 상단 영역 */}
         <section className="flex justify-center py-10">
-          <h1 className="text-center text-2xl font-medium text-accent-500" style={{ wordBreak: "keep-all" }}>
+          <h1 className="text-center text-3xl font-medium text-accent-500" style={{ wordBreak: "keep-all" }}>
             오늘 새로 공유해주실 이야기가 있나요?
           </h1>
         </section>
