@@ -1,7 +1,7 @@
-import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
+import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 
 function InstagramSuccessStep({ onNext, onPrev }) {
   return (
@@ -22,18 +22,10 @@ function InstagramSuccessStep({ onNext, onPrev }) {
         />
       }
       footer={
-        <div className="flex gap-3">
-          <button
-            onClick={onPrev}
-            className="flex-1 py-3 border rounded-xl text-gray-500"
-          >
-            이전
-          </button>
-
-          <Button onClick={onNext} className="flex-1 font-bold">
-            다음
-          </Button>
-        </div>
+        <OnboardingFooterButtons
+          onPrev={onPrev}
+          onNext={onNext}
+        />
       }
     >
       <div className="w-full flex justify-center mt-10">
