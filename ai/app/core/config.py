@@ -1,17 +1,8 @@
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Literal
 
-from pydantic import BeforeValidator, computed_field
+from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-def parse_cors(value: Any) -> list[str] | str:
-    if isinstance(value, str) and not value.startswith("["):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    if isinstance(value, list | str):
-        return value
-    raise ValueError(value)
-
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR.parent / ".env"
@@ -29,8 +20,6 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "DEBUG"
-    FRONTEND_HOST: str = "http://localhost:5173"
-    BACKEND_CORS_ORIGINS: Annotated[list[str] | str, BeforeValidator(parse_cors)] = []
     PROVIDER: str = "openai"
     DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str | None = None
@@ -49,14 +38,6 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
 
     SESSION_TTL_SECONDS: int = 3600
-
-    @computed_field
-    @property
-    def all_cors_origins(self) -> list[str]:
-        origins = self.BACKEND_CORS_ORIGINS
-        if isinstance(origins, str):
-            origins = [origins]
-        return [origin.rstrip("/") for origin in origins] + [self.FRONTEND_HOST.rstrip("/")]
 
     @computed_field
     @property
