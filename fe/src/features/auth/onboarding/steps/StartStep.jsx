@@ -1,36 +1,57 @@
 import Button from '@/components/common/Button.jsx';
-import Character from '@/assets/character/CharacterDdabong.png';
+import OnboardingLayout from '../components/OnboardingLayout.jsx';
+import OnboardingHeader from '../components/OnboardingHeader.jsx';
+import OnboardingChecklist from '../components/OnboardingChecklist.jsx';
 
 function StartStep({ onNext }) {
   return (
-    <div className="flex flex-col items-center text-center px-6">
-      
-      {/* 캐릭터 */}
-      <img
-        src={Character}
-        alt="character"
-        className="w-full max-w-[280px] mb-8"
+    <OnboardingLayout
+      currentStep={1}
+      totalStep={7}
+      contentAlign="left"
+      header={
+        <OnboardingHeader
+          title={
+            <>
+              맡케팅 시작 전,
+              <br />
+              <span className="text-primary-100 font-extrabold">필수 준비물 3가지!</span>
+            </>
+          }
+          subtitle={
+            <>
+              가게 홍보를{' '}
+              <span className="text-primary-100 font-medium">맡케팅</span>
+              이 완벽하게 도와드리기 위해,
+              <br />
+              아래 항목들을 먼저 체크해 주세요!
+            </>
+          }
+        />
+      }
+      footer={
+        <Button onClick={onNext} className="w-full font-bold">
+          인스타그램 연동하기
+        </Button>
+      }
+    >
+      <OnboardingChecklist
+        items={[
+          {
+            title: '인스타그램 비즈니스 계정',
+            desc: '가게의 예쁜 얼굴이에요!',
+          },
+          {
+            title: '토스 POS',
+            desc: '토스 POS를 사용하고 있어야 해요!',
+          },
+          {
+            title: '네이버 플레이스',
+            desc: <>가게를 찾는 손님들에게 꼭 필요한<br />이정표예요!</>,
+          },
+        ]}
       />
-
-      {/* 텍스트 */}
-      <h1 className="text-2xl font-bold text-accent-100 mb-2">
-        반가워요 사장님!
-      </h1>
-
-      <p className="text-gray-500 text-base mb-10">
-        맡케팅 시작을 위해<br />
-        몇 가지만 설정해볼게요
-      </p>
-
-      {/* 버튼 */}
-      <Button
-        onClick={onNext}
-        className="w-full max-w-[340px] font-bold shadow-lg shadow-primary-100/40"
-      >
-        시작하기
-      </Button>
-
-    </div>
+    </OnboardingLayout>
   );
 }
 
