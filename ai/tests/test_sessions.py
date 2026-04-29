@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
+from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
@@ -426,3 +427,24 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor
     assert app.state.final_edit_service is not None
     assert app.state.final_edit_service.predictor.weights_path is not None
+
+
+def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() -> None:
+    predictor = OrientationPredictor()
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class FakeTFAutoModel:
+        @staticmethod
+        def from_pretrained(model_id: str, **kwargs):
+            calls.append((model_id, kwargs))
+            if len(calls) == 1:
+                raise TypeError("'builtins.safe_open' object is not iterable")
+            return "vit-model"
+
+    model = predictor._load_vit_base_model(FakeTFAutoModel)
+
+    assert model == "vit-model"
+    assert calls == [
+        ("google/vit-base-patch16-224", {}),
+        ("google/vit-base-patch16-224", {"use_safetensors": False}),
+    ]

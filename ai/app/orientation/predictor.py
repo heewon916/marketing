@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import threading
 
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
 class OrientationPredictor:
@@ -70,7 +73,7 @@ class OrientationPredictor:
 
             try:
                 image_size = 224
-                vit_base = TFAutoModel.from_pretrained("google/vit-base-patch16-224")
+                vit_base = self._load_vit_base_model(TFAutoModel)
                 img_input = tf.keras.layers.Input(shape=(3, image_size, image_size))
                 vit_output = vit_base(img_input)
                 angle_output = tf.keras.layers.Dense(1, activation="linear")(
@@ -88,6 +91,21 @@ class OrientationPredictor:
                 ) from exc
 
         return self._model
+
+    def _load_vit_base_model(self, tf_auto_model):
+        model_id = "google/vit-base-patch16-224"
+
+        try:
+            return tf_auto_model.from_pretrained(model_id)
+        except TypeError as exc:
+            if "safe_open" not in str(exc):
+                raise
+
+            logger.warning(
+                "Retrying ViT backbone load without safetensors after safe_open failure.",
+                extra={"model_id": model_id},
+            )
+            return tf_auto_model.from_pretrained(model_id, use_safetensors=False)
 
     def _preprocess(self, image_path: Path) -> np.ndarray:
         if self._processor is None:
