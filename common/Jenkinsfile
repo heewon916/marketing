@@ -204,10 +204,12 @@ pipeline {
             steps {
                 dir("${DEPLOY_DIR}") {
                     sh '''
-                echo "===== Build and Force Recreate ====="
-                # --build와 --force-recreate를 조합하여 
-                # 소스 변경이 있을 경우 무조건 새로 구워서 교체하도록 명령
-                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --build --force-recreate --remove-orphans
+                echo "===== Build without cache and Force Recreate ====="
+                # --no-cache 옵션을 추가하여 이전 빌드 기록을 완전히 무시하고 새로 구움
+                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build --no-cache frontend
+                
+                # 그 후 컨테이너 실행
+                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --force-recreate --remove-orphans
             '''
                 }
             }
