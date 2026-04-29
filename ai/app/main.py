@@ -27,6 +27,10 @@ from app.services.final_edit import (
     S3DraftImageDownloader,
     S3FinalImageUploader,
 )
+from app.services.keyword_extraction import (
+    KeywordExtractionUnavailableError,
+    build_keyword_extraction_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +119,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         uploader=S3FinalImageUploader(),
         temp_root=temp_root / "final-edit",
     )
+    app.state.keyword_extraction_service = build_keyword_extraction_service()
+    logger.info(
+        "Keyword extraction configured.",
+        extra={
+            "keyword_model_repo_id": settings.KEYWORD_MODEL_HF_REPO_ID,
+            "keyword_model_filename": settings.KEYWORD_MODEL_HF_FILENAME,
+            "keyword_model_path": str(settings.keyword_model_path),
+            "keyword_model_gpu_layers": settings.KEYWORD_MODEL_GPU_LAYERS,
+        },
+    )
+
+    try:
+        await app.state.keyword_extraction_service.preload()
+    except KeywordExtractionUnavailableError as exc:
+        logger.warning(
+            "Keyword extraction model is unavailable at startup: %s. "
+            "The app will continue, but process-utterance may return 503 until the model is ready.",
+            exc,
+            exc_info=True,
+        )
+    except Exception:
+        logger.warning(
+            "Keyword extraction model is unavailable at startup. "
+            "The app will continue, but process-utterance may return 503 until the model is ready.",
+            exc_info=True,
+        )
 
     try:
         await redis.ping()

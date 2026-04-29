@@ -10,6 +10,10 @@ from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
+from app.services.keyword_extraction import (
+    KeywordExtractionService,
+    KeywordExtractionUnavailableError,
+)
 from app.services.sessions import session_key
 
 VALID_PAYLOAD = {
@@ -52,6 +56,23 @@ class FakeFinalEditService:
     ) -> FinalEditResult:
         self.calls.append((session_id, drafts))
         return self.result
+
+
+class FakeKeywordExtractionService:
+    def __init__(
+        self,
+        keywords: list[str] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.keywords = keywords or ["signature menu", "cozy table"]
+        self.error = error
+        self.calls: list[str] = []
+
+    async def extract_keywords(self, utterance: str) -> list[str]:
+        self.calls.append(utterance)
+        if self.error is not None:
+            raise self.error
+        return self.keywords
 
 
 class StubDraftDownloader:
@@ -129,6 +150,29 @@ def test_keywords_exposed_when_debug_on(
     assert len(body["keywords"]) > 0
 
 
+def test_process_utterance_returns_503_when_keyword_extraction_fails(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-keyword-fail"
+    original_service = app.state.keyword_extraction_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        error=KeywordExtractionUnavailableError("model unavailable")
+    )
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_service
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Keyword extraction is unavailable."
+    assert fake_redis_sync.hgetall(session_key(session_id)) == {}
+
+
 def test_empty_utterance_rejected(client: TestClient) -> None:
     payload = dict(VALID_PAYLOAD)
     payload["utterance"] = ""
@@ -178,17 +222,18 @@ def test_redis_payload_persisted(
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
 
-    assert saved["session_id"] == session_id
-    assert saved["store_id"] == VALID_PAYLOAD["store_id"]
     assert saved["status"] == "TEXT_GENERATED"
     assert saved["caption"]
-    assert saved["owner_persona"] == "aesthetic"
-    assert saved["weather_condition"] == "rainy"
-    assert saved["weather_temperature"] == "18.5"
-    assert saved["date"] == "2026-04-27"
-    assert "expires_at" in saved
+    assert "#rainy" in saved["caption"]
     keyword_fields = [field for field in saved if field.startswith("keyword:")]
-    assert keyword_fields
+    assert 1 <= len(keyword_fields) <= 3
+    assert "session_id" not in saved
+    assert "store_id" not in saved
+    assert "owner_persona" not in saved
+    assert "weather_condition" not in saved
+    assert "weather_temperature" not in saved
+    assert "date" not in saved
+    assert "expires_at" not in saved
 
 
 def test_redis_ttl_set(
@@ -427,6 +472,7 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor
     assert app.state.final_edit_service is not None
     assert app.state.final_edit_service.predictor.weights_path is not None
+    assert app.state.keyword_extraction_service is not None
 
 
 def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() -> None:
@@ -448,3 +494,52 @@ def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() 
         ("google/vit-base-patch16-224", {}),
         ("google/vit-base-patch16-224", {"use_safetensors": False}),
     ]
+
+
+def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
+    service = KeywordExtractionService(model_path=None)
+
+    keywords = service._parse_keywords(
+        "["
+        '"\\ub9c9\\uac78\\ub9ac", '
+        '" \\ud30c\\uc804 ", '
+        '"\\ub9c9\\uac78\\ub9ac", '
+        '"\\uc624\\ub298", '
+        '"\\ucc3b\\uc794", '
+        '"\\ub514\\uc800\\ud2b8"'
+        "]"
+    )
+
+    assert keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804", "\ucc3b\uc794"]
+
+
+def test_keyword_extraction_service_rejects_non_json_output() -> None:
+    service = KeywordExtractionService(model_path=None)
+
+    with pytest.raises(KeywordExtractionUnavailableError):
+        service._parse_keywords("\ub9c9\uac78\ub9ac, \ud30c\uc804")
+
+
+def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
+    service = KeywordExtractionService(model_path=None)
+
+    keywords = service._parse_keywords(
+        '{'
+        '"keywords": ['
+        '"\\ub9c9\\uac78\\ub9ac", '
+        '"\\ud30c\\uc804", '
+        '"\\ub9e4\\uc7a5"'
+        "]}"
+    )
+
+    assert keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
+
+
+@pytest.mark.asyncio
+async def test_keyword_extraction_service_raises_when_disabled() -> None:
+    service = KeywordExtractionService(model_path=None, enabled=False)
+
+    with pytest.raises(KeywordExtractionUnavailableError):
+        await service.extract_keywords(
+            "\uc624\ub298 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\ub2e4"
+        )
