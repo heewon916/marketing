@@ -13,6 +13,7 @@ import BusinessTypeStep from '@/features/auth/onboarding/steps/BusinessTypeStep.
 import LocationStep from '@/features/auth/onboarding/steps/LocationStep.jsx';
 import TimeStep from '@/features/auth/onboarding/steps/TimeStep.jsx';
 import CompleteStep from '@/features/auth/onboarding/steps/CompleteStep.jsx';
+import StoreLoadingStep from '@/features/auth/onboarding/steps/StoreLoadingStep.jsx';
 
 function OnboardingPage() {
   const [step, setStep] = useState(1);
@@ -23,6 +24,7 @@ function OnboardingPage() {
     if (step === 7) return 3;       // 로딩
     if (step === 8) return 4;       // POS 완료
     if (step === 9) return 5;       // 매장 선택
+    if (step === 10) return 5;      // 매장 로딩
     if (step <= 11) return 6;       // 위치/업종
     return 7;                       // 완료
   };
@@ -100,6 +102,9 @@ function OnboardingPage() {
         return <StoreSelectStep {...commonProps} />;
 
       case 10:
+        return <StoreLoadingStep {...commonProps} />; // ⭐ 추가
+
+      case 11:
         return (
           <BusinessNameStep
             {...commonProps}
@@ -110,7 +115,7 @@ function OnboardingPage() {
           />
         );
 
-      case 11:
+      case 12:
         return (
           <BusinessTypeStep
             {...commonProps}
@@ -121,7 +126,7 @@ function OnboardingPage() {
           />
         );
 
-      case 12:
+      case 13:
         return (
           <LocationStep
             {...commonProps}
@@ -132,7 +137,7 @@ function OnboardingPage() {
           />
         );
 
-      case 13:
+      case 14:
         return (
           <TimeStep
             {...commonProps}
@@ -143,7 +148,7 @@ function OnboardingPage() {
           />
         );
 
-      case 14:
+      case 15:
         return <CompleteStep progressStep={progressStep} />;
 
       default:
