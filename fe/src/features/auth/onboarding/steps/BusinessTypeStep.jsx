@@ -1,22 +1,74 @@
-function BusinessTypeStep({ onNext, onPrev }) {
+import { useState } from 'react';
+import OnboardingLayout from '../components/OnboardingLayout.jsx';
+import OnboardingHeader from '../components/OnboardingHeader.jsx';
+import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
+import CategoryChip from '../components/CategoryChip.jsx';
+import ModalCategoryGuide from '../components/ModalCategoryGuide.jsx';
+
+const types = ['식당', '주점', '카페', '제과점'];
+
+function BusinessTypeStep({ value, onChange, onNext, onPrev }) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
-    <div className="flex flex-col items-center text-center px-6">
-      <h1 className="text-xl font-bold mb-4">업종을 선택해주세요</h1>
+    <OnboardingLayout
+      currentStep={6}
+      totalStep={7}
+      contentAlign="left"
+      header={
+        <OnboardingHeader
+          title={
+            <>
+              <span className="text-primary-100 font-extrabold">
+                업종
+              </span>
+              을
+              <br />
+              확인해주세요
+            </>
+          }
+          subtitle="정보가 다르면 수정해주세요"
+        />
+      }
+      footer={
+        <OnboardingFooterButtons
+          onPrev={onPrev}
+          onNext={onNext}
+          nextText="저장"
+          nextDisabled={!value}
+        />
+      }
+    >
+      <>
+        {/* 업종 선택 */}
+        <div className="grid grid-cols-2 gap-3 mt-2 w-full">
+          {types.map((type) => (
+            <CategoryChip
+              key={type}
+              label={type}
+              isSelected={value === type}
+              onClick={() => onChange(type)}
+            />
+          ))}
 
-      <button className="mb-2 px-4 py-2 border rounded">카페</button>
-      <button className="mb-4 px-4 py-2 border rounded">음식점</button>
+          {/* 가운데 정렬 */}
+          <div className="col-span-2 flex justify-center">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="mt-6 text-base text-gray-500 underline underline-offset-4"
+            >
+              업종 설명이 필요하신가요?
+            </button>
+          </div>
+        </div>
 
-      <button
-        onClick={onNext}
-        className="mb-4 px-4 py-2 bg-black text-white rounded"
-      >
-        다음
-      </button>
-
-      <button onClick={onPrev} className="text-gray-400 text-sm">
-        이전
-      </button>
-    </div>
+        {/* 모달 */}
+        <ModalCategoryGuide
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+        />
+      </>
+    </OnboardingLayout>
   );
 }
 

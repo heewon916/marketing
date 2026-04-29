@@ -8,25 +8,23 @@ import QRStep from '@/features/auth/onboarding/steps/QRStep.jsx';
 import LoadingStep from '@/features/auth/onboarding/steps/LoadingStep.jsx';
 import PosSuccessStep from '@/features/auth/onboarding/steps/PosSuccessStep.jsx';
 import StoreSelectStep from '@/features/auth/onboarding/steps/StoreSelectStep.jsx';
-import BusinessNameStep from '@/features/auth/onboarding/steps/BusinessNameStep.jsx';
+import StoreLoadingStep from '@/features/auth/onboarding/steps/StoreLoadingStep.jsx';
 import BusinessTypeStep from '@/features/auth/onboarding/steps/BusinessTypeStep.jsx';
 import LocationStep from '@/features/auth/onboarding/steps/LocationStep.jsx';
 import TimeStep from '@/features/auth/onboarding/steps/TimeStep.jsx';
 import CompleteStep from '@/features/auth/onboarding/steps/CompleteStep.jsx';
-import StoreLoadingStep from '@/features/auth/onboarding/steps/StoreLoadingStep.jsx';
 
 function OnboardingPage() {
   const [step, setStep] = useState(1);
 
   const getProgressStep = (step) => {
-    if (step <= 3) return 1;        // 인스타 연동
-    if (step <= 6) return 2;        // POS 연결
-    if (step === 7) return 3;       // 로딩
-    if (step === 8) return 4;       // POS 완료
-    if (step === 9) return 5;       // 매장 선택
-    if (step === 10) return 5;      // 매장 로딩
-    if (step <= 11) return 6;       // 위치/업종
-    return 7;                       // 완료
+    if (step <= 3) return 1;
+    if (step <= 6) return 2;
+    if (step === 7) return 3;
+    if (step === 8) return 4;
+    if (step <= 10) return 5;
+    if (step <= 13) return 6;
+    return 7;
   };
 
   const progressStep = getProgressStep(step);
@@ -41,7 +39,6 @@ function OnboardingPage() {
     address: '',
     lat: null,
     lng: null,
-    storeName: '',
     operatingHours: {},
     menus: [],
     authCode: '',
@@ -102,20 +99,9 @@ function OnboardingPage() {
         return <StoreSelectStep {...commonProps} />;
 
       case 10:
-        return <StoreLoadingStep {...commonProps} />; // ⭐ 추가
+        return <StoreLoadingStep {...commonProps} />;
 
       case 11:
-        return (
-          <BusinessNameStep
-            {...commonProps}
-            value={formData.storeName}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, storeName: value }))
-            }
-          />
-        );
-
-      case 12:
         return (
           <BusinessTypeStep
             {...commonProps}
@@ -126,7 +112,7 @@ function OnboardingPage() {
           />
         );
 
-      case 13:
+      case 12:
         return (
           <LocationStep
             {...commonProps}
@@ -137,7 +123,7 @@ function OnboardingPage() {
           />
         );
 
-      case 14:
+      case 13:
         return (
           <TimeStep
             {...commonProps}
@@ -148,7 +134,7 @@ function OnboardingPage() {
           />
         );
 
-      case 15:
+      case 14:
         return <CompleteStep progressStep={progressStep} />;
 
       default:
