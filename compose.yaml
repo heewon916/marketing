@@ -61,6 +61,8 @@ services:
     image: pgvector/pgvector:pg16
     container_name: project-postgres
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
     env_file:
       - .env
     environment:
