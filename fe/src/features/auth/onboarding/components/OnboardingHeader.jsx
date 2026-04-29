@@ -1,7 +1,7 @@
 export default function OnboardingHeader({ title, emphasis, subtitle }) {
   return (
     <div className="text-left">
-      <h1 className="text-3xl font-bold leading-snug text-gray-900">
+      <h1 className="text-[28px] font-bold leading-snug text-gray-900">
         {title}
       </h1>
 

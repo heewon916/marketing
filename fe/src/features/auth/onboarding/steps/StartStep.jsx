@@ -20,9 +20,9 @@ function StartStep({ onNext }) {
           }
           subtitle={
             <>
-              가게 홍보를{' '}
+              가게를{' '}
               <span className="text-primary-100 font-medium">맡케팅</span>
-              이 완벽하게 도와드리기 위해,
+              이 완벽히 홍보하기 위해,
               <br />
               아래 항목들을 먼저 체크해 주세요!
             </>
