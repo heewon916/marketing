@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 
@@ -16,9 +18,14 @@ from app.services.frame_extraction import (
     process_extract_frames,
 )
 from app.services.final_edit import get_final_edit_service, process_final_edit
+from app.services.keyword_extraction import (
+    KeywordExtractionUnavailableError,
+    get_keyword_extraction_service,
+)
 from app.services.sessions import process_utterance
 
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -30,9 +37,46 @@ router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
 async def process_utterance_endpoint(
     session_id: str,
     payload: ProcessUtteranceRequest,
+    request: Request,
     redis: Redis = Depends(get_redis),
 ) -> ProcessUtteranceResponse:
-    result = await process_utterance(session_id, payload, redis)
+    keyword_service = get_keyword_extraction_service(request)
+    logger.info(
+        "process-utterance request received.",
+        extra={
+            "session_id": session_id,
+            "payload_owner_persona": payload.owner_persona,
+            "payload_weather_condition": payload.weather.condition,
+            "utterance_length": len(payload.utterance),
+        },
+    )
+    try:
+        result = await process_utterance(
+            session_id,
+            payload,
+            redis,
+            keyword_service,
+        )
+    except KeywordExtractionUnavailableError as exc:
+        cause = exc.__cause__
+        logger.warning(
+            "Keyword extraction failed during process-utterance: %s | cause=%r",
+            exc,
+            cause,
+            extra={"session_id": session_id},
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Keyword extraction is unavailable.",
+        ) from exc
+    logger.info(
+        "process-utterance completed successfully.",
+        extra={
+            "session_id": session_id,
+            "keyword_count": len(result.keywords),
+        },
+    )
     return ProcessUtteranceResponse(
         session_id=session_id,
         guide_text=result.guide_text,

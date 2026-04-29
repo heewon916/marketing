@@ -21,6 +21,19 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_BUCKET_NAME", "bucket")
     monkeypatch.setenv("S3_REGION", "ap-northeast-2")
     monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
+    monkeypatch.setenv("KEYWORD_MODEL_PATH", "models/qwen.gguf")
+    monkeypatch.setenv("KEYWORD_MODEL_HF_REPO_ID", "Qwen/Qwen2.5-7B-Instruct-GGUF")
+    monkeypatch.setenv(
+        "KEYWORD_MODEL_HF_FILENAME", "qwen2.5-7b-instruct-q3_k_m.gguf"
+    )
+    monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "4096")
+    monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "32")
+    monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.2")
+    monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.85")
+    monkeypatch.setenv("KEYWORD_MODEL_THREADS", "6")
+    monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "12")
+    monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "true")
+    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "15")
 
 
 def test_settings_parses_infra_fields(env_setup: None) -> None:
@@ -32,6 +45,16 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.REDIS_DB == 2
     assert settings.SESSION_TTL_SECONDS == 1800
     assert settings.DEBUG is True
+    assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
+    assert settings.KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
+    assert settings.KEYWORD_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
+    assert settings.KEYWORD_MODEL_MAX_TOKENS == 32
+    assert settings.KEYWORD_MODEL_TEMPERATURE == 0.2
+    assert settings.KEYWORD_MODEL_TOP_P == 0.85
+    assert settings.KEYWORD_MODEL_THREADS == 6
+    assert settings.KEYWORD_MODEL_GPU_LAYERS == 12
+    assert settings.KEYWORD_MODEL_ENABLED is True
+    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == 15
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -82,6 +105,14 @@ def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
 
     assert settings.s3_configured is True
     assert settings.CLOUDFRONT_DOMAIN == "cdn.example.com"
+
+
+def test_keyword_model_path_resolves_relative_path(env_setup: None) -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.keyword_model_path is not None
+    assert settings.keyword_model_path.name == "qwen.gguf"
+    assert settings.keyword_model_path.parts[-2:] == ("models", "qwen.gguf")
 
 
 def test_s3_not_configured_when_bucket_missing(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -49,6 +50,17 @@ class Settings(BaseSettings):
     ORIENTATION_MODEL_DOWNLOAD_URL: str = (
         "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
     )
+    KEYWORD_MODEL_PATH: str | None = None
+    KEYWORD_MODEL_HF_REPO_ID: str = "Qwen/Qwen2.5-7B-Instruct-GGUF"
+    KEYWORD_MODEL_HF_FILENAME: str = "qwen2.5-7b-instruct-q3_k_m.gguf"
+    KEYWORD_MODEL_CTX_SIZE: int = 2048
+    KEYWORD_MODEL_MAX_TOKENS: int = 64
+    KEYWORD_MODEL_TEMPERATURE: float = 0.1
+    KEYWORD_MODEL_TOP_P: float = 0.9
+    KEYWORD_MODEL_THREADS: int = max((os.cpu_count() or 1) - 2, 1)
+    KEYWORD_MODEL_GPU_LAYERS: int = 20
+    KEYWORD_MODEL_ENABLED: bool = True
+    KEYWORD_MODEL_TIMEOUT_SECONDS: float = 10.0
 
     @computed_field
     @property
@@ -86,6 +98,17 @@ class Settings(BaseSettings):
                 return candidate
             return ROOT_DIR.parent / candidate
         return ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
+
+    @computed_field
+    @property
+    def keyword_model_path(self) -> Path | None:
+        configured = self.KEYWORD_MODEL_PATH
+        if not configured:
+            return None
+        candidate = Path(configured)
+        if candidate.is_absolute():
+            return candidate
+        return ROOT_DIR.parent / candidate
 
 
 settings = Settings()
