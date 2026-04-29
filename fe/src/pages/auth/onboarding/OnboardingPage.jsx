@@ -87,7 +87,7 @@ function OnboardingPage() {
         );
 
       case 6:
-        return <QRStep {...commonProps} />;
+        return <QRStep {...commonProps} onSuccess={nextStep} />;
 
       case 7:
         return <LoadingStep {...commonProps} />;
