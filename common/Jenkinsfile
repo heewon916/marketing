@@ -204,15 +204,27 @@ pipeline {
             steps {
                 dir("${DEPLOY_DIR}") {
                     sh '''
-                        echo "===== Build and start containers ====="
-                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --build --remove-orphans
-
-                        echo "===== Running containers ====="
-                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env ps
-                    '''
+                echo "===== Build and Force Recreate ====="
+                # --build와 --force-recreate를 조합하여 
+                # 소스 변경이 있을 경우 무조건 새로 구워서 교체하도록 명령
+                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --build --force-recreate --remove-orphans
+            '''
                 }
             }
         }
+//        stage('Deploy') {
+//            steps {
+//                dir("${DEPLOY_DIR}") {
+//                    sh '''
+//                        echo "===== Build and start containers ====="
+//                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --build --remove-orphans
+//
+//                        echo "===== Running containers ====="
+//                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env ps
+//                    '''
+//                }
+//            }
+//        }
 
         stage('Check Nginx Config') {
             steps {
