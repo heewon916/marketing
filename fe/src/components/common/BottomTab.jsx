@@ -18,7 +18,7 @@ function BottomTab() {
         >
           <span
             className={`material-icons text-5xl scale-150 ${
-              currentPath === '/home'
+              currentPath === '/home' || currentPath === '/post-create'
                 ? 'text-[var(--color-primary-100)]'
                 : 'text-gray-400'
             }`}
@@ -28,7 +28,7 @@ function BottomTab() {
 
           <span
             className={
-              currentPath === '/home'
+              currentPath === '/home' || currentPath === '/post-create'
                 ? 'text-[var(--color-primary-100)] text-lg font-medium'
                 : 'text-gray-400 text-lg'
             }
