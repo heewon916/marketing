@@ -1,6 +1,6 @@
 import Button from '@/components/common/Button.jsx';
 
-function OnboardingBackButton({ onPrev }) {
+function BackButton({ onPrev }) {
   return (
     <Button
       size="sm"
@@ -13,4 +13,4 @@ function OnboardingBackButton({ onPrev }) {
   );
 }
 
-export default OnboardingBackButton;
+export default BackButton;

@@ -55,7 +55,7 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
         />
       }
     >
-      <div className="flex flex-col items-center mt-10 w-full">
+      <div className="flex flex-col items-center mt-2 w-full">
         {/* 인증 코드 입력 영역 */}
         <div className="flex gap-2 justify-center">
           {Array.from({ length: 6 }).map((_, idx) => (

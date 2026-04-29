@@ -1,6 +1,6 @@
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
-import OnboardingBackButton from '../components/OnboardingBackButton.jsx';
+import BackButton from '../components/BackButton.jsx';
 
 function QRStep({ onPrev }) {
   return (
@@ -18,7 +18,7 @@ function QRStep({ onPrev }) {
           }
         />
       }
-      footer={<OnboardingBackButton onPrev={onPrev} />}
+      footer={<BackButton onPrev={onPrev} />}
     >
       <div className="w-[220px] h-[220px] border-2 border-red-400 rounded-xl" />
     </OnboardingLayout>

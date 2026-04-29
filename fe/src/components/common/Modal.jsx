@@ -3,21 +3,26 @@ export default function Modal({
   onClose,
   children,
   showClose = true,
+  closeOnBackdrop = true,
 }) {
   if (!isOpen) return null;
+
+  const handleBackdropClick = () => {
+    if (closeOnBackdrop) {
+      onClose?.();
+    }
+  };
 
   return (
     <div
       className="fixed inset-0 z-[999] flex items-center justify-center bg-black/20"
-      onClick={onClose}
+      onClick={handleBackdropClick}
     >
-      
       {/* 모달 박스 */}
       <div
         className="relative w-[90%] max-w-[360px] bg-white rounded-3xl px-6 pt-12 pb-8"
         onClick={(e) => e.stopPropagation()}
       >
-
         {/* 닫기 버튼 */}
         {showClose && (
           <button
@@ -28,7 +33,6 @@ export default function Modal({
           </button>
         )}
 
-        {/* 컨텐츠 */}
         {children}
       </div>
     </div>

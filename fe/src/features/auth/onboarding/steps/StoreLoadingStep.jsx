@@ -21,11 +21,7 @@ function StoreLoadingStep({ onNext, onPrev }) {
               가져오고 있어요
             </>
           }
-          subtitle={
-            <div className="mt-4 text-[15px] text-gray-400">
-              화면을 나가지 말고 기다려주세요
-            </div>
-          }
+          subtitle="화면을 나가지 말고 기다려주세요"
         />
       }
       footer={
