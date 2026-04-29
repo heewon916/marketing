@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 import shutil
 from tempfile import mkdtemp
@@ -11,6 +12,8 @@ from app.api.main import api_router
 from app.core.config import settings
 from app.db.postgres import dispose_engine
 from app.db.redis import close_redis, get_redis_client
+from app.orientation.predictor import OrientationPredictor
+from app.orientation.weights import ensure_orientation_weights_available
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.schemas import ExtractorConfig
@@ -19,6 +22,13 @@ from app.services.frame_extraction import (
     S3DraftUploader,
     S3VideoDownloader,
 )
+from app.services.final_edit import (
+    FinalEditService,
+    S3DraftImageDownloader,
+    S3FinalImageUploader,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def custom_generate_unique_id(route: APIRoute) -> str:
@@ -26,10 +36,42 @@ def custom_generate_unique_id(route: APIRoute) -> str:
     return f"{tag}-{route.name}"
 
 
+def configure_app_logging() -> None:
+    app_logger = logging.getLogger("app")
+    level_name = settings.LOG_LEVEL.upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    app_logger.setLevel(level)
+
+    if app_logger.handlers:
+        return
+
+    handler = logging.StreamHandler()
+    handler.setLevel(level)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(levelname)s:%(name)s:%(message)s | "
+            "session_id=%(session_id)s final_index=%(final_index)s "
+            "draft_key=%(draft_key)s predicted_angle=%(predicted_angle)s "
+            "applied_rotation=%(applied_rotation)s",
+            defaults={
+                "session_id": "-",
+                "final_index": "-",
+                "draft_key": "-",
+                "predicted_angle": "-",
+                "applied_rotation": "-",
+            },
+        )
+    )
+    app_logger.addHandler(handler)
+    app_logger.propagate = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis = get_redis_client()
     temp_root = Path(mkdtemp(prefix="ai-frame-extractor-"))
+    orientation_weights_path = settings.orientation_model_weights_path
     extractor_config = ExtractorConfig(
         input_directory=temp_root,
         output_directory=temp_root,
@@ -54,6 +96,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
 
     try:
+        orientation_weights_path = await ensure_orientation_weights_available()
+    except Exception:
+        orientation_weights_path = settings.orientation_model_weights_path
+        logger.warning(
+            "Orientation weights are unavailable at startup. "
+            "The app will continue, but final-edit may fail until weights are present.",
+            exc_info=True,
+            extra={"weights_path": str(orientation_weights_path)},
+        )
+
+    app.state.final_edit_service = FinalEditService(
+        predictor=OrientationPredictor(
+            model_name=settings.ORIENTATION_MODEL_NAME,
+            weights_path=str(orientation_weights_path),
+        ),
+        downloader=S3DraftImageDownloader(),
+        uploader=S3FinalImageUploader(),
+        temp_root=temp_root / "final-edit",
+    )
+
+    try:
         await redis.ping()
     except Exception:
         pass
@@ -72,5 +135,7 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan,
 )
+
+configure_app_logging()
 
 app.include_router(api_router, prefix="/ai")
