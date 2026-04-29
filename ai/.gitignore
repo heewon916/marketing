@@ -7,5 +7,6 @@ htmlcov/
 *.pyc
 .env
 data/**/
-ai/weights/
+weights/
 *.h5
+models/qwen-gguf/
