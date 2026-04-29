@@ -6,6 +6,8 @@ from app.db.redis import get_redis
 from app.schemas.sessions import (
     ExtractFramesRequest,
     ExtractFramesResponse,
+    FinalEditRequest,
+    FinalEditResponse,
     ProcessUtteranceRequest,
     ProcessUtteranceResponse,
 )
@@ -13,6 +15,7 @@ from app.services.frame_extraction import (
     get_frame_extraction_service,
     process_extract_frames,
 )
+from app.services.final_edit import get_final_edit_service, process_final_edit
 from app.services.sessions import process_utterance
 
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
@@ -60,4 +63,30 @@ async def extract_frames_endpoint(
         session_id=session_id,
         status=result.status,
         drafts=result.drafts,
+    )
+
+
+@router.post(
+    "/{session_id}/final-edit",
+    response_model=FinalEditResponse,
+    summary="Correct draft image orientation and upload final images",
+)
+async def final_edit_endpoint(
+    session_id: str,
+    payload: FinalEditRequest,
+    request: Request,
+    redis: Redis = Depends(get_redis),
+) -> FinalEditResponse:
+    if str(payload.session_id) != session_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Path session_id and body session_id must match.",
+        )
+
+    final_edit_service = get_final_edit_service(request)
+    result = await process_final_edit(session_id, payload, redis, final_edit_service)
+    return FinalEditResponse(
+        session_id=session_id,
+        status=result.status,
+        results=result.results,
     )

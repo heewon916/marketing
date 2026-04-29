@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str | None = None
 
-    DEBUG: bool = False
+    DEBUG: bool = True
 
     POSTGRES_HOST: str = "project-postgres"
     POSTGRES_PORT: int = 5432
@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str | None = None
     S3_REGION: str | None = None
     CLOUDFRONT_DOMAIN: str | None = None
+    ORIENTATION_MODEL_WEIGHTS_PATH: str | None = None
+    ORIENTATION_MODEL_NAME: str = "vit"
+    ORIENTATION_MODEL_DOWNLOAD_URL: str = (
+        "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
+    )
 
     @computed_field
     @property
@@ -70,6 +75,17 @@ class Settings(BaseSettings):
                 self.S3_REGION,
             ]
         )
+
+    @computed_field
+    @property
+    def orientation_model_weights_path(self) -> Path:
+        configured = self.ORIENTATION_MODEL_WEIGHTS_PATH
+        if configured:
+            candidate = Path(configured)
+            if candidate.is_absolute():
+                return candidate
+            return ROOT_DIR.parent / candidate
+        return ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
 
 
 settings = Settings()
