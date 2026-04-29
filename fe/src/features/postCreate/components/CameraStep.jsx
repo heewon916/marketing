@@ -167,18 +167,18 @@ export default function CameraStep({ onRecorded, onClose }) {
 				<button
 					type="button"
 					onClick={onClose}
-					className="flex h-12 w-12 items-center justify-center rounded-full text-white transition-opacity hover:opacity-80"
+					className="flex h-15 w-5 items-center justify-center rounded-full text-white transition-opacity hover:opacity-80"
 					aria-label="촬영 닫기"
 				>
-					<span className="material-icons text-[44px] leading-none">close</span>
+					<span className="material-icons text-[40px] leading-none">close</span>
 				</button>
 			</header>
 
-			<section className="mt-6 flex min-h-[112px] items-center justify-center text-center">
+			<section className="mt-2 flex h-[72px] shrink-0 items-center justify-center text-center">
 				{isRecording ? (
 					<div className="text-[64px] font-black leading-none text-primary-100">{remainingSeconds}</div>
 				) : (
-					<h1 className="text-[34px] font-bold leading-tight" style={{ wordBreak: "keep-all" }}>
+					<h1 className="text-[28px] font-medium leading-tight" style={{ wordBreak: "keep-all" }}>
 						촬영할 대상을
 						<br />
 						<span className="text-primary-100">사각형 안</span>에 맞춰주세요
@@ -186,7 +186,7 @@ export default function CameraStep({ onRecorded, onClose }) {
 				)}
 			</section>
 
-			<section className="relative mt-10 flex-1 overflow-hidden rounded-[34px] bg-[#1f1f1f]">
+			<section className="relative mt-4 flex-1 overflow-hidden rounded-[34px] bg-[#1f1f1f]">
 				<video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover opacity-70" />
 				<div className="absolute inset-0 bg-black/20" />
 
@@ -197,18 +197,18 @@ export default function CameraStep({ onRecorded, onClose }) {
 
 			{errorMessage ? <p className="mt-4 text-center text-sm text-red-400">{errorMessage}</p> : null}
 
-			<section className="mt-5 flex items-center justify-center">
+			<section className="mt-3 flex items-center justify-center">
 				<button
 					type="button"
 					onClick={isRecording ? stopRecording : startRecording}
 					disabled={!isReady && !isRecording}
-					className="flex h-[120px] w-[120px] items-center justify-center rounded-full bg-white transition-transform disabled:cursor-not-allowed disabled:opacity-40"
+					className="flex h-[100px] w-[100px] items-center justify-center rounded-full bg-white transition-transform disabled:cursor-not-allowed disabled:opacity-40"
 					aria-label={isRecording ? "촬영 완료" : "촬영 시작"}
 				>
 					{isRecording ? (
 						<span className="h-10 w-10 bg-black" />
 					) : (
-						<span className="h-[72px] w-[72px] rounded-full bg-[#ef4444]" />
+						<span className="h-[60px] w-[60px] rounded-full bg-[#ef4444]" />
 					)}
 				</button>
 			</section>

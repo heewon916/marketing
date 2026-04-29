@@ -20,8 +20,8 @@ export default function QuestionStep({
 					<StepProgress current={stepNum} />
 				</section>
 
-				<section className="flex justify-center py-10">
-					<h1 className="text-center text-3xl font-medium text-accent-500" style={{ wordBreak: "keep-all" }}>
+				<section className="flex h-40 items-center justify-center">
+					<h1 className="text-center text-[28px] font-medium text-accent-500" style={{ wordBreak: "keep-all" }}>
 						{title}
 					</h1>
 				</section>
@@ -36,7 +36,7 @@ export default function QuestionStep({
 			</div>
 
 			<section className="fixed bottom-20 left-1/2 z-20 w-full max-w-md -translate-x-1/2">
-				<div className="w-full px-4 pb-4">
+				<div className="w-full px-4 pb-10">
 					<div className="flex items-center justify-center gap-3">
 						<Button type="button" size="sm" variant="white" disabled>
 							아니오

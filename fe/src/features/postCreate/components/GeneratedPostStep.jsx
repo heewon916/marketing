@@ -11,7 +11,7 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 	const [canScrollDown, setCanScrollDown] = useState(false)
 	const [hasDelayPassed, setHasDelayPassed] = useState(false)
 	const [hasUserScrolled, setHasUserScrolled] = useState(false)
-	const bodySectionRef = useRef(null)
+	const contentSectionRef = useRef(null)
 
 	const handleScroll = (e) => {
 		const el = e.currentTarget
@@ -38,7 +38,7 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 
 	useEffect(() => {
 		const checkBodyScrollable = () => {
-			updateBodyScrollState(bodySectionRef.current)
+			updateBodyScrollState(contentSectionRef.current)
 		}
 
 		const rafId = requestAnimationFrame(checkBodyScrollable)
@@ -67,58 +67,63 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 				<StepProgress current={stepNum} />
 			</section>
 
-			{/* 사진 캐러셀 */}
-			<section className="shrink-0 w-full">
-				<div
-					onScroll={handleScroll}
-					className="flex w-full snap-x snap-mandatory overflow-x-auto"
-					style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
-				>
-					{photos.length > 0 ? photos.map((photo, i) => (
-						<div
-							key={photo.id ?? i}
-							className="relative shrink-0 snap-center w-full aspect-[384/514] overflow-hidden"
-						>
-							{photo.url
-								? <img src={photo.url} alt={`photo-${i + 1}`} className="h-full w-full object-cover" draggable={false} />
-								: <div className="h-full w-full bg-primary-100" />
-							}
-							{photos.length > 1 && (
-								<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
-									{i + 1} / {photos.length}
-								</div>
-							)}
-						</div>
-					)) : (
-						<div className="relative shrink-0 snap-center w-full aspect-[384/514] bg-primary-100">
-							<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
-								1 / 1
-							</div>
-						</div>
-					)}
-				</div>
-			</section>
-
-			{/* 본문 */}
 			<section
-				ref={bodySectionRef}
+				ref={contentSectionRef}
 				onScroll={handleBodyScroll}
 				data-scrollable={isBodyScrollable}
-				className="relative flex flex-1 flex-col overflow-y-auto px-5 pt-5 pb-20"
+				className="relative flex flex-1 flex-col overflow-y-auto pb-20"
 			>
-				<div className="flex-1">
+				{/* 사진 캐러셀 */}
+				<section className="shrink-0 w-full">
+					<div
+						onScroll={handleScroll}
+						className="flex w-full snap-x snap-mandatory overflow-x-auto"
+						style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
+					>
+						{photos.length > 0 ? photos.map((photo, i) => (
+							<div
+								key={photo.id ?? i}
+								className="relative shrink-0 snap-center w-full aspect-[384/514] overflow-hidden"
+							>
+								{photo.url
+									? <img src={photo.url} alt={`photo-${i + 1}`} className="h-full w-full object-cover" draggable={false} />
+									: <div className="h-full w-full bg-primary-100" />
+								}
+								{photos.length > 1 && (
+									<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
+										{i + 1} / {photos.length}
+									</div>
+								)}
+							</div>
+						)) : (
+							<div className="relative shrink-0 snap-center w-full aspect-[384/514] bg-primary-100">
+								<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
+									1 / 1
+								</div>
+							</div>
+						)}
+					</div>
+				</section>
+
+				<section className="px-5 pt-5">
 					<h2 className="text-xl font-bold text-accent-100 mb-3">본문</h2>
 					<div className="rounded-2xl bg-gray-50 px-5 py-4 text-lg text-accent-100 leading-relaxed whitespace-pre-wrap">
 						<p className="mb-4">{post?.content ?? ""}</p>
 						<p className="text-accent-100">{post?.hashtags?.join(" ") ?? ""}</p>
 					</div>
-				</div>
+				</section>
+
 				{/* 버튼 */}
-				<div className="flex items-center justify-center gap-3 pt-5 pb-2">
+				<div className="flex items-center justify-center gap-3 px-5 pt-5 pb-2">
 					<Button variant="white" size="sm" onClick={onExit}>나가기</Button>
 					<Button variant="primary" size="sm" onClick={onPublish}>발행하기</Button>
 				</div>
 			</section>
+
+			<div
+				className={`pointer-events-none absolute inset-x-0 bottom-20 z-10 h-24 bg-gradient-to-t from-black/20 to-transparent transition-opacity duration-200 ${shouldShowChevron ? "opacity-100" : "opacity-0"}`}
+				aria-hidden="true"
+			/>
 
 			<div
 				className={`pointer-events-none absolute bottom-20 left-1/2 z-20 -translate-x-1/2 transition-opacity duration-200 ${shouldShowChevron ? "opacity-100 animate-bounce" : "opacity-0"}`}

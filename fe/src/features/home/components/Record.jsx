@@ -62,8 +62,8 @@ function Record({ onToggle }) {
         className={[
           "absolute rounded-full",
           isRecording
-            ? "h-24 w-24 animate-ping bg-[#ff7a3d] opacity-20"
-            : "h-24 w-24 bg-[#ff7a3d] opacity-10",
+            ? "h-20 w-20 animate-ping bg-[#ff7a3d] opacity-20"
+            : "h-20 w-20 bg-[#ff7a3d] opacity-10",
         ].join(" ")}
       />
 
@@ -73,7 +73,7 @@ function Record({ onToggle }) {
         aria-label={isRecording ? "녹음 중지" : "녹음 시작"}
         onClick={handleClick}
         className={[
-          "relative z-10 flex h-24 w-24 items-center justify-center rounded-full shadow-[0_0_20px_rgba(255,122,61,0.4)] transition-colors duration-200",
+          "relative z-10 flex h-20 w-20 items-center justify-center rounded-full shadow-[0_0_20px_rgba(255,122,61,0.4)] transition-colors duration-200",
           isRecording ? "bg-[#FFF3EC]" : "bg-white",
         ].join(" ")}
       >

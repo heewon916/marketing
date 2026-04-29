@@ -21,9 +21,6 @@ function PhotoCard({ state, src }) {
 		return (
 			<div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gray-200">
 				<div className="absolute inset-0 animate-shimmer bg-gradient-to-r from-transparent via-white/70 to-transparent" />
-				<p className="absolute inset-0 flex items-center justify-center text-xs text-gray-400">
-					로딩중
-				</p>
 			</div>
 		)
 	}
@@ -31,7 +28,7 @@ function PhotoCard({ state, src }) {
 	// waiting
 	return (
 		<div className="flex aspect-square w-full items-center justify-center rounded-2xl bg-gray-100">
-			<p className="text-xs text-gray-400">대기중</p>
+			
 		</div>
 	)
 }
@@ -39,7 +36,6 @@ function PhotoCard({ state, src }) {
 export default function ExtractLoadingStep({ stepNum, photos = [] }) {
 	const [animatedCount, setAnimatedCount] = useState(0)
 
-	// 800ms마다 카드 한 장씩 "로딩 → 완료"로 전환
 	useEffect(() => {
 		if (animatedCount >= TOTAL_CARDS) return
 		const timer = setTimeout(() => setAnimatedCount((c) => c + 1), 2500)
@@ -53,9 +49,9 @@ export default function ExtractLoadingStep({ stepNum, photos = [] }) {
 					<StepProgress current={stepNum} />
 				</section>
 
-				<section className="flex justify-center py-10">
+				<section className="flex h-40 items-center justify-center">
 					<h1
-						className="text-center text-3xl font-medium text-accent-500"
+						className="text-center text-[28px] font-medium text-accent-500"
 						style={{ wordBreak: "keep-all" }}
 					>
 						영상에서
@@ -67,7 +63,7 @@ export default function ExtractLoadingStep({ stepNum, photos = [] }) {
 				</section>
 
 				<section className="flex flex-1 items-center justify-center">
-					<img src={CharacterRun} alt="로딩 중 캐릭터" className="max-h-64 object-contain" />
+					<img src={CharacterRun} alt="로딩 중 캐릭터" className="object-contain" />
 				</section>
 
 				<section className="grid grid-cols-3 gap-3 pb-6">

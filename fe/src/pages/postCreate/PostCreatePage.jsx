@@ -13,6 +13,9 @@ import PublishResultStep from "@/features/postCreate/components/PublishResultSte
 import { useNavigate } from "react-router-dom"
 import CharacterListen from "@/assets/character/CharacterListen.png"
 import CharacterCamera from "@/assets/character/CharacterCamera.png"
+import coffeeTest1 from "@/assets/test/coffee_test1.jpg"
+import coffeeTest2 from "@/assets/test/coffee_test2.jpg"
+import coffeeTest3 from "@/assets/test/coffee_test3.jpg"
 
 const STEP_NUM = {
   [POST_CREATE_STEP.POST_QUESTION]: 1,
@@ -43,8 +46,8 @@ export default function PostCreatePage() {
   const setCameraAnswer = usePostCreateStore((state) => state.setCameraAnswer)
   const setPhotos = usePostCreateStore((state) => state.setPhotos)
   const setGeneratedPost = usePostCreateStore((state) => state.setGeneratedPost)
+  const resetPostCreate = usePostCreateStore((state) => state.resetPostCreate)
 
-  // 로딩 스텝 전환: step이 Loading으로 바뀐 뒤 렌더 완료 후 타이머 시작
   useEffect(() => {
     if (step === POST_CREATE_STEP.POST_LOADING) {
       const timer = setTimeout(() => setStep(POST_CREATE_STEP.CAMERA_QUESTION), 1500)
@@ -53,9 +56,9 @@ export default function PostCreatePage() {
     if (step === POST_CREATE_STEP.EXTRACT_LOADING) {
       const timer = setTimeout(() => {
         setPhotos([
-          { id: 1 },
-          { id: 2 },
-          { id: 3 },
+          { id: 1, url: coffeeTest1 },
+          { id: 2, url: coffeeTest2 },
+          { id: 3, url: coffeeTest3 },
         ])
         setStep(POST_CREATE_STEP.PHOTO_CONFIRM)
       }, 9000)
@@ -85,7 +88,6 @@ export default function PostCreatePage() {
   }
 
   const handlePhotoConfirmNext = () => {
-    // TODO: 선택한 사진 기반 게시글 생성 API 연결
     setGeneratedPost({
       content: "오늘 새벽에도 어김없이 시장에 다녀왔습니다. 눈으로 직접 보고 손으로 만져봐야 직성이 풀리는 성격이라, 20년째 국산 쌀이랑 깨는 제 손으로만 골라옵니다.",
       hashtags: ["#신메뉴", "#맛집", "#오늘추천"],
@@ -176,7 +178,7 @@ export default function PostCreatePage() {
       <PublishResultStep
         type="success"
         stepNum={stepNum}
-        onGoHome={() => navigate("/home")}
+        onGoHome={() => { resetPostCreate(); navigate("/home") }}
         onViewInstagram={() => window.open("https://www.instagram.com", "_blank", "noopener,noreferrer")}
       />
     )
@@ -187,7 +189,7 @@ export default function PostCreatePage() {
       <PublishResultStep
         type="fail"
         stepNum={stepNum}
-        onGoHome={() => navigate("/home")}
+        onGoHome={() => { resetPostCreate(); navigate("/home") }}
         onRetry={() => setStep(POST_CREATE_STEP.GENERATED_POST)}
       />
     )

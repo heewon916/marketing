@@ -4,15 +4,14 @@ import { HiOutlineTrash } from "react-icons/hi"
 import Button from "@/components/common/Button"
 import BottomTab from "@/components/common/BottomTab"
 
-const PEEK = 24 // px — 양쪽에 보이는 인접 카드 너비
-const GAP = 16  // px — 카드 사이 간격
+const PEEK = 30
+const GAP = 16
 
 export default function PhotoConfirmStep({ photos: initialPhotos = [], onNext, onRetake, stepNum }) {
 	const [photos, setPhotos] = useState(initialPhotos)
 	const [activeIndex, setActiveIndex] = useState(0)
 	const trackRef = useRef(null)
 
-	// 스크롤 위치로 현재 인덱스 추적
 	const handleScroll = () => {
 		const el = trackRef.current
 		if (!el) return
@@ -27,7 +26,6 @@ export default function PhotoConfirmStep({ photos: initialPhotos = [], onNext, o
 		const newIdx = Math.min(activeIndex, next.length - 1)
 		setPhotos(next)
 		setActiveIndex(newIdx)
-		// 삭제 후 스크롤 위치 보정
 		const el = trackRef.current
 		if (el && next.length > 0) {
 			const cardWidth = el.offsetWidth - PEEK * 2
@@ -76,7 +74,7 @@ export default function PhotoConfirmStep({ photos: initialPhotos = [], onNext, o
 							}}
 						>
 							{/* 가짜 이미지 — primary 배경 */}
-							<div className="h-full w-full bg-primary-100">
+							<div className="h-full w-full bg-gray-100">
 								{photo.url && (
 									<img
 										src={photo.url}
@@ -109,7 +107,7 @@ export default function PhotoConfirmStep({ photos: initialPhotos = [], onNext, o
 			<section className="fixed bottom-20 left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-4 pb-4">
 				<div className="flex items-center justify-center gap-3">
 					<Button variant="white" size="sm" onClick={onRetake}>다시 촬영</Button>
-					<Button variant="primary" size="sm" onClick={() => onNext?.(photos)}>다음</Button>
+					<Button variant="primary" size="sm" onClick={() => onNext?.(photos)}>글 확인</Button>
 				</div>
 			</section>
 

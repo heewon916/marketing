@@ -14,20 +14,22 @@ export default function PublishResultStep({ type, stepNum, onGoHome, onViewInsta
 			</section>
 
 			{/* 텍스트 */}
-			<h1 className="mt-8 text-center text-3xl font-bold leading-snug text-accent-100">
-				{isSuccess ? (
-					<>발행 성공!<br />고생하셨습니다.</>
-				) : (
-					"발행 실패!"
-				)}
-			</h1>
+			<section className="flex h-40 items-center justify-center">
+				<h1 className="text-center text-[28px] font-bold leading-snug text-accent-100">
+					{isSuccess ? (
+						<>발행 성공!<br />고생하셨습니다.</>
+					) : (
+						"발행 실패!"
+					)}
+				</h1>
+			</section>
 
 			{/* 캐릭터 이미지 */}
 			<div className="flex flex-1 items-center justify-center">
 				<img
 					src={isSuccess ? CharacterLove : CharacterFail}
 					alt={isSuccess ? "발행 성공 캐릭터" : "발행 실패 캐릭터"}
-					className="w-72 object-contain"
+					className="object-contain"
 				/>
 			</div>
 
