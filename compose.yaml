@@ -1,13 +1,13 @@
 services:
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     container_name: project-nginx
     restart: unless-stopped
     ports:
       - "80:80"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/html:/usr/share/nginx/html:ro
+    # volumes 지시어 삭제
     depends_on:
       - spring
       - frontend
