@@ -15,7 +15,7 @@ public class HealthController {
     }
 
     @GetMapping("/ai-health")
-    public ResponseEntity<Stringbe> aiHealthCheck() {
+    public ResponseEntity<String> aiHealthCheck() {
         return ResponseEntity.ok("AI Server connection is OK");
     }
 }
