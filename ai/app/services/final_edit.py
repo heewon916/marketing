@@ -185,9 +185,29 @@ class FinalEditService:
                 debug_fields[f"debug:predicted_angle:{final_index}"] = (
                     f"{predicted_angle:.6f}"
                 )
+                logger.info(
+                    "Predicted orientation angle for draft image.",
+                    extra={
+                        "session_id": session_id,
+                        "final_index": final_index,
+                        "draft_key": draft_key,
+                        "predicted_angle": f"{predicted_angle:.6f}",
+                    },
+                )
 
                 debug_fields["debug:stage"] = f"correct_orientation_{final_index}"
                 corrected_path = session_dir / f"final-{final_index:03d}.jpg"
+                applied_rotation = -predicted_angle
+                logger.info(
+                    "Applying orientation correction to draft image.",
+                    extra={
+                        "session_id": session_id,
+                        "final_index": final_index,
+                        "draft_key": draft_key,
+                        "predicted_angle": f"{predicted_angle:.6f}",
+                        "applied_rotation": f"{applied_rotation:.6f}",
+                    },
+                )
                 await asyncio.to_thread(
                     self.predictor.correct_orientation,
                     draft_path,

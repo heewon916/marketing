@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str | None = None
 
-    DEBUG: bool = False
+    DEBUG: bool = True
 
     POSTGRES_HOST: str = "project-postgres"
     POSTGRES_PORT: int = 5432

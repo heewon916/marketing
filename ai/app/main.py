@@ -36,6 +36,37 @@ def custom_generate_unique_id(route: APIRoute) -> str:
     return f"{tag}-{route.name}"
 
 
+def configure_app_logging() -> None:
+    app_logger = logging.getLogger("app")
+    level_name = settings.LOG_LEVEL.upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    app_logger.setLevel(level)
+
+    if app_logger.handlers:
+        return
+
+    handler = logging.StreamHandler()
+    handler.setLevel(level)
+    handler.setFormatter(
+        logging.Formatter(
+            "%(levelname)s:%(name)s:%(message)s | "
+            "session_id=%(session_id)s final_index=%(final_index)s "
+            "draft_key=%(draft_key)s predicted_angle=%(predicted_angle)s "
+            "applied_rotation=%(applied_rotation)s",
+            defaults={
+                "session_id": "-",
+                "final_index": "-",
+                "draft_key": "-",
+                "predicted_angle": "-",
+                "applied_rotation": "-",
+            },
+        )
+    )
+    app_logger.addHandler(handler)
+    app_logger.propagate = False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     redis = get_redis_client()
@@ -104,5 +135,7 @@ app = FastAPI(
     generate_unique_id_function=custom_generate_unique_id,
     lifespan=lifespan,
 )
+
+configure_app_logging()
 
 app.include_router(api_router, prefix="/ai")
