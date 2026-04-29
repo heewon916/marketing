@@ -27,11 +27,15 @@ public class JwtTokenProvider {
     }
 
     public String createAccessToken(Authentication authentication) {
+        return createAccessToken(authentication.getName());
+    }
+
+    public String createAccessToken(String subject) {
         Date now = new Date();
         Date validity = new Date(now.getTime() + accessTokenValidityInMs);
 
         return Jwts.builder()
-                .subject(authentication.getName())
+                .subject(subject)
                 .issuedAt(now)
                 .expiration(validity)
                 .signWith(key)
@@ -48,5 +52,22 @@ public class JwtTokenProvider {
                 .expiration(validity)
                 .signWith(key)
                 .compact();
+    }
+
+    public boolean validateToken(String token) {
+        try {
+            Jwts.parser().verifyWith(key).build().parseSignedClaims(token);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public String getUsernameFromToken(String token) {
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getSubject();
+    }
+
+    public Date getExpirationDateFromToken(String token) {
+        return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload().getExpiration();
     }
 }

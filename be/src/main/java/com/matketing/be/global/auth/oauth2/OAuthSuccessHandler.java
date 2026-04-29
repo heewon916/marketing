@@ -44,6 +44,14 @@ public class OAuthSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
                 .refreshToken(refreshToken)
                 .build());
 
+        // RefreshToken을 쿠키에 추가
+        jakarta.servlet.http.Cookie refreshTokenCookie = new jakarta.servlet.http.Cookie("refreshToken", refreshToken);
+        refreshTokenCookie.setHttpOnly(true);
+        refreshTokenCookie.setSecure(true); // HTTPS 환경에서만 전송
+        refreshTokenCookie.setPath("/");
+        refreshTokenCookie.setMaxAge(14 * 24 * 60 * 60); // 14일
+        response.addCookie(refreshTokenCookie);
+
         // AccessToken을 프론트로 전달
         String targetUrl = UriComponentsBuilder.fromUriString(frontendUrl + "/auth/callback")
                 .queryParam("token", accessToken)
