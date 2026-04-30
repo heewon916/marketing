@@ -1,12 +1,20 @@
 # AI Service
 
-This directory contains a standalone FastAPI service scaffold for AI-related APIs.
+This directory contains the standalone FastAPI service for AI-related APIs.
 
 ## Structure
 
 - `app/`: FastAPI application package
 - `scripts/`: local helper scripts
 - `tests/`: pytest-based tests
+
+## Package management
+
+This project uses `uv` as the single source of truth for dependency management.
+
+- Dependency definitions live in `pyproject.toml`
+- Locked versions live in `uv.lock`
+- Do not use `requirements.txt`
 
 ## Quick start
 
@@ -16,29 +24,16 @@ uv sync
 uv run fastapi dev app/main.py
 ```
 
-## Optional keyword model runtime
-
-The app can start without `llama-cpp-python`. In that case, the
-`/ai/sessions/{session_id}/process-utterance` endpoint returns `503`
-until a local keyword-extraction runtime is installed and `KEYWORD_MODEL_PATH` points
-to a valid GGUF model.
-
-`llama-cpp-python`'s default install path builds from source, which
-requires MSVC/NMake on Windows. The project intentionally does not pin it
-as a mandatory dependency anymore. Install a prebuilt wheel manually for
-your environment when you want local keyword extraction enabled.
-
-Examples from the official package docs:
+Run the production server locally with:
 
 ```powershell
-# CPU wheel
-pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-
-# CUDA wheel example
-pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-After installing the runtime, point the app to a GGUF model file:
+## Keyword model runtime
+
+Keyword extraction uses the `llama-cpp-python` runtime defined in `pyproject.toml`.
+Set `KEYWORD_MODEL_PATH` to a local GGUF file path before running the service.
 
 ```powershell
 $env:KEYWORD_MODEL_PATH = "C:\models\keyword-gguf\model.gguf"
@@ -46,26 +41,28 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 If `KEYWORD_MODEL_PATH` is configured but the file does not exist yet,
-the app now downloads a default GGUF automatically on startup or first
-request. The default download target is a text-only GGUF model that
-works with the official `abetlen/llama-cpp-python` runtime:
+the app downloads the default GGUF automatically on startup or on the first request.
 
 - Repo: `Qwen/Qwen2.5-7B-Instruct-GGUF`
 - File: `qwen2.5-7b-instruct-q3_k_m.gguf`
 
-The official Qwen repo stores some larger quantizations, including
-`q4_k_m`, as split multi-part GGUF files. This app's downloader currently
-expects a single file, so the default uses the official repo's single-file
-`q3_k_m` artifact instead.
-
-You can override either with these environment variables:
+You can override the download target with:
 
 ```env
 KEYWORD_MODEL_HF_REPO_ID=Qwen/Qwen2.5-7B-Instruct-GGUF
 KEYWORD_MODEL_HF_FILENAME=qwen2.5-7b-instruct-q3_k_m.gguf
 ```
 
-The service exposes:
+## Linux deployment notes
 
-- `GET /api/v1/health`
-- `POST /api/v1/inference`
+Development was done on Windows, but deployment is expected to run on Linux.
+Keep the following in mind when preparing the server:
+
+- Do not copy `ai/.venv` from Windows to Linux. Create a new virtual environment on Linux and run `uv sync` there.
+- Native packages such as `llama-cpp-python` are platform-specific. They must be installed again on the Linux host or inside the Linux container.
+- The GGUF model file itself can be reused across environments, but `KEYWORD_MODEL_PATH` must point to a valid Linux path.
+- Relative paths in `.env` should be reviewed carefully. A path that works on Windows may resolve differently when the app runs in Docker or from a different working directory on Linux.
+- First startup may take time if the keyword GGUF or orientation weights need to be downloaded. Plan for this in container startup and health checks.
+- If you use Docker or Docker Compose, consider mounting persistent volumes for `models/` and `weights/` so large files are not downloaded again every time a container is recreated.
+- The default keyword timeout may be too short on CPU-only Linux servers. If keyword extraction returns `503`, increase `KEYWORD_MODEL_TIMEOUT_SECONDS`.
+- Verify that the server has enough disk space and memory for `tensorflow-cpu`, the orientation weights, and the GGUF keyword model.
