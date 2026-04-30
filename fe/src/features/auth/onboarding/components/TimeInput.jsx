@@ -52,7 +52,7 @@ export default function TimeInput({
       disabled={disabled}
       placeholder="00:00"
       className="
-        w-[88px] px-2 py-2 text-center
+        w-[72px] px-1.5 py-2 text-center
         text-lg font-semibold
         border border-gray-200 rounded-xl
         outline-none transition-all

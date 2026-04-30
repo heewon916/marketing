@@ -6,7 +6,7 @@ export default function OnboardingHeader({ title, emphasis, subtitle }) {
       </h1>
 
       {emphasis && (
-        <p className="mt-5 text-lg font-bold text-gray-900">
+        <p className="mt-5 text-xl font-bold text-gray-900">
           {emphasis}
         </p>
       )}

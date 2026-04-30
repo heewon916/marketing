@@ -27,7 +27,7 @@ function BusinessTypeStep({ value, onChange, onNext, onPrev }) {
               확인해주세요
             </>
           }
-          subtitle="정보가 다르면 수정해주세요"
+          subtitle="정보가 다르면 수정해 주세요"
         />
       }
       footer={

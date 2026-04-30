@@ -23,7 +23,7 @@ function LoadingStep({ onNext, onPrev }) {
         <OnboardingFooterButtons
           onPrev={onPrev}
           onNext={onNext}
-          nextText="다음"
+          nextText="다음(DEV)"
         />
       }
     >
