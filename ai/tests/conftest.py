@@ -15,6 +15,11 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
+class DefaultKeywordExtractionService:
+    async def extract_keywords(self, utterance: str) -> list[str]:
+        return ["signature menu", "cozy table"]
+
+
 @pytest.fixture
 def fake_redis_server() -> Iterator[fakeredis.FakeServer]:
     yield fakeredis.FakeServer()
@@ -44,6 +49,7 @@ def client(
     app.dependency_overrides[get_redis] = _get_redis
     with TestClient(app) as test_client:
         try:
+            app.state.keyword_extraction_service = DefaultKeywordExtractionService()
             yield test_client
         finally:
             app.dependency_overrides.clear()

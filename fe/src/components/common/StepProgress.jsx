@@ -4,7 +4,7 @@ export default function StepProgress({
   className = '',
 }) {
   return (
-    <div className={`flex items-center gap-3 w-80 ${className}`}>
+    <div className={`flex items-center gap-3 w-full ${className}`}>
       {/* 숫자 */}
       <div className="text-sm font-semibold text-accent-500 whitespace-nowrap">
         {current} / {total}
