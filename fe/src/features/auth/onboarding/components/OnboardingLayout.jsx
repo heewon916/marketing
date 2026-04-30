@@ -14,9 +14,9 @@ export default function OnboardingLayout({
       : 'items-center text-center';
 
   return (
-    <div className="min-h-screen w-full flex flex-col px-4 pt-18 pb-20 bg-white">
+    <div className="min-h-screen w-full flex flex-col px-4 pt-6 pb-20 bg-white">
       {/* 1. 상단 프로그레스 바 영역 */}
-      <div className="mb-10 w-full">
+      <div className="mb-10 w-full pt-2">
         <StepProgress current={currentStep} total={totalStep} />
       </div>
 
