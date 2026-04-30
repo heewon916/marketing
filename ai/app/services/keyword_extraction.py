@@ -62,7 +62,7 @@ class KeywordExtractionUnavailableError(RuntimeError):
 class KeywordExtractionService:
     def __init__(
         self,
-        model_path: Path | None,
+        model_path: Path,
         enabled: bool = True,
         n_ctx: int = 2048,
         max_tokens: int = 64,
@@ -158,10 +158,6 @@ class KeywordExtractionService:
             if not self.enabled:
                 raise KeywordExtractionUnavailableError(
                     "Keyword extraction model is disabled."
-                )
-            if self.model_path is None:
-                raise KeywordExtractionUnavailableError(
-                    "KEYWORD_MODEL_PATH is not configured."
                 )
 
             ensure_started_at = time.perf_counter()
