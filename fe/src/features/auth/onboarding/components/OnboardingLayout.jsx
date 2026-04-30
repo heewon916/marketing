@@ -28,7 +28,7 @@ export default function OnboardingLayout({
       )}
 
       {/* 3. 메인 콘텐츠 영역 */}
-      <div className={`flex-1 flex flex-col w-full ${alignClass}`}>
+      <div className={`flex-1 min-h-0 flex flex-col w-full ${alignClass}`}>
         {children}
       </div>
 
