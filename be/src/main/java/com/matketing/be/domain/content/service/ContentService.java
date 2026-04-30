@@ -35,7 +35,7 @@ public class ContentService {
     @Transactional
     public ContentImageDeleteResponseDto deleteContentImage(Long contentId, UUID imageId) {
         // 현재 엔티티에는 soft delete 플래그가 없어 실제 삭제로 처리한다.
-        getContent(contentId);
+        findContentById(contentId);
 
         ContentImage contentImage = contentImageRepository.findByIdAndContent_Id(imageId, contentId)
                 .orElseThrow(() -> new IllegalArgumentException("해당 게시물에 속한 이미지를 찾을 수 없습니다."));
@@ -53,7 +53,7 @@ public class ContentService {
 
     @Transactional
     public ContentEditResponseDto updateContent(Long contentId, ContentEditRequestDto requestDto) {
-        Content content = getContent(contentId);
+        Content content = findContentById(contentId);
 
         // 현재 스키마에는 status/hashtags/updatedAt이 없어 caption만 수정한다.
         content.updateCaption(requestDto.caption());
@@ -61,7 +61,7 @@ public class ContentService {
         return ContentEditResponseDto.from(content);
     }
 
-    private Content getContent(Long contentId) {
+    private Content findContentById(Long contentId) {
         return contentRepository.findById(contentId)
                 .orElseThrow(() -> new IllegalArgumentException("게시물을 찾을 수 없습니다."));
     }
