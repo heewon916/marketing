@@ -1,0 +1,124 @@
+services:
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: project-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    # volumes 지시어 삭제
+    depends_on:
+      - spring
+      - frontend
+    networks:
+      - project-network
+
+  spring:
+    build:
+      context: ./be
+      dockerfile: Dockerfile
+    image: marketing-spring:latest
+    container_name: project-spring
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      FASTAPI_BASE_URL: http://fastapi:8000
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_REGION: ${S3_REGION}
+      CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    expose:
+      - "8080"
+    depends_on:
+      - fastapi
+      - postgres
+      - redis
+    networks:
+      - project-network
+
+  frontend:
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+    image: marketing-frontend:latest
+    container_name: project-frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - project-network
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: project-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - project-network
+
+  redis:
+    image: redis:8.4.0
+    container_name: project-redis
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --appendonly
+      - "yes"
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - project-network
+
+  fastapi:
+    build:
+      context: ./ai
+      dockerfile: Dockerfile
+    image: marketing-fastapi:latest
+    container_name: project-fastapi
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
+    expose:
+      - "8000"
+    networks:
+      - project-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  project-network:
+    driver: bridge

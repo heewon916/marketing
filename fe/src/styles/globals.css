@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
 @theme {
+  --animate-shimmer: shimmer 1.4s infinite linear;
   --font-sans: 'Noto Sans KR', system-ui, -apple-system,
     BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo',
     'Malgun Gothic', Arial, sans-serif;

@@ -1,0 +1,317 @@
+pipeline {
+    agent any
+
+    environment {
+        DEPLOY_DIR = '/home/ubuntu/deploy/S14P31A401'
+        COMPOSE_FILE = 'compose.yaml'
+        PROJECT_NAME = 'marketing'
+    }
+
+    stages {
+        stage('Checkout Info') {
+            steps {
+                sh '''
+                    echo "===== Current Directory ====="
+                    pwd
+
+                    echo "===== Workspace Files ====="
+                    ls -al
+
+                    echo "===== Git Branch ====="
+                    git branch -a || true
+                '''
+            }
+        }
+
+        stage('Prepare Deploy Directory') {
+            steps {
+                sh '''
+                    echo "===== Prepare deploy directory ====="
+                    mkdir -p "${DEPLOY_DIR}"
+
+                    echo "===== Clean deploy directory ====="
+                    rm -rf "${DEPLOY_DIR:?}/"* "${DEPLOY_DIR}"/.[!.]* "${DEPLOY_DIR}"/..?* 2>/dev/null || true
+
+                    echo "===== Copy GitLab workspace to deploy directory ====="
+                    tar \
+                      --exclude='./.git' \
+                      --exclude='*/node_modules' \
+                      --exclude='*/dist' \
+                      --exclude='*/build' \
+                      --exclude='*/.gradle' \
+                      --exclude='*/.pnpm-store' \
+                      --exclude='./.env' \
+                      -cf - . | tar -C "${DEPLOY_DIR}" -xf -
+
+                    echo "===== Deploy directory files ====="
+                    ls -al "${DEPLOY_DIR}"
+                '''
+            }
+        }
+
+        stage('Prepare Env') {
+            steps {
+                withCredentials([file(credentialsId: 'marketing-env-file', variable: 'ENV_FILE_PATH')]) {
+                    sh '''
+                        set +x
+        
+                        echo "===== Create .env from Jenkins Secret File ====="
+        
+                        cp "$ENV_FILE_PATH" "${DEPLOY_DIR}/.env"
+                        sed -i 's/\\r$//' "${DEPLOY_DIR}/.env"
+                        chmod 600 "${DEPLOY_DIR}/.env"
+        
+                        echo ".env created at ${DEPLOY_DIR}/.env"
+                    '''
+                }
+            }
+        }
+
+        stage('Validate Env') {
+            steps {
+                sh '''
+                    set +x
+                    set -eu
+        
+                    echo "===== Validate required env values ====="
+        
+                    ENV_PATH="${DEPLOY_DIR}/.env"
+                    test -s "$ENV_PATH"
+                    
+                    echo "===== .env keys only ====="
+                    awk -F= \'
+                      /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ {
+                        key=$1
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+                        print "line " NR ": " key
+                      }
+                    ' "$ENV_PATH"
+        
+                    # CRLF 방지
+                    if grep -q "$(printf '\\r')" "$ENV_PATH"; then
+                      echo "ERROR: .env contains CRLF. Use LF line endings."
+                      exit 1
+                    fi
+        
+                    # 중복 key 방지
+                    DUP_KEYS=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_PATH" | cut -d= -f1 | sort | uniq -d || true)
+                    if [ -n "$DUP_KEYS" ]; then
+                      echo "ERROR: duplicated env keys:"
+                      echo "$DUP_KEYS"
+                      exit 1
+                    fi
+        
+                    get_env() {
+                      key="$1"
+                      grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2-
+                    }
+        
+                    require_env() {
+                      key="$1"
+                      value="$(get_env "$key" || true)"
+        
+                      if [ -z "$value" ]; then
+                        echo "ERROR: missing or empty env: $key"
+                        exit 1
+                      fi
+        
+                      case "$value" in
+                        "changeme"|"CHANGE_ME"|"your_domain"|"your-bucket-name"|"TODO"|"todo"|"null"|"undefined")
+                          echo "ERROR: placeholder value is not allowed for $key"
+                          exit 1
+                          ;;
+                      esac
+                    }
+        
+                    require_env POSTGRES_DB
+                    require_env POSTGRES_USER
+                    require_env POSTGRES_PASSWORD
+                    require_env REDIS_PASSWORD
+        
+                    require_env S3_BUCKET_NAME
+                    require_env S3_REGION
+                    require_env S3_ACCESS_KEY
+                    require_env S3_SECRET_KEY
+                    require_env CLOUDFRONT_DOMAIN
+        
+                    # region 형식 간단 검증
+                    S3_REGION_VALUE="$(get_env S3_REGION)"
+                    echo "$S3_REGION_VALUE" | grep -Eq '^[a-z]{2}-[a-z]+-[0-9]+$' || {
+                      echo "ERROR: invalid S3_REGION format"
+                      exit 1
+                    }
+        
+                    # CloudFront domain 형식 간단 검증
+                    CLOUDFRONT_DOMAIN_VALUE="$(get_env CLOUDFRONT_DOMAIN)"
+                    echo "$CLOUDFRONT_DOMAIN_VALUE" | grep -Eq '^https?://' && {
+                      echo "ERROR: CLOUDFRONT_DOMAIN should not include http:// or https://"
+                      echo "Example: dxxxxx.cloudfront.net"
+                      exit 1
+                    }
+        
+                    echo "$CLOUDFRONT_DOMAIN_VALUE" | grep -Eq '^[A-Za-z0-9.-]+$' || {
+                      echo "ERROR: invalid CLOUDFRONT_DOMAIN format"
+                      exit 1
+                    }
+        
+                    echo ".env validation passed"
+                '''
+            }
+        }
+
+        stage('Check Required Files') {
+            steps {
+                sh '''
+                    echo "===== Check required files ====="
+
+                    test -f "${DEPLOY_DIR}/compose.yaml"
+                    test -f "${DEPLOY_DIR}/common/Jenkinsfile"
+                    test -f "${DEPLOY_DIR}/nginx/conf.d/default.conf"
+
+                    test -f "${DEPLOY_DIR}/be/Dockerfile"
+                    test -f "${DEPLOY_DIR}/fe/Dockerfile"
+                    test -f "${DEPLOY_DIR}/ai/Dockerfile"
+
+                    echo "All required files exist."
+                '''
+            }
+        }
+
+        stage('Check Docker') {
+            steps {
+                sh '''
+                    echo "===== Docker Version ====="
+                    docker version
+
+                    echo "===== Docker Compose Version ====="
+                    docker compose version
+                '''
+            }
+        }
+
+        stage('Validate Compose') {
+            steps {
+                dir("${DEPLOY_DIR}") {
+                    sh '''
+                        echo "===== Validate compose.yaml ====="
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env config
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                dir("${DEPLOY_DIR}") {
+                    sh '''
+                echo "===== Build without cache and Force Recreate ====="
+                # --no-cache 옵션을 추가하여 이전 빌드 기록을 완전히 무시하고 새로 구움
+                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build --no-cache frontend
+                
+                # 그 후 컨테이너 실행
+                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --force-recreate --remove-orphans
+            '''
+                }
+            }
+        }
+//        stage('Deploy') {
+//            steps {
+//                dir("${DEPLOY_DIR}") {
+//                    sh '''
+//                        echo "===== Build and start containers ====="
+//                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --build --remove-orphans
+//
+//                        echo "===== Running containers ====="
+//                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env ps
+//                    '''
+//                }
+//            }
+//        }
+
+        stage('Check Nginx Config') {
+            steps {
+                dir("${DEPLOY_DIR}") {
+                    sh '''
+                        echo "===== Nginx config test ====="
+                        docker exec project-nginx nginx -t
+                    '''
+                }
+            }
+        }
+
+        stage('Health Check') {
+            steps {
+                dir("${DEPLOY_DIR}") {
+                    sh '''
+                        NETWORK="${PROJECT_NAME}_project-network"
+
+                        echo "Using network: $NETWORK"
+
+                        echo "===== Waiting for nginx/frontend ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://nginx > /dev/null; then
+                                echo "nginx/frontend is ready"
+                                break
+                            fi
+
+                            echo "nginx/frontend not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "nginx/frontend health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs nginx --tail=100
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs frontend --tail=100
+                                exit 1
+                            fi
+                        done
+
+                        echo "===== Checking Spring API ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://nginx/api/health; then
+                                echo "spring api is ready"
+                                break
+                            fi
+
+                            echo "spring api not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "spring health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs spring --tail=100
+                                exit 1
+                            fi
+                        done
+
+                        echo "===== Checking Spring to FastAPI ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://nginx/api/ai-health; then
+                                echo "spring to fastapi is ready"
+                                break
+                            fi
+
+                            echo "ai-health not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "ai-health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs spring --tail=100
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs fastapi --tail=100
+                                exit 1
+                            fi
+                        done
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deploy success.'
+        }
+
+        failure {
+            echo 'Deploy failed. Check console output.'
+        }
+    }
+}
