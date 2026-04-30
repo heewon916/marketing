@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt/live/maketing.co.kr:/etc/nginx/certs:ro
     # volumes 지시어 삭제
     depends_on:
       - spring
