@@ -9,24 +9,24 @@ const pages = [
     },
     {
       title: '주점',
-      desc: '술과 함께 음식을 즐기는 공간이에요.\n(포차, 술집 등)',
+      desc: '술과 안주를 즐기는 매장이에요.\n(포차, 술집 등)',
     },
   ],
   [
     {
       title: '카페',
-      desc: '커피나 음료를 중심으로 운영하는\n매장이에요.',
+      desc: '커피와 음료를 즐길 수 있는\n매장이에요.',
     },
     {
       title: '제과점',
-      desc: '빵, 디저트, 떡 등을 판매하는\n매장이에요.',
+      desc: '빵, 떡, 디저트가 있는\n매장이에요.',
     },
   ],
 ];
 
 export default function ModalCategoryGuide({ isOpen, onClose }) {
   const [page, setPage] = useState(0);
-  
+
   // 스와이프를 위한 터치 좌표 상태 저장
   const [touchStartX, setTouchStartX] = useState(0);
 
@@ -54,7 +54,7 @@ export default function ModalCategoryGuide({ isOpen, onClose }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose}>
-      <div 
+      <div
         className="flex flex-col gap-4 mt-4 select-none"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}

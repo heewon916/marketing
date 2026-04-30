@@ -7,7 +7,7 @@ import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import StoreCard from '../components/StoreCard.jsx';
 import ScrollFadeArrow from '../components/ScrollFadeArrow.jsx';
 
-import Modal from '../../../../components/common/Modal.jsx'; 
+import Modal from '../../../../components/common/Modal.jsx';
 import Button from '../../../../components/common/Button.jsx';
 
 function StoreSelectStep({ onNext, onPrev }) {
@@ -63,16 +63,8 @@ function StoreSelectStep({ onNext, onPrev }) {
                 해 주세요
               </>
             }
-            subtitle={
-              <div className="flex flex-col gap-1 mt-4">
-                <span className="text-gray-900 font-bold text-lg">
-                  어떤 가게가 사장님 가게인가요?
-                </span>
-                <span className="text-gray-400 text-md">
-                  일치하는 매장을 선택해주세요
-                </span>
-              </div>
-            }
+            emphasis="어떤 가게가 사장님 가게인가요?"
+            subtitle="하단 목록에서 우리 매장을 선택해 주세요"
           />
         }
         footer={
@@ -83,9 +75,9 @@ function StoreSelectStep({ onNext, onPrev }) {
             nextLabel="다음"
           />
         }
-      > 
+      >
         <div className="relative flex-1 w-full mt-2">
-          
+
           <div className="absolute inset-0">
             {/* 조건부 렌더링: 가게 목록이 비어있을 때는 메인 콘텐츠 영역을 비워둠 (null) */}
             {stores.length === 0 ? null : (
@@ -106,23 +98,23 @@ function StoreSelectStep({ onNext, onPrev }) {
           </div>
 
           {stores.length > 0 && <ScrollFadeArrow targetRef={listRef} />}
-          
+
         </div>
       </OnboardingLayout>
 
       {/* 모달 컴포넌트 */}
-      <Modal 
-        isOpen={isModalOpen} 
+      <Modal
+        isOpen={isModalOpen}
         onClose={() => setIsModalClosed(true)}
         showClose={false}
         closeOnBackdrop={false}
       >
         <div className="flex flex-col items-center text-center mt-2">
-          
+
           <div className="text-[22px] font-bold text-primary-100 mb-3 whitespace-nowrap">
             가게 정보를 찾을 수 없어요.
           </div>
-          
+
           <div className="text-[19px] text-[#1D2030] font-semibold leading-snug mb-8">
             네이버 플레이스에 등록되어<br />있는지 확인해 주세요.
           </div>
@@ -136,7 +128,7 @@ function StoreSelectStep({ onNext, onPrev }) {
           >
             메인으로 돌아가기
           </Button>
-          
+
         </div>
       </Modal>
     </>

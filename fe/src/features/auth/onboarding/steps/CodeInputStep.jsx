@@ -8,13 +8,13 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
 
   const handleChange = (e, idx) => {
     const val = e.target.value.replace(/[^0-9]/g, '');
-    
+
     if (val.length > 1) return;
 
     const newValueArray = value.split('');
     newValueArray[idx] = val;
     const newValue = newValueArray.join('');
-    
+
     onChange(newValue);
 
     if (val !== '' && idx < 5) {
@@ -45,7 +45,13 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
               해 주세요
             </>
           }
-          subtitle="토스 POS 기기에 표시된 6자리 숫자를 입력하세요"
+          subtitle={
+            <>
+              토스 POS 기기 화면을 확인하신 뒤
+              <br />
+              6자리 숫자를 입력해 주세요.
+            </>
+          }
         />
       }
       footer={
@@ -74,8 +80,8 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
         </div>
 
         {/* QR 인증 이동 버튼 */}
-        <button 
-          onClick={onGoToQR} 
+        <button
+          onClick={onGoToQR}
           className="mt-8 text-lg text-gray-500 font-sm underline underline-offset-4 "
         >
           QR로 인증하기

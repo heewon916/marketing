@@ -22,7 +22,7 @@ function LocationStep({ value, onChange, onNext, onPrev }) {
               확인해주세요
             </>
           }
-          subtitle="정보가 다르면 수정해주세요"
+          subtitle="정보가 다르면 수정해 주세요"
         />
       }
       footer={
@@ -39,7 +39,7 @@ function LocationStep({ value, onChange, onNext, onPrev }) {
         <RoundedInput
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="주소를 입력해주세요"
+          placeholder="주소를 입력해 주세요"
           icon="search"
         />
       </div>
