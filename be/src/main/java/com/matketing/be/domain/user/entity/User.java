@@ -33,9 +33,6 @@ public class User {
     @Column(name = "token_expires_at")
     private OffsetDateTime tokenExpiresAt;
 
-    @Column(name = "refresh_token", columnDefinition = "TEXT")
-    private String refreshToken;
-
     @Column(name = "camera_mic_granted")
     private Boolean cameraMicGranted;
 
@@ -48,12 +45,11 @@ public class User {
     private OffsetDateTime updatedAt;
 
     @Builder
-    public User(String instagramUserId, String instagramUsername, String accessToken, OffsetDateTime tokenExpiresAt, String refreshToken, Boolean cameraMicGranted) {
+    public User(String instagramUserId, String instagramUsername, String accessToken, OffsetDateTime tokenExpiresAt, Boolean cameraMicGranted) {
         this.instagramUserId = instagramUserId;
         this.instagramUsername = instagramUsername;
         this.accessToken = accessToken;
         this.tokenExpiresAt = tokenExpiresAt;
-        this.refreshToken = refreshToken;
         this.cameraMicGranted = cameraMicGranted;
     }
 

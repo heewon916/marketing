@@ -53,6 +53,7 @@ application-prod.yml
 ######################################################################
 coverage/
 docs-for-me/
+toss-reference/
 
 # SSL Certs
 nginx/certs/

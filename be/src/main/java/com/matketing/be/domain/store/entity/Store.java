@@ -1,0 +1,78 @@
+package com.matketing.be.domain.store.entity;
+
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+@Entity
+@Table(name = "stores")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Store {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @Column(name = "user_id", nullable = false)
+    private UUID userId; // User 엔티티와 연관관계 매핑 필요 시 변경
+
+    @Column(name = "merchant_id", length = 20)
+    private String merchantId;
+
+    @Column(name = "store_name", nullable = false, length = 200)
+    private String storeName;
+
+    @Column(name = "category")
+    private String category; // 향후 Enum으로 변경 가능
+
+    @Column(name = "owner_persona")
+    private String ownerPersona; // 향후 Enum으로 변경 가능
+
+    @Column(name = "address", columnDefinition = "TEXT")
+    private String address;
+
+    @Column(name = "latitude", precision = 10, scale = 7)
+    private BigDecimal latitude;
+
+    @Column(name = "longitude", precision = 10, scale = 7)
+    private BigDecimal longitude;
+
+    @Column(name = "operating_hours", columnDefinition = "jsonb")
+    private String operatingHours;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private OffsetDateTime updatedAt;
+
+    @Builder
+    public Store(UUID userId, String merchantId, String storeName, String category, String ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+        this.userId = userId;
+        this.merchantId = merchantId;
+        this.storeName = storeName;
+        this.category = category;
+        this.ownerPersona = ownerPersona;
+        this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.operatingHours = operatingHours;
+    }
+
+    public void updateDetails(String address, BigDecimal latitude, BigDecimal longitude) {
+        this.address = address;
+        this.latitude = latitude;
+        this.longitude = longitude;
+    }
+}
