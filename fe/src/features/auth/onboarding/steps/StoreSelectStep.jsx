@@ -6,48 +6,27 @@ import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import StoreCard from '../components/StoreCard.jsx';
 import ScrollFadeArrow from '../components/ScrollFadeArrow.jsx';
+import StoreNotFoundModal from '../components/StoreNotFoundModal.jsx';
 
-import Modal from '../../../../components/common/Modal.jsx';
-import Button from '../../../../components/common/Button.jsx';
-
-function StoreSelectStep({ onNext, onPrev }) {
+function StoreSelectStep({ onNext, onPrev, onManualInput }) {
   const [selectedId, setSelectedId] = useState(null);
+  const [isModalClosed, setIsModalClosed] = useState(false);
+
   const navigate = useNavigate();
   const listRef = useRef(null);
 
-  // 목업 데이터
-  // const [stores] = useState([]);
-  const [stores] = useState([
-  {
-    id: 1,
-    name: '싸피카페 역삼점',
-    address: '서울 강남구 역삼동',
-  },
-  {
-    id: 2,
-    name: '클로리스 역삼점',
-    address: '서울 강남구 역삼동',
-  },
-  {
-    id: 3,
-    name: '바나프레소 역삼점',
-    address: '서울 강남구 역삼동',
-  },
-  {
-    id: 4,
-    name: '스타벅스 역삼점',
-    address: '서울 강남구 역삼동',
-  },
-  {
-    id: 5,
-    name: '투썸플레이스 역삼점',
-    address: '서울 강남구 역삼동',
-  },
-]);
-
-  const [isModalClosed, setIsModalClosed] = useState(false);
+  const [stores] = useState([]);
 
   const isModalOpen = stores.length === 0 && !isModalClosed;
+
+  const handleManualInput = () => {
+    setIsModalClosed(true);
+    onManualInput?.();
+  };
+
+  const handleGoHome = () => {
+    navigate('/');
+  };
 
   return (
     <>
@@ -59,7 +38,9 @@ function StoreSelectStep({ onNext, onPrev }) {
           <OnboardingHeader
             title={
               <>
-                <span className="text-primary-100 font-extrabold">가게를 선택</span>
+                <span className="text-primary-100 font-extrabold">
+                  가게를 선택
+                </span>
                 해 주세요
               </>
             }
@@ -72,18 +53,16 @@ function StoreSelectStep({ onNext, onPrev }) {
             onPrev={onPrev}
             onNext={onNext}
             nextDisabled={!selectedId}
-            nextLabel="다음"
+            nextText="다음"
           />
         }
       >
-        <div className="relative flex-1 w-full mt-2">
-
+        <div className="relative mt-2 w-full flex-1">
           <div className="absolute inset-0">
-            {/* 조건부 렌더링: 가게 목록이 비어있을 때는 메인 콘텐츠 영역을 비워둠 (null) */}
-            {stores.length === 0 ? null : (
+            {stores.length > 0 && (
               <div
                 ref={listRef}
-                className="flex flex-col gap-3 w-full h-full overflow-y-auto px-1 pt-2 pb-24 [&::-webkit-scrollbar]:hidden"
+                className="flex h-full w-full flex-col gap-3 overflow-y-auto px-1 pb-24 pt-2 [&::-webkit-scrollbar]:hidden"
               >
                 {stores.map((store) => (
                   <StoreCard
@@ -98,39 +77,14 @@ function StoreSelectStep({ onNext, onPrev }) {
           </div>
 
           {stores.length > 0 && <ScrollFadeArrow targetRef={listRef} />}
-
         </div>
       </OnboardingLayout>
 
-      {/* 모달 컴포넌트 */}
-      <Modal
+      <StoreNotFoundModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalClosed(true)}
-        showClose={false}
-        closeOnBackdrop={false}
-      >
-        <div className="flex flex-col items-center text-center mt-2">
-
-          <div className="text-[22px] font-bold text-primary-100 mb-3 whitespace-nowrap">
-            가게 정보를 찾을 수 없어요.
-          </div>
-
-          <div className="text-[19px] text-[#1D2030] font-semibold leading-snug mb-8">
-            네이버 플레이스에 등록되어<br />있는지 확인해 주세요.
-          </div>
-
-          <Button
-            variant="primary"
-            className="!w-full !h-[56px] text-[18px] font-bold rounded-2xl"
-            onClick={() => {
-              navigate('/');
-            }}
-          >
-            메인으로 돌아가기
-          </Button>
-
-        </div>
-      </Modal>
+        onManualInput={handleManualInput}
+        onGoHome={handleGoHome}
+      />
     </>
   );
 }

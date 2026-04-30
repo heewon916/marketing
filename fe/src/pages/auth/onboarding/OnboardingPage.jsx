@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import StartStep from '@/features/auth/onboarding/steps/StartStep.jsx';
 import InstagramConnectStep from '@/features/auth/onboarding/steps/InstagramConnectStep.jsx';
 import InstagramSuccessStep from '@/features/auth/onboarding/steps/InstagramSuccessStep.jsx';
@@ -9,13 +11,20 @@ import LoadingStep from '@/features/auth/onboarding/steps/LoadingStep.jsx';
 import PosSuccessStep from '@/features/auth/onboarding/steps/PosSuccessStep.jsx';
 import StoreSelectStep from '@/features/auth/onboarding/steps/StoreSelectStep.jsx';
 import StoreLoadingStep from '@/features/auth/onboarding/steps/StoreLoadingStep.jsx';
+import StoreNameStep from '@/features/auth/onboarding/steps/StoreNameStep.jsx';
 import BusinessTypeStep from '@/features/auth/onboarding/steps/BusinessTypeStep.jsx';
 import LocationStep from '@/features/auth/onboarding/steps/LocationStep.jsx';
 import TimeStep from '@/features/auth/onboarding/steps/TimeStep.jsx';
 import CompleteStep from '@/features/auth/onboarding/steps/CompleteStep.jsx';
 
+import OnboardingLeaveConfirmModal from '@/features/auth/onboarding/components/OnboardingLeaveConfirmModal.jsx';
+
 function OnboardingPage() {
+  const navigate = useNavigate();
+
   const [step, setStep] = useState(1);
+  const [, setStepHistory] = useState([]);
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
   const getProgressStep = (step) => {
     if (step <= 3) return 1;
@@ -23,7 +32,7 @@ function OnboardingPage() {
     if (step === 7) return 3;
     if (step === 8) return 4;
     if (step <= 10) return 5;
-    if (step <= 13) return 6;
+    if (step <= 14) return 6;
     return 7;
   };
 
@@ -32,6 +41,7 @@ function OnboardingPage() {
   const [formData, setFormData] = useState({
     storeId: '',
     merchantId: '',
+    storeName: '',
     category: '',
     ownerPersona: '',
     aesthetic: '',
@@ -45,8 +55,50 @@ function OnboardingPage() {
     isInstagramConnected: false,
   });
 
-  const nextStep = () => setStep((prev) => prev + 1);
-  const prevStep = () => setStep((prev) => prev - 1);
+  useEffect(() => {
+    window.history.pushState({ onboardingGuard: true }, '');
+
+    const handlePopState = () => {
+      setIsLeaveModalOpen(true);
+      window.history.pushState({ onboardingGuard: true }, '');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  const moveToStep = (nextStep) => {
+    setStepHistory((prev) => [...prev, step]);
+    setStep(nextStep);
+  };
+
+  const nextStep = () => {
+    moveToStep(step + 1);
+  };
+
+  const prevStep = () => {
+    setStepHistory((prev) => {
+      if (prev.length === 0) return prev;
+
+      const previousStep = prev[prev.length - 1];
+
+      setStep(previousStep);
+
+      return prev.slice(0, -1);
+    });
+  };
+
+  const handleCancelLeave = () => {
+    setIsLeaveModalOpen(false);
+  };
+
+  const handleConfirmLeave = () => {
+    setIsLeaveModalOpen(false);
+    navigate('/', { replace: true });
+  };
 
   const commonProps = {
     onNext: nextStep,
@@ -81,8 +133,8 @@ function OnboardingPage() {
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, authCode: value }))
             }
-            onGoToQR={() => setStep(6)}
-            onNext={() => setStep(7)}
+            onGoToQR={() => moveToStep(6)}
+            onNext={() => moveToStep(7)}
           />
         );
 
@@ -96,12 +148,28 @@ function OnboardingPage() {
         return <PosSuccessStep {...commonProps} />;
 
       case 9:
-        return <StoreSelectStep {...commonProps} />;
+        return (
+          <StoreSelectStep
+            {...commonProps}
+            onManualInput={() => moveToStep(11)}
+          />
+        );
 
       case 10:
         return <StoreLoadingStep {...commonProps} />;
 
       case 11:
+        return (
+          <StoreNameStep
+            {...commonProps}
+            value={formData.storeName}
+            onChange={(value) =>
+              setFormData((prev) => ({ ...prev, storeName: value }))
+            }
+          />
+        );
+
+      case 12:
         return (
           <BusinessTypeStep
             {...commonProps}
@@ -112,7 +180,7 @@ function OnboardingPage() {
           />
         );
 
-      case 12:
+      case 13:
         return (
           <LocationStep
             {...commonProps}
@@ -123,7 +191,7 @@ function OnboardingPage() {
           />
         );
 
-      case 13:
+      case 14:
         return (
           <TimeStep
             {...commonProps}
@@ -134,7 +202,7 @@ function OnboardingPage() {
           />
         );
 
-      case 14:
+      case 15:
         return <CompleteStep progressStep={progressStep} />;
 
       default:
@@ -143,9 +211,17 @@ function OnboardingPage() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6">
-      {renderStep()}
-    </main>
+    <>
+      <main className="flex min-h-screen flex-col items-center justify-center px-6">
+        {renderStep()}
+      </main>
+
+      <OnboardingLeaveConfirmModal
+        isOpen={isLeaveModalOpen}
+        onCancel={handleCancelLeave}
+        onConfirm={handleConfirmLeave}
+      />
+    </>
   );
 }
 
