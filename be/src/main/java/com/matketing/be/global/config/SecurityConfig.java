@@ -32,6 +32,7 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/v1/users/instagram", "/api/v1/users/instagram/callback", "/api/v1/users/token/refresh", "/api/v1/onboarding/pin/**").permitAll()
                 .requestMatchers(
                         "/api/v1/users/instagram",
                         "/api/v1/users/instagram/callback",
