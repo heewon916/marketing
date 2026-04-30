@@ -48,3 +48,6 @@ src/main/resources/application-prod.properties
 .env
 .env.*
 !.env.example
+
+# firebase
+src/main/resources/firebase/*.json
