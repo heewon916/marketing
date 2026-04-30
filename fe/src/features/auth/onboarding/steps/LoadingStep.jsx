@@ -1,6 +1,7 @@
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
+import tossLoading from '@/assets/videos/toss-loading.mp4';
 
 function LoadingStep({ onNext, onPrev }) {
   return (
@@ -11,7 +12,7 @@ function LoadingStep({ onNext, onPrev }) {
         <OnboardingHeader
           title={
             <>
-              토스 POS와 
+              토스 POS와
               <br />
               연결하고 있어요
             </>
@@ -26,7 +27,14 @@ function LoadingStep({ onNext, onPrev }) {
         />
       }
     >
-      <div className="w-32 h-32 border-4 border-gray-200 border-t-primary-100 rounded-full animate-spin" />
+      <video
+        src={tossLoading}
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="w-full h-full justify-center object-contain"
+      />
     </OnboardingLayout>
   );
 }
