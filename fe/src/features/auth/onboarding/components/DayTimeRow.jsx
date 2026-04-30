@@ -11,12 +11,11 @@ export default function DayTimeRow({
   onEndTimeChange,
 }) {
   return (
-    <div className="flex items-center w-full py-1.5">
-      
+    <div className="grid grid-cols-[70px_36px_1fr] items-center w-full py-1.5 gap-2">
       {/* 1. 요일 */}
-      <div className="w-[60px] shrink-0">
+      <div className="whitespace-nowrap">
         <span
-          className={`text-[17px] font-bold ${
+          className={`text-[20px] font-bold ${
             isOpen ? 'text-gray-900' : 'text-gray-400'
           }`}
         >
@@ -25,12 +24,12 @@ export default function DayTimeRow({
       </div>
 
       {/* 2. 토글 */}
-      <div className="flex-1 flex justify-start pl-2">
+      <div className="flex justify-center">
         <ToggleSwitch checked={isOpen} onChange={onToggle} />
       </div>
 
       {/* 3. 시간 */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center justify-end gap-2 min-w-0">
         <TimeInput
           value={startTime}
           onChange={onStartTimeChange}
@@ -43,7 +42,6 @@ export default function DayTimeRow({
           disabled={!isOpen}
         />
       </div>
-      
     </div>
   );
 }

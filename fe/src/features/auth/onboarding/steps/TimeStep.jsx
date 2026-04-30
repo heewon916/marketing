@@ -62,7 +62,7 @@ function TimeStep({ onNext, onPrev }) {
           </div>
 
           <div className="text-[17px] text-gray-600 leading-relaxed">
-            밤 12시가 넘어도 <span className="font-extrabold text-gray-900">그대로 입력</span>해 주세요.
+            밤 12시가 넘어도 <span className="font-extrabold text-gray-900">그대로 입력</span>하세요.
           </div>
 
           <div className="mt-1 text-base font-medium text-gray-400">
