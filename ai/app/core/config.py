@@ -33,13 +33,13 @@ class Settings(BaseSettings):
 
     DEBUG: bool = True
 
-    POSTGRES_HOST: str = "project-postgres"
+    POSTGRES_HOST: str = "postgres"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
 
-    REDIS_HOST: str = "project-redis"
+    REDIS_HOST: str = "redis"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str | None = None
     REDIS_DB: int = 0
