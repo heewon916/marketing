@@ -16,7 +16,7 @@ export default function OnboardingLayout({
   return (
     <div className="min-h-screen w-full flex flex-col px-4 pt-18 pb-20 bg-white">
       {/* 1. 상단 프로그레스 바 영역 */}
-      <div className="mb-10">
+      <div className="mb-10 w-full">
         <StepProgress current={currentStep} total={totalStep} />
       </div>
 
