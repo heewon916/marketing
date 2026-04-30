@@ -21,11 +21,10 @@ def _hf_hub_download(*, repo_id: str, filename: str, repo_type: str) -> str:
     )
 
 
-def ensure_keyword_model_available(model_path: Path | None) -> Path:
-    """Ensure the configured local GGUF model file exists."""
+def ensure_keyword_model_available(model_path: Path | None = None) -> Path:
+    """Ensure the default local GGUF model file exists."""
 
-    if model_path is None:
-        raise RuntimeError("KEYWORD_MODEL_PATH is not configured.")
+    model_path = model_path or settings.keyword_model_path
 
     if model_path.exists():
         return model_path

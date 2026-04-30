@@ -1,6 +1,14 @@
 import pytest
 
-from app.core.config import Settings
+from app.core.config import (
+    DEFAULT_KEYWORD_MODEL_HF_FILENAME,
+    DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+    DEFAULT_KEYWORD_MODEL_PATH,
+    DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
+    DEFAULT_ORIENTATION_MODEL_NAME,
+    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
+    Settings,
+)
 
 
 @pytest.fixture
@@ -21,11 +29,6 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_BUCKET_NAME", "bucket")
     monkeypatch.setenv("S3_REGION", "ap-northeast-2")
     monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
-    monkeypatch.setenv("KEYWORD_MODEL_PATH", "models/qwen.gguf")
-    monkeypatch.setenv("KEYWORD_MODEL_HF_REPO_ID", "Qwen/Qwen2.5-7B-Instruct-GGUF")
-    monkeypatch.setenv(
-        "KEYWORD_MODEL_HF_FILENAME", "qwen2.5-7b-instruct-q3_k_m.gguf"
-    )
     monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "4096")
     monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "32")
     monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.2")
@@ -33,7 +36,6 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEYWORD_MODEL_THREADS", "6")
     monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "12")
     monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "true")
-    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "15")
 
 
 def test_settings_parses_infra_fields(env_setup: None) -> None:
@@ -46,15 +48,15 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.SESSION_TTL_SECONDS == 1800
     assert settings.DEBUG is True
     assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
-    assert settings.KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
-    assert settings.KEYWORD_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
+    assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
+    assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
     assert settings.KEYWORD_MODEL_MAX_TOKENS == 32
     assert settings.KEYWORD_MODEL_TEMPERATURE == 0.2
     assert settings.KEYWORD_MODEL_TOP_P == 0.85
     assert settings.KEYWORD_MODEL_THREADS == 6
     assert settings.KEYWORD_MODEL_GPU_LAYERS == 12
     assert settings.KEYWORD_MODEL_ENABLED is True
-    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == 15
+    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -107,12 +109,31 @@ def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
     assert settings.CLOUDFRONT_DOMAIN == "cdn.example.com"
 
 
-def test_keyword_model_path_resolves_relative_path(env_setup: None) -> None:
+def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     settings = Settings(_env_file=None)
 
-    assert settings.keyword_model_path is not None
-    assert settings.keyword_model_path.name == "qwen.gguf"
-    assert settings.keyword_model_path.parts[-2:] == ("models", "qwen.gguf")
+    assert settings.ORIENTATION_MODEL_NAME == DEFAULT_ORIENTATION_MODEL_NAME
+    assert settings.orientation_model_weights_path == DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
+    assert settings.keyword_model_path == DEFAULT_KEYWORD_MODEL_PATH
+
+
+def test_model_env_vars_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("ORIENTATION_MODEL_NAME", "resnet")
+    monkeypatch.setenv("ORIENTATION_MODEL_WEIGHTS_PATH", "custom/weights.h5")
+    monkeypatch.setenv("KEYWORD_MODEL_PATH", "custom/model.gguf")
+    monkeypatch.setenv("KEYWORD_MODEL_HF_REPO_ID", "custom/repo")
+    monkeypatch.setenv("KEYWORD_MODEL_HF_FILENAME", "custom.gguf")
+    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "5")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.ORIENTATION_MODEL_NAME == DEFAULT_ORIENTATION_MODEL_NAME
+    assert settings.orientation_model_weights_path == DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
+    assert settings.keyword_model_path == DEFAULT_KEYWORD_MODEL_PATH
+    assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
+    assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
+    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
 
 
 def test_s3_not_configured_when_bucket_missing(monkeypatch: pytest.MonkeyPatch) -> None:

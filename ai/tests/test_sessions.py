@@ -3,6 +3,7 @@ from uuid import uuid4
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
+from pathlib import Path
 from pydantic import ValidationError
 
 from app.main import app
@@ -497,7 +498,7 @@ def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() 
 
 
 def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
-    service = KeywordExtractionService(model_path=None)
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
     keywords = service._parse_keywords(
         "["
@@ -514,14 +515,14 @@ def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
 
 
 def test_keyword_extraction_service_rejects_non_json_output() -> None:
-    service = KeywordExtractionService(model_path=None)
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
     with pytest.raises(KeywordExtractionUnavailableError):
         service._parse_keywords("\ub9c9\uac78\ub9ac, \ud30c\uc804")
 
 
 def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
-    service = KeywordExtractionService(model_path=None)
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
     keywords = service._parse_keywords(
         '{'
@@ -537,7 +538,7 @@ def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
 
 @pytest.mark.asyncio
 async def test_keyword_extraction_service_raises_when_disabled() -> None:
-    service = KeywordExtractionService(model_path=None, enabled=False)
+    service = KeywordExtractionService(model_path=Path("unused.gguf"), enabled=False)
 
     with pytest.raises(KeywordExtractionUnavailableError):
         await service.extract_keywords(
