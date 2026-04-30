@@ -32,7 +32,17 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/users/instagram", "/api/v1/users/instagram/callback", "/api/v1/users/token/refresh").permitAll()
+                .requestMatchers(
+                        "/api/v1/users/instagram",
+                        "/api/v1/users/instagram/callback",
+                        "/api/v1/users/token/refresh",
+                        "/v3/api-docs",
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html",
+                        "/swagger-resources/**",
+                        "/webjars/**"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth2 -> oauth2
