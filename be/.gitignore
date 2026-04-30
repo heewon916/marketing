@@ -4,6 +4,8 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
+*.lck
+*.part
 
 ### STS ###
 .apt_generated
@@ -36,3 +38,18 @@ out/
 ### VS Code ###
 .vscode/
 
+# local properties
+src/main/resources/application-local.properties
+src/main/resources/application-prod.properties
+
+# allow example config files
+!src/main/resources/application-local-example.properties
+!src/main/resources/application-prod-example.properties
+
+# env
+.env
+.env.*
+!.env.example
+
+# firebase
+src/main/resources/firebase/*.json

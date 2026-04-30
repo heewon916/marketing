@@ -18,7 +18,7 @@ class OrientationPredictor:
     def __init__(
         self,
         model_name: str = "vit",
-        weights_path: str | None = None,
+        weights_path: str | Path | None = None,
     ) -> None:
         self.model_name = model_name
         self.weights_path = Path(weights_path) if weights_path else None
@@ -56,7 +56,7 @@ class OrientationPredictor:
             if self.model_name != "vit":
                 raise RuntimeError(f"Unsupported orientation model: {self.model_name}")
             if self.weights_path is None:
-                raise RuntimeError("ORIENTATION_MODEL_WEIGHTS_PATH is not configured.")
+                raise RuntimeError("Orientation model weights path is unavailable.")
             if not self.weights_path.exists():
                 raise RuntimeError(
                     f"Orientation model weights file does not exist: {self.weights_path}"
