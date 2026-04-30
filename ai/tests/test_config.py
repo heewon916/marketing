@@ -13,15 +13,10 @@ from app.core.config import (
 
 @pytest.fixture
 def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("POSTGRES_HOST", "test_pg")
-    monkeypatch.setenv("POSTGRES_PORT", "6543")
     monkeypatch.setenv("POSTGRES_DB", "testdb")
     monkeypatch.setenv("POSTGRES_USER", "tester")
     monkeypatch.setenv("POSTGRES_PASSWORD", "secret")
-    monkeypatch.setenv("REDIS_HOST", "test_redis")
-    monkeypatch.setenv("REDIS_PORT", "6380")
     monkeypatch.setenv("REDIS_PASSWORD", "rsecret")
-    monkeypatch.setenv("REDIS_DB", "2")
     monkeypatch.setenv("SESSION_TTL_SECONDS", "1800")
     monkeypatch.setenv("DEBUG", "true")
     monkeypatch.setenv("S3_ACCESS_KEY", "access")
@@ -41,10 +36,11 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_settings_parses_infra_fields(env_setup: None) -> None:
     settings = Settings(_env_file=None)
 
-    assert settings.POSTGRES_HOST == "test_pg"
-    assert settings.POSTGRES_PORT == 6543
-    assert settings.REDIS_HOST == "test_redis"
-    assert settings.REDIS_DB == 2
+    assert settings.POSTGRES_HOST == "project-postgres"
+    assert settings.POSTGRES_PORT == 5432
+    assert settings.REDIS_HOST == "project-redis"
+    assert settings.REDIS_PORT == 6379
+    assert settings.REDIS_DB == 0
     assert settings.SESSION_TTL_SECONDS == 1800
     assert settings.DEBUG is True
     assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
@@ -63,14 +59,14 @@ def test_postgres_dsn_format(env_setup: None) -> None:
     settings = Settings(_env_file=None)
 
     assert settings.postgres_dsn == (
-        "postgresql+asyncpg://tester:secret@test_pg:6543/testdb"
+        "postgresql+asyncpg://tester:secret@project-postgres:5432/testdb"
     )
 
 
 def test_redis_url_with_password(env_setup: None) -> None:
     settings = Settings(_env_file=None)
 
-    assert settings.redis_url == "redis://:rsecret@test_redis:6380/2"
+    assert settings.redis_url == "redis://:rsecret@project-redis:6379/0"
 
 
 def _set_required_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -81,25 +77,81 @@ def _set_required_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_redis_url_without_password(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_postgres(monkeypatch)
-    monkeypatch.setenv("REDIS_HOST", "h")
-    monkeypatch.setenv("REDIS_PORT", "6379")
-    monkeypatch.setenv("REDIS_DB", "0")
+    monkeypatch.delenv("REDIS_HOST", raising=False)
+    monkeypatch.delenv("REDIS_PORT", raising=False)
+    monkeypatch.delenv("REDIS_DB", raising=False)
     monkeypatch.delenv("REDIS_PASSWORD", raising=False)
 
     settings = Settings(_env_file=None)
 
-    assert settings.redis_url == "redis://h:6379/0"
+    assert settings.redis_url == "redis://project-redis:6379/0"
 
 
-def test_default_container_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_container_hosts_and_ports(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_postgres(monkeypatch)
     monkeypatch.delenv("POSTGRES_HOST", raising=False)
+    monkeypatch.delenv("POSTGRES_PORT", raising=False)
     monkeypatch.delenv("REDIS_HOST", raising=False)
+    monkeypatch.delenv("REDIS_PORT", raising=False)
 
     settings = Settings(_env_file=None)
 
     assert settings.POSTGRES_HOST == "project-postgres"
+    assert settings.POSTGRES_PORT == 5432
     assert settings.REDIS_HOST == "project-redis"
+    assert settings.REDIS_PORT == 6379
+
+
+def test_hosts_and_ports_can_still_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("POSTGRES_HOST", "test_pg")
+    monkeypatch.setenv("POSTGRES_PORT", "6543")
+    monkeypatch.setenv("REDIS_HOST", "test_redis")
+    monkeypatch.setenv("REDIS_PORT", "6380")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.POSTGRES_HOST == "test_pg"
+    assert settings.POSTGRES_PORT == 6543
+    assert settings.REDIS_HOST == "test_redis"
+    assert settings.REDIS_PORT == 6380
+
+
+def test_redis_db_defaults_to_zero_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.delenv("REDIS_DB", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REDIS_DB == 0
+    assert settings.redis_url.endswith("/0")
+
+
+def test_settings_load_from_env_file_with_only_shared_db_vars(tmp_path) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "POSTGRES_DB=testdb",
+                "POSTGRES_USER=tester",
+                "POSTGRES_PASSWORD=secret",
+                "REDIS_PASSWORD=rsecret",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.POSTGRES_HOST == "project-postgres"
+    assert settings.POSTGRES_PORT == 5432
+    assert settings.REDIS_HOST == "project-redis"
+    assert settings.REDIS_PORT == 6379
+    assert settings.REDIS_DB == 0
+    assert settings.postgres_dsn == (
+        "postgresql+asyncpg://tester:secret@project-postgres:5432/testdb"
+    )
+    assert settings.redis_url == "redis://:rsecret@project-redis:6379/0"
 
 
 def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
