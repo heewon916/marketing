@@ -1,13 +1,15 @@
 import BottomTab from "@/components/common/BottomTab"
 import Button from "@/components/common/Button"
 import StepProgress from "@/components/common/StepProgress"
+import TitleText from "@/components/common/TitleText"
+import Character from "@/components/common/Character"
 
 export default function QuestionStep({
 	title,
 	stepNum,
 	onNext,
 	characterSrc,
-	characterAlt,
+	characterType,
 }) {
 	const handleYes = () => {
 		onNext?.()
@@ -16,22 +18,16 @@ export default function QuestionStep({
 	return (
 		<main className="relative flex h-dvh overflow-hidden justify-center bg-surface-50">
 			<div className="h-full w-full max-w-md px-5 py-6 pb-60">
-				<section className="flex justify-center pt-2">
+				<section className="flex justify-center pt-2 px-6">
 					<StepProgress current={stepNum} />
 				</section>
 
 				<section className="flex h-40 items-center justify-center">
-					<h1 className="text-center text-[28px] font-medium text-accent-500" style={{ wordBreak: "keep-all" }}>
-						{title}
-					</h1>
+					<TitleText text={title} />
 				</section>
 
-				<section className="flex justify-center">
-					<img
-						src={characterSrc}
-						alt={characterAlt ?? "스텝 캐릭터"}
-						className="object-contain"
-					/>
+				<section className="flex justify-center px-6">
+					<Character src={characterSrc} type={characterType} />
 				</section>
 			</div>
 

@@ -1,5 +1,6 @@
 import StepProgress from "@/components/common/StepProgress"
-import CharacterRun from "@/assets/character/CharacterRun.png"
+import TitleText from "@/components/common/TitleText"
+import Character from "@/components/common/Character"
 
 export default function LoadingStep({ title, description, stepNum }) {
 	return (
@@ -11,15 +12,13 @@ export default function LoadingStep({ title, description, stepNum }) {
 
 				<section className="flex h-40 items-center justify-center">
 					<div>
-						<h1 className="text-center text-[28px] font-medium text-accent-500" style={{ wordBreak: "keep-all" }}>
-							{title}
-						</h1>
+						<TitleText text={title} />
 						{description ? <p className="mt-3 text-center text-gray-500">{description}</p> : null}
 					</div>
 				</section>
 
 				<section className="flex justify-center">
-					<img src={CharacterRun} alt="로딩 중 캐릭터" className="object-contain" />
+					<Character type="run" />
 				</section>
 			</div>
 		</main>

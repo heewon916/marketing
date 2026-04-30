@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react"
 import StepProgress from "@/components/common/StepProgress"
 import Button from "@/components/common/Button"
 import BottomTab from "@/components/common/BottomTab"
-
-const PEEK = 0
+import GeneratedPostCarousel from "@/features/postCreate/components/GeneratedPostCarousel"
+import GeneratedPostBody from "@/features/postCreate/components/GeneratedPostBody"
 
 export default function GeneratedPostStep({ post, photos = [], onPublish, onExit, stepNum }) {
+	const [editedContent, setEditedContent] = useState(post?.content ?? "")
+	const [editedHashtags, setEditedHashtags] = useState(post?.hashtags ?? [])
 	const [activeIndex, setActiveIndex] = useState(0)
 	const [isBodyScrollable, setIsBodyScrollable] = useState(false)
 	const [canScrollDown, setCanScrollDown] = useState(false)
@@ -74,49 +76,19 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 				className="relative flex flex-1 flex-col overflow-y-auto pb-20"
 			>
 				{/* 사진 캐러셀 */}
-				<section className="shrink-0 w-full">
-					<div
-						onScroll={handleScroll}
-						className="flex w-full snap-x snap-mandatory overflow-x-auto"
-						style={{ scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}
-					>
-						{photos.length > 0 ? photos.map((photo, i) => (
-							<div
-								key={photo.id ?? i}
-								className="relative shrink-0 snap-center w-full aspect-[384/514] overflow-hidden"
-							>
-								{photo.url
-									? <img src={photo.url} alt={`photo-${i + 1}`} className="h-full w-full object-cover" draggable={false} />
-									: <div className="h-full w-full bg-primary-100" />
-								}
-								{photos.length > 1 && (
-									<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
-										{i + 1} / {photos.length}
-									</div>
-								)}
-							</div>
-						)) : (
-							<div className="relative shrink-0 snap-center w-full aspect-[384/514] bg-primary-100">
-								<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
-									1 / 1
-								</div>
-							</div>
-						)}
-					</div>
-				</section>
+				<GeneratedPostCarousel photos={photos} onScroll={handleScroll} />
 
-				<section className="px-5 pt-5">
-					<h2 className="text-xl font-bold text-accent-100 mb-3">본문</h2>
-					<div className="rounded-2xl bg-gray-50 px-5 py-4 text-lg text-accent-100 leading-relaxed whitespace-pre-wrap">
-						<p className="mb-4">{post?.content ?? ""}</p>
-						<p className="text-accent-100">{post?.hashtags?.join(" ") ?? ""}</p>
-					</div>
-				</section>
+				<GeneratedPostBody
+					content={editedContent}
+					hashtags={editedHashtags}
+					onContentChange={setEditedContent}
+					onHashtagsChange={setEditedHashtags}
+				/>
 
 				{/* 버튼 */}
 				<div className="flex items-center justify-center gap-3 px-5 pt-5 pb-2">
 					<Button variant="white" size="sm" onClick={onExit}>나가기</Button>
-					<Button variant="primary" size="sm" onClick={onPublish}>발행하기</Button>
+					<Button variant="primary" size="sm" onClick={() => onPublish?.({ content: editedContent, hashtags: editedHashtags })}>발행하기</Button>
 				</div>
 			</section>
 
