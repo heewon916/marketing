@@ -206,7 +206,7 @@ pipeline {
                     sh '''
                 echo "===== Build without cache and Force Recreate ====="
                 # --no-cache 옵션을 추가하여 이전 빌드 기록을 완전히 무시하고 새로 구움
-                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build --no-cache frontend nginx
+                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build --no-cache frontend nginx fastapi
                 
                 # 그 후 컨테이너 실행
                 docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --force-recreate --remove-orphans
