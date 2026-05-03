@@ -6,7 +6,7 @@ export default function LoadingStep({ title, description, stepNum }) {
 	return (
 		<main className="relative flex h-dvh overflow-hidden justify-center bg-surface-50">
 			<div className="h-full w-full max-w-md px-5 py-6 pb-60">
-				<section className="flex justify-center pt-2">
+				<section className="flex justify-center pt-2 px-6">
 					<StepProgress current={stepNum} />
 				</section>
 

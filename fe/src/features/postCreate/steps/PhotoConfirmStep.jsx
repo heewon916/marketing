@@ -48,7 +48,7 @@ export default function PhotoConfirmStep({ photos: initialPhotos = [], onNext, o
 	return (
 		<main className="relative flex h-dvh flex-col bg-white">
 			{/* 상단 진행바 */}
-			<section className="flex justify-center px-5 pt-6 pb-4 shrink-0">
+			<section className="flex justify-center px-10 pt-8 pb-3 shrink-0">
 				<StepProgress current={stepNum} />
 			</section>
 

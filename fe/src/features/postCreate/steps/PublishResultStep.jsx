@@ -9,7 +9,7 @@ export default function PublishResultStep({ type, stepNum, onGoHome, onViewInsta
 	return (
 		<main className="flex h-dvh flex-col items-center bg-white px-5 pt-6">
 			{/* 진행바 */}
-			<section className="flex w-full justify-center pb-3">
+			<section className="flex w-full justify-center pb-5 px-6">
 				<StepProgress current={stepNum} />
 			</section>
 

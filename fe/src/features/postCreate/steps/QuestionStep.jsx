@@ -1,18 +1,37 @@
+import { useState } from "react"
 import BottomTab from "@/components/common/BottomTab"
 import Button from "@/components/common/Button"
 import StepProgress from "@/components/common/StepProgress"
 import TitleText from "@/components/common/TitleText"
 import Character from "@/components/common/Character"
+import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreateLeaveHomeModal"
 
 export default function QuestionStep({
 	title,
 	stepNum,
 	onNext,
+	noModalContent,
+	onLeaveHomeConfirm,
+	onLeaveHomeCancel,
 	characterSrc,
 	characterType,
 }) {
+	const [isNoModalOpen, setIsNoModalOpen] = useState(false)
+
 	const handleYes = () => {
 		onNext?.()
+	}
+
+	const handleNo = () => {
+		setIsNoModalOpen(true)
+	}
+
+	const handleNoModalCancel = () => {
+		onLeaveHomeCancel?.()
+	}
+
+	const handleNoModalConfirm = () => {
+		onLeaveHomeConfirm?.()
 	}
 
 	return (
@@ -34,7 +53,7 @@ export default function QuestionStep({
 			<section className="fixed bottom-20 left-1/2 z-20 w-full max-w-md -translate-x-1/2">
 				<div className="w-full px-4 pb-10">
 					<div className="flex items-center justify-center gap-3">
-						<Button type="button" size="sm" variant="white" disabled>
+						<Button type="button" size="sm" variant="white" onClick={handleNo}>
 							아니오
 						</Button>
 						<Button type="button" size="sm" variant="primary" onClick={handleYes}>
@@ -43,6 +62,15 @@ export default function QuestionStep({
 					</div>
 				</div>
 			</section>
+
+			<PostCreateLeaveHomeModal
+				isOpen={isNoModalOpen}
+				onClose={() => setIsNoModalOpen(false)}
+				onCancel={handleNoModalCancel}
+				onConfirm={handleNoModalConfirm}
+			>
+				{noModalContent}
+			</PostCreateLeaveHomeModal>
 
 			<BottomTab />
 		</main>

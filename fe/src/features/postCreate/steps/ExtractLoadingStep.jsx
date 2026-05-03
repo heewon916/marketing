@@ -7,7 +7,7 @@ export default function ExtractLoadingStep({ stepNum, photos = [] }) {
 	return (
 		<main className="relative flex h-dvh justify-center bg-surface-50">
 			<div className="flex h-full w-full max-w-md flex-col px-5 py-6">
-				<section className="flex justify-center pt-2">
+				<section className="flex justify-center pt-2 px-6">
 					<StepProgress current={stepNum} />
 				</section>
 

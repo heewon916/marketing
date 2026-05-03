@@ -100,11 +100,17 @@ export default function PostCreatePage() {
     setStep(POST_CREATE_STEP.PUBLISH_LOADING)
   }
 
+  const handleLeaveToHome = () => {
+    resetPostCreate()
+    navigate("/home")
+  }
+
   if (step === POST_CREATE_STEP.POST_QUESTION) {
     return (
       <QuestionStep
         title="이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
         onNext={handlePostQuestionNext}
+        onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
         characterSrc={CharacterListen}
         characterAlt="듣고 있는 캐릭터"
@@ -126,6 +132,7 @@ export default function PostCreatePage() {
       <QuestionStep
         title="신메뉴 치즈라떼를 만드는 영상을 찍어볼까요?"
         onNext={handleCameraQuestionNext}
+        onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
         characterSrc={CharacterCamera}
         characterAlt="카메라를 든 캐릭터"
