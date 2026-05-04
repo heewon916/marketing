@@ -2,6 +2,8 @@ package com.matketing.be.domain.user.controller;
 
 import com.matketing.be.domain.user.dto.TokenResponse;
 import com.matketing.be.domain.user.service.AuthService;
+import com.matketing.be.global.exception.BusinessException;
+import com.matketing.be.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -29,7 +31,7 @@ public class UserController {
         }
 
         if (refreshToken == null) {
-            return ResponseEntity.badRequest().build();
+            throw new BusinessException(ErrorCode.MISSING_REFRESH_TOKEN);
         }
 
         TokenResponse tokenResponse = authService.reissue(refreshToken);
