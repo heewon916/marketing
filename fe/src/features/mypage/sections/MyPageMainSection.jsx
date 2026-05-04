@@ -11,8 +11,8 @@ const myPageMockData = {
   weeklyPostAchievementRate: 75,
   targetPostCount: 4,
   achievedPostCount: 3,
-  weeklyReachRate: 15,
-  weeklyVisitIntentRate: 37,
+  weeklyReachCount: 4200,
+  weeklyVisitIntentScore: 285,
 };
 
 export default function MyPageMainSection() {
@@ -24,67 +24,64 @@ export default function MyPageMainSection() {
     weeklyPostAchievementRate,
     targetPostCount,
     achievedPostCount,
-    weeklyReachRate,
-    weeklyVisitIntentRate,
+    weeklyReachCount,
+    weeklyVisitIntentScore,
   } = myPageMockData;
 
-  const handleProfileClick = () => {
-    navigate('/mypage/account');
-  };
-
-  const handleSettingClick = () => {
-    navigate('/mypage/account');
-  };
-
   return (
-    // 배경을 surface-200으로 설정하여 따뜻한 톤 유지
-    <div className="min-h-screen bg-surface-200 pb-28 font-sans selection:bg-primary-100/20">
+    <div className="min-h-screen bg-accent-100/5 pb-28">
       <MyPageHeader
         title="내 정보"
-        onSettingClick={handleSettingClick}
+        onSettingClick={() => navigate('/mypage/account')}
       />
 
-      <main className="mx-auto flex w-full max-w-[430px] flex-col px-5 pt-4">
-        <div className="animate-fade-in-up">
-          <ProfileCard
-            storeName={storeName}
-            instagramUsername={instagramUsername}
-            onClick={handleProfileClick}
-          />
-        </div>
+      <main className="mx-auto flex w-full max-w-[430px] flex-col gap-4 px-5 pt-4">
+        <ProfileCard
+          storeName={storeName}
+          instagramUsername={instagramUsername}
+          onClick={() => navigate('/mypage/account')}
+        />
 
-        <div className="mt-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
-          <WeeklyStatCard
-            percent={weeklyPostAchievementRate}
-            plannedCount={targetPostCount}
-            achievedCount={achievedPostCount}
-          />
-        </div>
+        <WeeklyStatCard
+          percent={weeklyPostAchievementRate}
+          plannedCount={targetPostCount}
+          achievedCount={achievedPostCount}
+        />
 
-        <div className="mt-5 grid grid-cols-2 gap-4 animate-fade-in-up" style={{ animationDelay: '200ms' }}>
+        <div className="grid grid-cols-2 gap-4">
           <MetricCard
             title={
               <>
-                주간 가게<br />노출수
+                주간 가게 노출 수
               </>
             }
-            value={weeklyReachRate}
-            isUp={true}
+            value={weeklyReachCount}
+            unit="회"
+            description={`인스타그램 게시물 노출 횟수예요.
+
+          수치가 높을수록 더 많은 사람에게
+          가게를 알린 거예요.`}
           />
 
           <MetricCard
             title={
               <>
-                주간 실제<br />방문 의사 지수
+                주간 방문 관심도
               </>
             }
-            value={weeklyVisitIntentRate}
-            isUp={false}
+            value={weeklyVisitIntentScore}
+            unit="점"
+            description={`게시물을 본 사람들이
+          가게에 관심을 보인 정도예요.
+
+          프로필 방문, 게시물 저장,
+          길찾기나 전화 클릭 같은 행동을
+          바탕으로 계산해요.`}
           />
         </div>
       </main>
 
       <BottomTab />
     </div>
-  );
+    );
 }

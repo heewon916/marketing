@@ -1,19 +1,94 @@
-export default function MetricCard({ title, value, unit = '%', isUp = true }) {
-  return (
-    <section className="flex min-h-[150px] flex-1 flex-col items-center justify-center rounded-3xl border border-gray-100 bg-white px-4 py-6 shadow-sm">
-      <h3 className="text-center text-[19px] font-extrabold leading-snug text-accent-100">
-        {title}
-      </h3>
+import { useEffect, useState } from 'react';
+import Modal from '@/components/common/Modal';
+import CardShell from './CardShell';
 
-      <div className="mt-5 flex items-center gap-1 text-primary-100">
-        <strong className="text-[32px] font-extrabold leading-none">
-          {value}
-          {unit}
-        </strong>
-        <span className="text-[27px] font-extrabold leading-none">
-          {isUp ? '↑' : '↓'}
-        </span>
-      </div>
-    </section>
+export default function MetricCard({ title, value, unit, description }) {
+  const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
+  const [animatedValue, setAnimatedValue] = useState(0);
+
+  useEffect(() => {
+    const targetValue = Number(value);
+
+    if (Number.isNaN(targetValue)) {
+      return;
+    }
+
+    let animationFrameId;
+    let startTime;
+
+    const duration = 900;
+
+    const animate = (currentTime) => {
+      if (!startTime) {
+        startTime = currentTime;
+      }
+
+      const elapsedTime = currentTime - startTime;
+      const progress = Math.min(elapsedTime / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const currentValue = Math.round(targetValue * easedProgress);
+
+      setAnimatedValue(currentValue);
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [value]);
+
+  return (
+    <>
+      <CardShell className="relative flex min-h-[160px] flex-col justify-between p-5">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="pr-7 text-[20px] font-medium leading-snug text-accent-100">
+            {title}
+          </h3>
+
+          {description && (
+            <button
+              type="button"
+              onClick={() => setIsDescriptionOpen(true)}
+              className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-gray-500"
+              aria-label="지표 설명 보기"
+            >
+              <span className="material-icons text-[18px]">question_mark</span>
+            </button>
+          )}
+        </div>
+
+        <div className="flex w-full items-baseline justify-end gap-1.5 text-right">
+          <strong className="text-[40px] font-semibold tracking-tight text-accent-100">
+            {animatedValue.toLocaleString()}
+          </strong>
+
+          {unit && (
+            <span className="text-[16px] font-medium text-gray-400">
+              {unit}
+            </span>
+          )}
+        </div>
+      </CardShell>
+
+      {description && (
+        <Modal
+          isOpen={isDescriptionOpen}
+          onClose={() => setIsDescriptionOpen(false)}
+        >
+          <div className="text-center">
+            <h3 className="text-[28px] font-extrabold leading-snug text-primary-100">
+              {title}
+            </h3>
+
+            <p className="mt-5 whitespace-pre-line text-[18px] font-medium leading-relaxed text-gray-600">
+              {description}
+            </p>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
