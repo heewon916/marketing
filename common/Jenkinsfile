@@ -108,13 +108,13 @@ pipeline {
                 withCredentials([file(credentialsId: 'marketing-env-file', variable: 'ENV_FILE_PATH')]) {
                     sh '''
                         set +x
-        
+
                         echo "===== Create .env from Jenkins Secret File ====="
-        
+
                         cp "$ENV_FILE_PATH" "${DEPLOY_DIR}/.env"
                         sed -i 's/\\r$//' "${DEPLOY_DIR}/.env"
                         chmod 600 "${DEPLOY_DIR}/.env"
-        
+
                         echo ".env created at ${DEPLOY_DIR}/.env"
                     '''
                 }
@@ -126,12 +126,12 @@ pipeline {
                 sh '''
                     set +x
                     set -eu
-        
+
                     echo "===== Validate required env values ====="
-        
+
                     ENV_PATH="${DEPLOY_DIR}/.env"
                     test -s "$ENV_PATH"
-                    
+
                     echo "===== .env keys only ====="
                     awk -F= \'
                       /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ {
@@ -140,13 +140,13 @@ pipeline {
                         print "line " NR ": " key
                       }
                     ' "$ENV_PATH"
-        
+
                     # CRLF 방지
                     if grep -q "$(printf '\\r')" "$ENV_PATH"; then
                       echo "ERROR: .env contains CRLF. Use LF line endings."
                       exit 1
                     fi
-        
+
                     # 중복 key 방지
                     DUP_KEYS=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_PATH" | cut -d= -f1 | sort | uniq -d || true)
                     if [ -n "$DUP_KEYS" ]; then
@@ -154,21 +154,21 @@ pipeline {
                       echo "$DUP_KEYS"
                       exit 1
                     fi
-        
+
                     get_env() {
                       key="$1"
                       grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2-
                     }
-        
+
                     require_env() {
                       key="$1"
                       value="$(get_env "$key" || true)"
-        
+
                       if [ -z "$value" ]; then
                         echo "ERROR: missing or empty env: $key"
                         exit 1
                       fi
-        
+
                       case "$value" in
                         "changeme"|"CHANGE_ME"|"your_domain"|"your-bucket-name"|"TODO"|"todo"|"null"|"undefined")
                           echo "ERROR: placeholder value is not allowed for $key"
@@ -176,25 +176,42 @@ pipeline {
                           ;;
                       esac
                     }
-        
+
                     require_env POSTGRES_DB
                     require_env POSTGRES_USER
                     require_env POSTGRES_PASSWORD
                     require_env REDIS_PASSWORD
-        
+
                     require_env S3_BUCKET_NAME
                     require_env S3_REGION
                     require_env S3_ACCESS_KEY
                     require_env S3_SECRET_KEY
                     require_env CLOUDFRONT_DOMAIN
-        
+
+                    require_env VITE_KAKAO_MAP_KEY
+                    require_env VITE_FIREBASE_API_KEY
+                    require_env VITE_FIREBASE_AUTH_DOMAIN
+                    require_env VITE_FIREBASE_PROJECT_ID
+                    require_env VITE_FIREBASE_STORAGE_BUCKET
+                    require_env VITE_FIREBASE_MESSAGING_SENDER_ID
+                    require_env VITE_FIREBASE_MEASUREMENT_ID
+                    require_env VITE_FIREBASE_APP_ID
+                    require_env VITE_FIREBASE_VAPID_KEY
+                    require_env VITE_API_BACKEND_URL
+
+                    require_env JWT_SECRET
+                    require_env OAUTH_REDIRECT_URI
+                    require_env FRONTEND_URL
+                    require_env INSTAGRAM_CLIENT_ID
+                    require_env INSTAGRAM_CLIENT_SECRET
+
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
                     echo "$S3_REGION_VALUE" | grep -Eq '^[a-z]{2}-[a-z]+-[0-9]+$' || {
                       echo "ERROR: invalid S3_REGION format"
                       exit 1
                     }
-        
+
                     # CloudFront domain 형식 간단 검증
                     CLOUDFRONT_DOMAIN_VALUE="$(get_env CLOUDFRONT_DOMAIN)"
                     echo "$CLOUDFRONT_DOMAIN_VALUE" | grep -Eq '^https?://' && {
@@ -202,12 +219,12 @@ pipeline {
                       echo "Example: dxxxxx.cloudfront.net"
                       exit 1
                     }
-        
+
                     echo "$CLOUDFRONT_DOMAIN_VALUE" | grep -Eq '^[A-Za-z0-9.-]+$' || {
                       echo "ERROR: invalid CLOUDFRONT_DOMAIN format"
                       exit 1
                     }
-        
+
                     echo ".env validation passed"
                 '''
             }
