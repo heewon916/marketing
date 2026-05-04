@@ -84,25 +84,30 @@ public class Notification {
         this.retryCount = 0;
     }
 
+    // 알림의 상태를 발송 처리 중(PROCESSING)으로 변경한다.
     public void markProcessing() {
         this.status = NotificationStatus.PROCESSING;
     }
 
+    // 알림의 상태를 발송 완료(SENT)로 변경하고 발송 시간을 기록한다.
     public void markSent() {
         this.status = NotificationStatus.SENT;
         this.sentAt = OffsetDateTime.now();
         this.failureReason = null;
     }
 
+    // 알림의 상태를 발송 실패(FAILED)로 변경하고 실패 사유를 기록한다.
     public void markFailed(String reason) {
         this.status = NotificationStatus.FAILED;
         this.failureReason = reason;
     }
 
+    // 알림의 발송 재시도 횟수를 1 증가시킨다.
     public void increaseRetryCount() {
         this.retryCount += 1;
     }
 
+    // 알림의 상태를 대기(PENDING)로 변경하고 다음 발송 예정 시간을 설정한다.
     public void reschedule(OffsetDateTime nextScheduledAt) {
         this.status = NotificationStatus.PENDING;
         this.scheduledAt = nextScheduledAt;

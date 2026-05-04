@@ -12,6 +12,11 @@ public enum ErrorCode {
     CONTENT_NOT_FOUND(HttpStatus.NOT_FOUND, "게시물을 찾을 수 없습니다."),
     CONTENT_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물에 속한 이미지를 찾을 수 없습니다."),
 
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
+    INVALID_NOTIFICATION_BATCH_SIZE(HttpStatus.BAD_REQUEST, "유효하지 않은 알림 배치 크기입니다."),
+    NOTIFICATION_QUEUE_ENQUEUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "알림 큐 적재에 실패했습니다."),
+    NOTIFICATION_DISPATCH_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "알림 디스패치에 실패했습니다."),
+
     MISSING_REFRESH_TOKEN(HttpStatus.BAD_REQUEST, "리프레시 토큰이 필요합니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 리프레시 토큰입니다."),
     REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰을 찾을 수 없습니다."),
