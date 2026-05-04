@@ -42,10 +42,10 @@ public class SecurityConfig {
                         "/api/v1/users/instagram",
                         "/api/v1/users/instagram/callback",
                         "/api/v1/users/token/refresh",
-                        "/v3/api-docs",
-                        "/v3/api-docs/**",
-                        "/swagger-ui/**",
-                        "/swagger-ui.html",
+                        "/api/v3/api-docs",
+                        "/api/v3/api-docs/**",
+                        "/api/swagger-ui/**",
+                        "/api/swagger-ui.html",
                         "/swagger-resources/**",
                         "/webjars/**"
                 ).permitAll()
