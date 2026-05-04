@@ -87,7 +87,7 @@ async def process_utterance_endpoint(
 @router.post(
     "/{session_id}/extract-frames",
     response_model=ExtractFramesResponse,
-    summary="Extract the highest-scoring frame and upload it as a draft",
+    summary="가장 점수가 높은 프레임을 추출해 초안으로 업로드",
 )
 async def extract_frames_endpoint(
     session_id: str,
@@ -113,7 +113,7 @@ async def extract_frames_endpoint(
 @router.post(
     "/{session_id}/final-edit",
     response_model=FinalEditResponse,
-    summary="Correct draft image orientation and upload final images",
+    summary="초안 이미지 방향을 보정하고 최종 이미지를 업로드",
 )
 async def final_edit_endpoint(
     session_id: str,

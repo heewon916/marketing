@@ -27,19 +27,21 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     LOG_LEVEL: str = "DEBUG"
+    LOG_INCLUDE_RAW_IDENTIFIERS: bool = True
+    LOG_EVENT_PREVIEW_MAX_LEN: int = 200
     PROVIDER: str = "openai"
     DEFAULT_MODEL: str = "gpt-4o-mini"
     OPENAI_API_KEY: str | None = None
 
     DEBUG: bool = True
 
-    POSTGRES_HOST: str = "postgres"
+    POSTGRES_HOST: str = "project-postgres"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
 
-    REDIS_HOST: str = "redis"
+    REDIS_HOST: str = "project-redis"
     REDIS_PORT: int = 6379
     REDIS_PASSWORD: str | None = None
     REDIS_DB: int = 0
