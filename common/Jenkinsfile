@@ -31,7 +31,6 @@ pipeline {
                     echo "===== Detect changed services ====="
 
                     BUILD_SERVICES_FILE=".build-services"
-//                    BASE_COMMIT="${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-${GIT_PREVIOUS_COMMIT:-}}"
                     BASE_COMMIT="${GIT_PREVIOUS_COMMIT:-${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-}}"
 
                     append_service() {
