@@ -15,6 +15,7 @@ import java.io.InputStream;
 @Slf4j
 @Configuration
 public class FirebaseConfig {
+
     @Value("${firebase.enabled:false}")
     private boolean firebaseEnabled;
 
@@ -30,9 +31,10 @@ public class FirebaseConfig {
     @PostConstruct
     public void initialize() {
         if (!firebaseEnabled) {
-            log.warn("Firebase is disabled.");
+            log.info("Firebase is disabled. Skip Firebase application initialization.");
             return;
         }
+
         try {
             Resource resource = resourceLoader.getResource(serviceAccountPath);
             if (!resource.exists()) {

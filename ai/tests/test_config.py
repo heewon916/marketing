@@ -43,6 +43,8 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.REDIS_DB == 0
     assert settings.SESSION_TTL_SECONDS == 1800
     assert settings.DEBUG is True
+    assert settings.LOG_INCLUDE_RAW_IDENTIFIERS is True
+    assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 200
     assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
     assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
     assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
@@ -198,3 +200,14 @@ def test_s3_not_configured_when_bucket_missing(monkeypatch: pytest.MonkeyPatch) 
     settings = Settings(_env_file=None)
 
     assert settings.s3_configured is False
+
+
+def test_log_identifier_policy_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("LOG_INCLUDE_RAW_IDENTIFIERS", "false")
+    monkeypatch.setenv("LOG_EVENT_PREVIEW_MAX_LEN", "80")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.LOG_INCLUDE_RAW_IDENTIFIERS is False
+    assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 80

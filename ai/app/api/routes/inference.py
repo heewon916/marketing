@@ -18,7 +18,7 @@ class InferenceResponse(BaseModel):
     message: str
 
 
-@router.post("", response_model=InferenceResponse, summary="Inference placeholder")
+@router.post("", response_model=InferenceResponse, summary="추론 플레이스홀더")
 def run_inference(payload: InferenceRequest) -> InferenceResponse:
     resolved_model = payload.model or settings.DEFAULT_MODEL
     return InferenceResponse(
