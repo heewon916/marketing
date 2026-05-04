@@ -23,6 +23,60 @@ pipeline {
             }
         }
 
+        stage('Detect Changed Services') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "===== Detect changed services ====="
+
+                    BUILD_SERVICES_FILE=".build-services"
+                    BASE_COMMIT="${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-${GIT_PREVIOUS_COMMIT:-}}"
+
+                    append_service() {
+                      services="$1"
+                      service="$2"
+
+                      echo "$services" | grep -Eq "(^| )${service}( |$)" && {
+                        echo "$services"
+                        return
+                      }
+
+                      echo "$services $service" | xargs
+                    }
+
+                    if [ -z "$BASE_COMMIT" ] || ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+                      echo "No valid previous commit. Build all application images."
+                      echo "spring frontend nginx fastapi" > "$BUILD_SERVICES_FILE"
+                      exit 0
+                    fi
+
+                    TARGET_COMMIT="${GIT_COMMIT:-HEAD}"
+                    CHANGED_FILES="$(git diff --name-only "$BASE_COMMIT" "$TARGET_COMMIT")"
+
+                    echo "Base commit: $BASE_COMMIT"
+                    echo "Target commit: $TARGET_COMMIT"
+                    echo "Changed files:"
+                    printf '%s\\n' "$CHANGED_FILES"
+
+                    SERVICES=""
+
+                    # Compose/Jenkins 변경은 서비스 의존 관계나 배포 방식 자체가 바뀔 수 있어 전체 이미지를 다시 빌드한다.
+                    if printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^(compose\\.yaml|common/Jenkinsfile)$'; then
+                      SERVICES="spring frontend nginx fastapi"
+                    else
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^be/' && SERVICES="$(append_service "$SERVICES" spring)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^fe/' && SERVICES="$(append_service "$SERVICES" frontend)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^nginx/' && SERVICES="$(append_service "$SERVICES" nginx)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^ai/' && SERVICES="$(append_service "$SERVICES" fastapi)"
+                    fi
+
+                    echo "$SERVICES" | xargs > "$BUILD_SERVICES_FILE"
+                    echo "Services selected for image build: $(cat "$BUILD_SERVICES_FILE")"
+                '''
+            }
+        }
+
         stage('Prepare Deploy Directory') {
             steps {
                 sh '''
@@ -204,13 +258,59 @@ pipeline {
             steps {
                 dir("${DEPLOY_DIR}") {
                     sh '''
-                echo "===== Build without cache and Force Recreate ====="
-                # --no-cache 옵션을 추가하여 이전 빌드 기록을 완전히 무시하고 새로 구움
-                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build --no-cache frontend nginx fastapi
-                
-                # 그 후 컨테이너 실행
-                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --force-recreate --remove-orphans
-            '''
+                        set -eu
+
+                        echo "===== Build changed services and deploy ====="
+
+                        BUILD_SERVICES="$(cat .build-services 2>/dev/null || true)"
+                        export BUILD_COMMIT="${GIT_COMMIT:-unknown}"
+
+                        append_service() {
+                          services="$1"
+                          service="$2"
+
+                          echo "$services" | grep -Eq "(^| )${service}( |$)" && {
+                            echo "$services"
+                            return
+                          }
+
+                          echo "$services $service" | xargs
+                        }
+
+                        # 서버에 이미지가 없는 첫 배포/정리 직후에는 Git 변경 여부와 무관하게 필요한 이미지를 빌드한다.
+                        docker image inspect marketing-spring:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" spring)"
+                        docker image inspect marketing-frontend:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" frontend)"
+                        docker image inspect marketing-fastapi:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" fastapi)"
+                        docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
+
+                        echo "Build commit: $BUILD_COMMIT"
+                        echo "Build services: ${BUILD_SERVICES:-none}"
+
+                        if [ -n "$BUILD_SERVICES" ]; then
+                          # 변경된 도메인의 이미지만 다시 빌드한다. BUILD_COMMIT은 이미지 라벨로 남아 배포 커밋 추적에 사용된다.
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build $BUILD_SERVICES
+
+                          # 애플리케이션 컨테이너 교체 전에 공용 인프라 컨테이너를 먼저 보장한다.
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis
+
+                          # 변경된 서비스만 새 이미지로 교체한다. DB/Redis 같은 의존 서비스는 불필요하게 재시작하지 않는다.
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --no-deps --force-recreate $BUILD_SERVICES
+                        else
+                          echo "No application image changes detected. Skip image build."
+                        fi
+
+                        # compose.yaml 기준으로 누락/삭제된 컨테이너 상태를 정리한다.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --remove-orphans
+
+                        echo "===== Running containers ====="
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env ps
+
+                        echo "===== Deployed image revisions ====="
+                        docker inspect project-spring --format 'spring={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-frontend --format 'frontend={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                    '''
                 }
             }
         }

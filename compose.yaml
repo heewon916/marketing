@@ -3,6 +3,8 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     container_name: project-nginx
     restart: unless-stopped
     ports:
@@ -21,6 +23,8 @@ services:
     build:
       context: ./be
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     image: marketing-spring:latest
     container_name: project-spring
     restart: unless-stopped
@@ -52,6 +56,8 @@ services:
     build:
       context: ./fe
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     image: marketing-frontend:latest
     container_name: project-frontend
     restart: unless-stopped
@@ -102,6 +108,8 @@ services:
     build:
       context: ./ai
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     image: marketing-fastapi:latest
     container_name: project-fastapi
     restart: unless-stopped
