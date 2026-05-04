@@ -21,18 +21,13 @@ export default function AccountInfoEdit({ formData, onChange }) {
   const [isSearching, setIsSearching] = useState(false);
 
   const updateField = (key, value) => {
-    onChange({
-      ...formData,
-      [key]: value,
-    });
+    onChange({ ...formData, [key]: value });
   };
 
   useEffect(() => {
     const keyword = searchKeyword.trim();
 
-    if (!keyword || keyword === storeLocation.address) {
-      return;
-    }
+    if (!keyword || keyword === storeLocation.address) return;
 
     const timer = setTimeout(async () => {
       try {
@@ -96,20 +91,20 @@ export default function AccountInfoEdit({ formData, onChange }) {
   return (
     <CardShell className="flex flex-col gap-5 p-5">
       <label className="flex flex-col gap-2">
-        <span className="text-[15px] font-semibold text-gray-400">
+        <span className="text-[14px] font-medium text-gray-400">
           상호명
         </span>
 
         <input
           value={formData.businessName}
           onChange={(event) => updateField('businessName', event.target.value)}
-          className="h-12 rounded-xl border border-gray-200 bg-white px-4 text-[18px] font-bold text-accent-100 outline-none focus:border-primary-100"
+          className="h-12 rounded-xl border border-gray-200 bg-white px-4 text-[17px] font-medium text-accent-100 outline-none focus:border-primary-100"
           placeholder="상호명을 입력해주세요"
         />
       </label>
 
       <div className="flex flex-col gap-3">
-        <span className="text-[15px] font-semibold text-gray-400">
+        <span className="text-[14px] font-medium text-gray-400">
           업종
         </span>
 
@@ -123,7 +118,7 @@ export default function AccountInfoEdit({ formData, onChange }) {
                 size="sm"
                 variant={isSelected ? 'primary' : 'white'}
                 onClick={() => updateField('category', category)}
-                className="w-full text-[17px] font-bold"
+                className="w-full text-[17px] font-medium"
               >
                 {category}
               </Button>
@@ -133,7 +128,7 @@ export default function AccountInfoEdit({ formData, onChange }) {
       </div>
 
       <div className="flex flex-col gap-3">
-        <span className="text-[15px] font-semibold text-gray-400">
+        <span className="text-[14px] font-medium text-gray-400">
           위치
         </span>
 
@@ -146,7 +141,7 @@ export default function AccountInfoEdit({ formData, onChange }) {
           />
 
           {isSearching && (
-            <p className="mt-2 text-sm text-gray-400">
+            <p className="mt-2 text-[14px] font-medium text-gray-400">
               검색 중입니다
             </p>
           )}

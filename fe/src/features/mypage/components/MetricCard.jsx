@@ -52,10 +52,10 @@ export default function MetricCard({ title, value, unit, description }) {
             <button
               type="button"
               onClick={() => setIsDescriptionOpen(true)}
-              className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-gray-500"
+              className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-500"
               aria-label="지표 설명 보기"
             >
-              <span className="material-icons text-[18px]">question_mark</span>
+              <span className="material-icons" style={{ fontSize: '16px' }}>question_mark</span>
             </button>
           )}
         </div>
