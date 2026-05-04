@@ -7,11 +7,13 @@ import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+import time
 
 from fastapi import Request
 from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.logging import build_log_extra
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
@@ -154,12 +156,17 @@ class FrameExtractionService:
                 debug_fields["debug:s3_uploader_configured"] = str(self.uploader.is_configured).lower()
                 logger.warning(
                     "Frame extraction aborted because S3 is unavailable.",
-                    extra={
-                        "session_id": session_id,
-                        "video_key": video_key,
-                        "downloader_configured": self.downloader.is_configured,
-                        "uploader_configured": self.uploader.is_configured,
-                    },
+                    extra=build_log_extra(
+                        "frame_extraction.s3_config_check",
+                        component="frame_extraction",
+                        stage="s3_config_check",
+                        session_id=session_id,
+                        outcome="failed",
+                        error_type="s3_unavailable",
+                        video_key=video_key,
+                        downloader_configured=self.downloader.is_configured,
+                        uploader_configured=self.uploader.is_configured,
+                    ),
                 )
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
@@ -169,6 +176,19 @@ class FrameExtractionService:
                 )
 
             debug_fields["debug:stage"] = "download_video"
+            download_started_at = time.perf_counter()
+            logger.info(
+                "Downloading source video for frame extraction.",
+                extra=build_log_extra(
+                    "frame_extraction.download_video.started",
+                    component="frame_extraction",
+                    stage="download_video",
+                    session_id=session_id,
+                    outcome="started",
+                    video_key=video_key,
+                    video_path=str(video_path),
+                ),
+            )
             await self.downloader.download_video(video_key, video_path)
             debug_fields["debug:downloaded"] = str(video_path.exists()).lower()
             if video_path.exists():
@@ -176,26 +196,50 @@ class FrameExtractionService:
 
             logger.info(
                 "Video downloaded for frame extraction.",
-                extra={
-                    "session_id": session_id,
-                    "video_key": video_key,
-                    "video_path": str(video_path),
-                    "video_exists": video_path.exists(),
-                    "video_size_bytes": video_path.stat().st_size if video_path.exists() else 0,
-                },
+                extra=build_log_extra(
+                    "frame_extraction.download_video.completed",
+                    component="frame_extraction",
+                    stage="download_video",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    video_key=video_key,
+                    video_path=str(video_path),
+                    video_exists=video_path.exists(),
+                    video_size_bytes=video_path.stat().st_size if video_path.exists() else 0,
+                    elapsed_ms=int((time.perf_counter() - download_started_at) * 1000),
+                ),
             )
 
             debug_fields["debug:stage"] = "extract_frame"
+            extract_started_at = time.perf_counter()
+            logger.info(
+                "Running best-frame extraction.",
+                extra=build_log_extra(
+                    "frame_extraction.extract_frame.started",
+                    component="frame_extraction",
+                    stage="extract_frame",
+                    session_id=session_id,
+                    outcome="started",
+                    video_key=video_key,
+                    video_path=str(video_path),
+                ),
+            )
             frame = await asyncio.to_thread(self.extractor.extract_best_frame, video_path)
             if frame is None:
                 debug_fields["debug:extractor_result"] = "none"
                 logger.warning(
                     "Frame extraction returned no frame.",
-                    extra={
-                        "session_id": session_id,
-                        "video_key": video_key,
-                        "video_path": str(video_path),
-                    },
+                    extra=build_log_extra(
+                        "frame_extraction.extract_frame.completed",
+                        component="frame_extraction",
+                        stage="extract_frame",
+                        session_id=session_id,
+                        outcome="failed",
+                        error_type="frame_extraction_failed",
+                        video_key=video_key,
+                        video_path=str(video_path),
+                        elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
+                    ),
                 )
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
@@ -206,16 +250,48 @@ class FrameExtractionService:
 
             debug_fields["debug:extractor_result"] = "frame_found"
             debug_fields["debug:frame_shape"] = "x".join(str(dimension) for dimension in frame.shape)
+            logger.info(
+                "Best-frame extraction completed.",
+                extra=build_log_extra(
+                    "frame_extraction.extract_frame.completed",
+                    component="frame_extraction",
+                    stage="extract_frame",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    video_key=video_key,
+                    frame_shape=debug_fields["debug:frame_shape"],
+                    elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
+                ),
+            )
             debug_fields["debug:stage"] = "upload_frame"
+            upload_started_at = time.perf_counter()
+            logger.info(
+                "Uploading extracted frame as draft.",
+                extra=build_log_extra(
+                    "frame_extraction.upload_frame.started",
+                    component="frame_extraction",
+                    stage="upload_frame",
+                    session_id=session_id,
+                    outcome="started",
+                    video_key=video_key,
+                    frame_shape=debug_fields["debug:frame_shape"],
+                ),
+            )
             uploaded_path = await self.uploader.upload_frame(session_id, frame, session_dir)
             if uploaded_path is None:
                 debug_fields["debug:upload_result"] = "none"
                 logger.warning(
                     "Frame upload returned no draft path.",
-                    extra={
-                        "session_id": session_id,
-                        "video_key": video_key,
-                    },
+                    extra=build_log_extra(
+                        "frame_extraction.upload_frame.completed",
+                        component="frame_extraction",
+                        stage="upload_frame",
+                        session_id=session_id,
+                        outcome="failed",
+                        error_type="s3_upload_unavailable",
+                        video_key=video_key,
+                        elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
+                    ),
                 )
                 return ExtractFramesResult(
                     status=STATUS_FAIL,
@@ -228,11 +304,16 @@ class FrameExtractionService:
             debug_fields["debug:stage"] = "completed"
             logger.info(
                 "Frame extraction completed successfully.",
-                extra={
-                    "session_id": session_id,
-                    "video_key": video_key,
-                    "draft_path": uploaded_path,
-                },
+                extra=build_log_extra(
+                    "frame_extraction.upload_frame.completed",
+                    component="frame_extraction",
+                    stage="upload_frame",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    video_key=video_key,
+                    draft_path=uploaded_path,
+                    elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
+                ),
             )
             return ExtractFramesResult(
                 status=STATUS_FRAME_EXTRACTED,
@@ -245,10 +326,15 @@ class FrameExtractionService:
             debug_fields["debug:exception_message"] = str(exc)
             logger.exception(
                 "Frame extraction failed with an exception.",
-                extra={
-                    "session_id": session_id,
-                    "video_key": video_key,
-                },
+                extra=build_log_extra(
+                    "frame_extraction.exception",
+                    component="frame_extraction",
+                    stage=debug_fields["debug:stage"],
+                    session_id=session_id,
+                    outcome="failed",
+                    error_type=exc.__class__.__name__,
+                    video_key=video_key,
+                ),
             )
             return ExtractFramesResult(
                 status=STATUS_FAIL,
@@ -257,6 +343,17 @@ class FrameExtractionService:
                 debug_fields=debug_fields,
             )
         finally:
+            logger.info(
+                "Cleaning up frame extraction temp directory.",
+                extra=build_log_extra(
+                    "frame_extraction.cleanup_tempdir",
+                    component="frame_extraction",
+                    stage="cleanup_tempdir",
+                    session_id=session_id,
+                    outcome="completed",
+                    session_dir=str(session_dir),
+                ),
+            )
             shutil.rmtree(session_dir, ignore_errors=True)
 
 
@@ -288,6 +385,19 @@ async def process_extract_frames(
         "video": payload.video,
         "status": result.status if result.status == STATUS_FRAME_EXTRACTED else (existing_status or STATUS_TEXT_GENERATED),
     }
+    logger.info(
+        "Persisting frame extraction result to redis.",
+        extra=build_log_extra(
+            "frame_extraction.persist_redis.started",
+            component="frame_extraction",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="started",
+            video_key=payload.video,
+            result_status=result.status,
+            draft_count=len(result.drafts),
+        ),
+    )
 
     await upsert_content_session(
         redis,
@@ -295,5 +405,17 @@ async def process_extract_frames(
         scalar_fields=redis_payload,
         drafts=result.drafts,
         debug_fields=result.debug_fields,
+    )
+    logger.info(
+        "Persisted frame extraction result to redis.",
+        extra=build_log_extra(
+            "frame_extraction.persist_redis.completed",
+            component="frame_extraction",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="succeeded",
+            result_status=result.status,
+            draft_count=len(result.drafts),
+        ),
     )
     return result
