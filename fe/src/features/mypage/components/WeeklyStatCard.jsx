@@ -9,8 +9,37 @@ export default function WeeklyStatCard({
   const [animatedPercent, setAnimatedPercent] = useState(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => setAnimatedPercent(percent), 100);
-    return () => clearTimeout(timer);
+    const targetPercent = Number(percent);
+
+    if (Number.isNaN(targetPercent)) {
+      return;
+    }
+
+    let animationFrameId;
+    let startTime;
+
+    const duration = 900;
+
+    const animate = (currentTime) => {
+      if (!startTime) {
+        startTime = currentTime;
+      }
+
+      const elapsedTime = currentTime - startTime;
+      const progress = Math.min(elapsedTime / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const currentPercent = Math.round(targetPercent * easedProgress);
+
+      setAnimatedPercent(currentPercent);
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(animationFrameId);
   }, [percent]);
 
   const radius = 85;
@@ -48,7 +77,6 @@ export default function WeeklyStatCard({
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            className="transition-all duration-1000 ease-out"
           />
         </svg>
 

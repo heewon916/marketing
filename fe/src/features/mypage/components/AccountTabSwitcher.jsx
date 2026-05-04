@@ -5,7 +5,7 @@ const tabs = [
 
 export default function AccountTabSwitcher({ activeTab, onChange }) {
   return (
-    <div className="grid h-14 w-full grid-cols-2 rounded-2xl bg-gray-100 p-0">
+    <div className="grid h-13 w-full grid-cols-2 rounded-[20px] border border-gray-200 bg-white p-1">
       {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
 
@@ -15,10 +15,10 @@ export default function AccountTabSwitcher({ activeTab, onChange }) {
             type="button"
             onClick={() => onChange(tab.key)}
             className={[
-              'flex items-center justify-center rounded-2xl text-[18px] font-extrabold transition-colors',
+              'flex items-center justify-center rounded-[16px] text-[17px] font-bold transition-colors',
               isActive
                 ? 'bg-accent-100 text-white'
-                : 'bg-transparent text-accent-100',
+                : 'bg-transparent text-gray-500',
             ].join(' ')}
           >
             {tab.label}

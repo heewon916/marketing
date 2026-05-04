@@ -1,20 +1,25 @@
 import { useNavigate } from 'react-router-dom';
 
-export default function AccountHeader({ title = '계정 정보' }) {
+export default function AccountHeader({
+  title = '계정 정보',
+  hideBackButton = false,
+}) {
   const navigate = useNavigate();
 
   return (
-    <header className="relative flex h-14 w-full items-center justify-center">
-      <button
-        type="button"
-        onClick={() => navigate(-1)}
-        className="absolute left-0 flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-accent-100"
-        aria-label="뒤로가기"
-      >
-        <span className="material-icons text-[28px]">arrow_back</span>
-      </button>
+    <header className="sticky top-0 z-50 flex h-14 w-full items-center justify-center px-4 pt-5 backdrop-blur-md transition-all">
+      {!hideBackButton && (
+        <button
+          type="button"
+          onClick={() => navigate('/mypage')}
+          className="absolute left-4 top-5 flex h-9 w-9 items-center justify-center rounded-full text-accent-100"
+          aria-label="마이페이지로 이동"
+        >
+          <span className="material-icons text-[28px]">arrow_back</span>
+        </button>
+      )}
 
-      <h1 className="text-[22px] font-extrabold text-accent-100">
+      <h1 className="text-[19px] font-bold tracking-tight text-accent-100">
         {title}
       </h1>
     </header>
