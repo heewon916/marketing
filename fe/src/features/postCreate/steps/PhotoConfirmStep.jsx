@@ -1,8 +1,9 @@
 import { useRef, useState } from "react"
 import StepProgress from "@/components/common/StepProgress"
-import { HiOutlineTrash } from "react-icons/hi"
 import Button from "@/components/common/Button"
 import BottomTab from "@/components/common/BottomTab"
+import PhotoConfirmCarousel from "@/features/postCreate/components/PhotoConfirmCarousel"
+import PhotoDeleteButton from "@/features/postCreate/components/PhotoDeleteButton"
 
 const PEEK = 30
 const GAP = 16
@@ -47,60 +48,21 @@ export default function PhotoConfirmStep({ photos: initialPhotos = [], onNext, o
 	return (
 		<main className="relative flex h-dvh flex-col bg-white">
 			{/* 상단 진행바 */}
-			<section className="flex justify-center px-5 pt-6 pb-4 shrink-0">
+			<section className="flex justify-center px-10 pt-8 pb-3 shrink-0">
 				<StepProgress current={stepNum} />
 			</section>
 
 			{/* 캐러셀 + 휴지통 */}
 			<section className="flex flex-col flex-1 items-center justify-center overflow-hidden gap-5 pb-40">
-				<div
-					ref={trackRef}
+				<PhotoConfirmCarousel
+					photos={photos}
+					trackRef={trackRef}
 					onScroll={handleScroll}
-					className="flex w-full snap-x snap-mandatory overflow-x-auto"
-					style={{
-						gap: GAP,
-						scrollbarWidth: "none",
-						WebkitOverflowScrolling: "touch",
-					}}
-				>
-					{photos.map((photo, i) => (
-						<div
-							key={photo.id ?? i}
-							className="relative shrink-0 snap-center rounded-[28px] overflow-hidden aspect-[384/514]"
-							style={{
-								width: `calc(100% - ${PEEK * 2}px)`,
-								marginLeft: i === 0 ? PEEK : 0,
-								marginRight: i === photos.length - 1 ? PEEK : 0,
-							}}
-						>
-							{/* 가짜 이미지 — primary 배경 */}
-							<div className="h-full w-full bg-gray-100">
-								{photo.url && (
-									<img
-										src={photo.url}
-										alt={`photo-${i + 1}`}
-										className="h-full w-full object-cover"
-										draggable={false}
-									/>
-								)}
-							</div>
-							{/* 인덱스 뱃지 */}
-							<div className="absolute top-4 right-4 rounded-full bg-accent-100/80 px-3 py-1 text-sm font-semibold text-white">
-								{i + 1} / {photos.length}
-							</div>
-						</div>
-					))}
-				</div>
+					peek={PEEK}
+					gap={GAP}
+				/>
 
-				{/* 휴지통 버튼 */}
-				<button
-					type="button"
-					onClick={handleDelete}
-					className="flex h-14 w-14 items-center justify-center rounded-full border border-gray-300 bg-white text-accent-100 active:bg-gray-100"
-					aria-label="사진 삭제"
-				>
-					<HiOutlineTrash className="text-[28px]" />
-				</button>
+				<PhotoDeleteButton onClick={handleDelete} />
 			</section>
 
 			{/* 하단 버튼 */}
