@@ -6,6 +6,7 @@ import AccountProfile from '../components/AccountProfile';
 import AccountTabSwitcher from '../components/AccountTabSwitcher';
 import OperatingHoursList from '../components/OperatingHoursList';
 import OperatingHoursEdit from '../components/OperatingHoursEdit';
+import Button from '@/components/common/Button';
 
 const accountMockData = {
   storeName: '싸피 카페',
@@ -13,48 +14,13 @@ const accountMockData = {
 };
 
 const initialOperatingHours = [
-  {
-    day: '월',
-    isOpen: true,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
-  {
-    day: '화',
-    isOpen: false,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
-  {
-    day: '수',
-    isOpen: false,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
-  {
-    day: '목',
-    isOpen: true,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
-  {
-    day: '금',
-    isOpen: true,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
-  {
-    day: '토',
-    isOpen: true,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
-  {
-    day: '일',
-    isOpen: true,
-    startTime: '11:00',
-    endTime: '20:30',
-  },
+  { day: '월', isOpen: true, startTime: '11:00', endTime: '20:30' },
+  { day: '화', isOpen: false, startTime: '11:00', endTime: '20:30' },
+  { day: '수', isOpen: false, startTime: '11:00', endTime: '20:30' },
+  { day: '목', isOpen: true, startTime: '11:00', endTime: '20:30' },
+  { day: '금', isOpen: true, startTime: '11:00', endTime: '20:30' },
+  { day: '토', isOpen: true, startTime: '11:00', endTime: '20:30' },
+  { day: '일', isOpen: true, startTime: '11:00', endTime: '20:30' },
 ];
 
 export default function OperatingHoursSection({ onTabChange }) {
@@ -91,67 +57,69 @@ export default function OperatingHoursSection({ onTabChange }) {
   };
 
   return (
-    <div className="min-h-screen bg-white pb-24">
-      <main className="mx-auto flex min-h-screen w-full max-w-[430px] flex-col px-6 pt-6">
-        <AccountHeader title="계정 정보" />
+    <div className="min-h-screen bg-accent-100/5 pb-28">
+      <AccountHeader
+        title='계정 정보'
+        hideBackButton={isEditing}
+      />
 
-        <div className="mt-11">
-          <AccountProfile
-            storeName={accountMockData.storeName}
-            instagramUsername={accountMockData.instagramUsername}
-          />
-        </div>
+      <main className="mx-auto flex w-full max-w-[430px] flex-col gap-4 px-5 pt-4">
+        <AccountProfile
+          storeName={accountMockData.storeName}
+          instagramUsername={accountMockData.instagramUsername}
+        />
 
-        <div className="mt-11 px-4">
-          <AccountTabSwitcher
-            activeTab="hours"
-            onChange={handleTabChange}
-          />
-        </div>
+        <AccountTabSwitcher
+          activeTab="hours"
+          onChange={handleTabChange}
+        />
 
-        <section className="mt-16">
-          <h2 className="text-[18px] font-bold text-gray-500">
+        <section className="flex flex-col gap-3">
+          <h2 className="px-1 text-[16px] font-bold text-gray-500">
             영업 시간
           </h2>
 
-          <div className="mt-6">
-            {isEditing ? (
-              <OperatingHoursEdit
-                hours={operatingHours}
-                onChange={setOperatingHours}
-              />
-            ) : (
-              <OperatingHoursList hours={operatingHours} />
-            )}
-          </div>
+          {isEditing ? (
+            <OperatingHoursEdit
+              hours={operatingHours}
+              onChange={setOperatingHours}
+            />
+          ) : (
+            <OperatingHoursList hours={operatingHours} />
+          )}
         </section>
 
         {isEditing ? (
-          <div className="mt-auto mb-5 grid grid-cols-2 gap-3">
-            <button
-              type="button"
+          <div className="mt-2 flex justify-center gap-3">
+            <Button
+              size="sm"
+              variant="white"
               onClick={handleCancelClick}
-              className="h-14 w-full rounded-xl border border-gray-200 bg-white text-[20px] font-extrabold text-gray-500"
+              className="text-[18px] font-bold"
             >
               취소
-            </button>
+            </Button>
 
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="primary"
               onClick={handleSaveClick}
-              className="h-14 w-full rounded-xl bg-primary-100 text-[20px] font-extrabold text-white"
+              className="text-[18px] font-bold"
             >
               저장하기
-            </button>
+            </Button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={handleEditClick}
-            className="mt-auto mb-5 h-14 w-full rounded-xl bg-primary-100 text-[20px] font-extrabold text-white"
-          >
-            수정하기
-          </button>
+          <div className="mt-2 flex justify-center">
+            <Button
+              size="lg"
+              variant="primary"
+              onClick={handleEditClick}
+              className="text-[18px] font-bold"
+            >
+              수정하기
+            </Button>
+          </div>
         )}
       </main>
 

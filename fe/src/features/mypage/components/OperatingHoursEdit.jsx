@@ -1,4 +1,5 @@
 import DayTimeRow from '@/features/auth/onboarding/components/DayTimeRow';
+import CardShell from './CardShell';
 
 export default function OperatingHoursEdit({ hours, onChange }) {
   const updateDay = (index, key, value) => {
@@ -15,14 +16,23 @@ export default function OperatingHoursEdit({ hours, onChange }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <CardShell className="flex flex-col gap-3 p-5">
       {hours.map((item, index) => (
         <DayTimeRow
           key={item.day}
-          dayData={item}
-          onChange={(key, value) => updateDay(index, key, value)}
+          day={item.day}
+          isOpen={item.isOpen}
+          startTime={item.startTime}
+          endTime={item.endTime}
+          onToggle={() => updateDay(index, 'isOpen', !item.isOpen)}
+          onStartTimeChange={(value) =>
+            updateDay(index, 'startTime', value)
+          }
+          onEndTimeChange={(value) =>
+            updateDay(index, 'endTime', value)
+          }
         />
       ))}
-    </div>
+    </CardShell>
   );
 }
