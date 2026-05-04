@@ -49,7 +49,9 @@ services:
       INSTAGRAM_CLIENT_ID: ${INSTAGRAM_CLIENT_ID}
       INSTAGRAM_CLIENT_SECRET: ${INSTAGRAM_CLIENT_SECRET}
       FIREBASE_ENABLED: ${FIREBASE_ENABLED:-false}
-      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-classpath:firebase/firebase-service-account.json}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-file:/run/secrets/firebase-service-account.json}
+    volumes:
+      - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
     expose:
       - "8080"
     depends_on:

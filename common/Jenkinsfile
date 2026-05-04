@@ -95,6 +95,8 @@ pipeline {
                       --exclude='*/.gradle' \
                       --exclude='*/.pnpm-store' \
                       --exclude='./.env' \
+                      --exclude='./secrets' \
+                      --exclude='./be/src/main/resources/firebase/firebase-service-account.json' \
                       -cf - . | tar -C "${DEPLOY_DIR}" -xf -
 
                     echo "===== Deploy directory files ====="
@@ -116,6 +118,25 @@ pipeline {
                         chmod 600 "${DEPLOY_DIR}/.env"
 
                         echo ".env created at ${DEPLOY_DIR}/.env"
+                    '''
+                }
+            }
+        }
+
+        stage('Prepare Firebase Secret') {
+            steps {
+                withCredentials([file(credentialsId: 'marketing-firebase-service-account-file', variable: 'FIREBASE_SERVICE_ACCOUNT_FILE')]) {
+                    sh '''
+                        set +x
+                        set -eu
+
+                        echo "===== Create Firebase service account secret ====="
+
+                        mkdir -p "${DEPLOY_DIR}/secrets"
+                        cp "$FIREBASE_SERVICE_ACCOUNT_FILE" "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                        chmod 600 "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+
+                        echo "Firebase service account secret file created."
                     '''
                 }
             }
@@ -204,6 +225,7 @@ pipeline {
                     require_env FRONTEND_URL
                     require_env INSTAGRAM_CLIENT_ID
                     require_env INSTAGRAM_CLIENT_SECRET
+                    require_env FIREBASE_ENABLED
 
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
@@ -225,6 +247,12 @@ pipeline {
                       exit 1
                     }
 
+                    FIREBASE_ENABLED_VALUE="$(get_env FIREBASE_ENABLED)"
+                    echo "$FIREBASE_ENABLED_VALUE" | grep -Eq '^(true|false)$' || {
+                      echo "ERROR: FIREBASE_ENABLED should be true or false"
+                      exit 1
+                    }
+
                     echo ".env validation passed"
                 '''
             }
@@ -242,6 +270,7 @@ pipeline {
                     test -f "${DEPLOY_DIR}/be/Dockerfile"
                     test -f "${DEPLOY_DIR}/fe/Dockerfile"
                     test -f "${DEPLOY_DIR}/ai/Dockerfile"
+                    test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
                 '''
@@ -265,7 +294,9 @@ pipeline {
                 dir("${DEPLOY_DIR}") {
                     sh '''
                         echo "===== Validate compose.yaml ====="
-                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env config
+                        # docker compose config는 env 값을 펼쳐 출력할 수 있으므로 검증 결과만 남긴다.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env config >/dev/null
+                        echo "Compose config validation passed"
                     '''
                 }
             }
