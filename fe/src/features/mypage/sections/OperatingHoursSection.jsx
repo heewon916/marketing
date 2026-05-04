@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomTab from '@/components/common/BottomTab';
-import AccountHeader from '../components/AccountHeader';
+import MyPageHeader from '../components/MyPageHeader';
 import AccountProfile from '../components/AccountProfile';
 import AccountTabSwitcher from '../components/AccountTabSwitcher';
 import OperatingHoursList from '../components/OperatingHoursList';
@@ -58,10 +58,7 @@ export default function OperatingHoursSection({ onTabChange }) {
 
   return (
     <div className="min-h-screen bg-accent-100/5 pb-28">
-      <AccountHeader
-        title='계정 정보'
-        hideBackButton={isEditing}
-      />
+      <MyPageHeader title="계정 정보" showBackButton />
 
       <main className="mx-auto flex w-full max-w-[430px] flex-col gap-4 px-5 pt-4">
         <AccountProfile
