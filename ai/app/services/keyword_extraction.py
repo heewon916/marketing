@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import Request
 
 from app.core.config import settings
+from app.logging import build_log_extra, preview_text
 from app.keyword_model_download import ensure_keyword_model_available
 
 logger = logging.getLogger(__name__)
@@ -98,11 +99,21 @@ class KeywordExtractionService:
 
         logger.info(
             "Keyword extraction inference started.",
-            extra={
-                "keyword_timeout_seconds": self.timeout_seconds,
-                "keyword_model_loaded": self._model is not None,
-                "utterance_length": len(utterance),
-            },
+            extra=build_log_extra(
+                "keyword_extraction.inference.started",
+                component="keyword_extraction",
+                stage="inference",
+                outcome="started",
+                keyword_timeout_seconds=self.timeout_seconds,
+                keyword_model_loaded=self._model is not None,
+                utterance_length=len(utterance),
+                utterance_preview=preview_text(
+                    utterance,
+                    settings.LOG_EVENT_PREVIEW_MAX_LEN,
+                )
+                if settings.LOG_INCLUDE_RAW_IDENTIFIERS
+                else None,
+            ),
         )
 
         try:
@@ -113,11 +124,16 @@ class KeywordExtractionService:
         except TimeoutError as exc:
             logger.warning(
                 "Keyword extraction timed out while waiting for llama-cpp completion.",
-                extra={
-                    "keyword_timeout_seconds": self.timeout_seconds,
-                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
-                    "keyword_model_loaded": self._model is not None,
-                },
+                extra=build_log_extra(
+                    "keyword_extraction.inference.completed",
+                    component="keyword_extraction",
+                    stage="inference",
+                    outcome="failed",
+                    error_type="TimeoutError",
+                    keyword_timeout_seconds=self.timeout_seconds,
+                    elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+                    keyword_model_loaded=self._model is not None,
+                ),
             )
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction timed out."
@@ -127,10 +143,15 @@ class KeywordExtractionService:
         except Exception as exc:
             logger.warning(
                 "Keyword extraction inference raised an unexpected exception.",
-                extra={
-                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
-                    "keyword_model_loaded": self._model is not None,
-                },
+                extra=build_log_extra(
+                    "keyword_extraction.inference.completed",
+                    component="keyword_extraction",
+                    stage="inference",
+                    outcome="failed",
+                    error_type=exc.__class__.__name__,
+                    elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+                    keyword_model_loaded=self._model is not None,
+                ),
                 exc_info=True,
             )
             raise KeywordExtractionUnavailableError(
@@ -140,10 +161,14 @@ class KeywordExtractionService:
         keywords = self._parse_keywords(raw_output)
         logger.info(
             "Keyword extraction inference finished.",
-            extra={
-                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
-                "keywords_preview": ", ".join(keywords),
-            },
+            extra=build_log_extra(
+                "keyword_extraction.inference.completed",
+                component="keyword_extraction",
+                stage="inference",
+                outcome="succeeded",
+                elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+                keywords_preview=", ".join(keywords),
+            ),
         )
         return keywords
 
@@ -182,12 +207,16 @@ class KeywordExtractionService:
             try:
                 logger.info(
                     "Initializing keyword llama-cpp model.",
-                    extra={
-                        "keyword_model_path": str(self.model_path),
-                        "keyword_model_ctx_size": self.n_ctx,
-                        "keyword_model_threads": self.n_threads,
-                        "keyword_model_gpu_layers": self.n_gpu_layers,
-                    },
+                    extra=build_log_extra(
+                        "keyword_extraction.model_init.started",
+                        component="keyword_extraction",
+                        stage="model_init",
+                        outcome="started",
+                        keyword_model_path=str(self.model_path),
+                        keyword_model_ctx_size=self.n_ctx,
+                        keyword_model_threads=self.n_threads,
+                        keyword_model_gpu_layers=self.n_gpu_layers,
+                    ),
                 )
                 self._model = Llama(
                     model_path=str(self.model_path),
@@ -198,22 +227,31 @@ class KeywordExtractionService:
                 )
                 logger.info(
                     "Keyword llama-cpp model initialized.",
-                    extra={
-                        "keyword_model_path": str(self.model_path),
-                        "elapsed_ms": int(
+                    extra=build_log_extra(
+                        "keyword_extraction.model_init.completed",
+                        component="keyword_extraction",
+                        stage="model_init",
+                        outcome="succeeded",
+                        keyword_model_path=str(self.model_path),
+                        elapsed_ms=int(
                             (time.perf_counter() - ensure_started_at) * 1000
                         ),
-                    },
+                    ),
                 )
             except Exception as exc:
                 logger.warning(
                     "Keyword llama-cpp model initialization failed.",
-                    extra={
-                        "keyword_model_path": str(self.model_path),
-                        "elapsed_ms": int(
+                    extra=build_log_extra(
+                        "keyword_extraction.model_init.completed",
+                        component="keyword_extraction",
+                        stage="model_init",
+                        outcome="failed",
+                        error_type=exc.__class__.__name__,
+                        keyword_model_path=str(self.model_path),
+                        elapsed_ms=int(
                             (time.perf_counter() - ensure_started_at) * 1000
                         ),
-                    },
+                    ),
                     exc_info=True,
                 )
                 raise KeywordExtractionUnavailableError(
@@ -242,11 +280,15 @@ class KeywordExtractionService:
         try:
             logger.info(
                 "Calling llama-cpp create_chat_completion for keyword extraction.",
-                extra={
-                    "keyword_max_tokens": self.max_tokens,
-                    "keyword_temperature": self.temperature,
-                    "keyword_top_p": self.top_p,
-                },
+                extra=build_log_extra(
+                    "keyword_extraction.generate.started",
+                    component="keyword_extraction",
+                    stage="generate",
+                    outcome="started",
+                    keyword_max_tokens=self.max_tokens,
+                    keyword_temperature=self.temperature,
+                    keyword_top_p=self.top_p,
+                ),
             )
             response = model.create_chat_completion(
                 **response_kwargs,
@@ -269,6 +311,13 @@ class KeywordExtractionService:
         except TypeError:
             logger.info(
                 "llama-cpp response_format is unsupported; retrying without schema enforcement."
+                ,
+                extra=build_log_extra(
+                    "keyword_extraction.generate.response_format_retry",
+                    component="keyword_extraction",
+                    stage="generate",
+                    outcome="retrying",
+                ),
             )
             response = model.create_chat_completion(**response_kwargs)
 
@@ -279,10 +328,17 @@ class KeywordExtractionService:
         )
         logger.info(
             "llama-cpp keyword completion returned.",
-            extra={
-                "elapsed_ms": int((time.perf_counter() - generation_started_at) * 1000),
-                "raw_output_preview": raw_output[:200],
-            },
+            extra=build_log_extra(
+                "keyword_extraction.generate.completed",
+                component="keyword_extraction",
+                stage="generate",
+                outcome="succeeded",
+                elapsed_ms=int((time.perf_counter() - generation_started_at) * 1000),
+                raw_output_preview=preview_text(
+                    raw_output,
+                    settings.LOG_EVENT_PREVIEW_MAX_LEN,
+                ),
+            ),
         )
         return raw_output
 
@@ -326,10 +382,17 @@ class KeywordExtractionService:
 
         logger.info(
             "Keyword extraction parsed keywords.",
-            extra={
-                "keywords_preview": ", ".join(keywords),
-                "raw_output_preview": raw_output[:200],
-            },
+            extra=build_log_extra(
+                "keyword_extraction.parse.completed",
+                component="keyword_extraction",
+                stage="parse",
+                outcome="succeeded",
+                keywords_preview=", ".join(keywords),
+                raw_output_preview=preview_text(
+                    raw_output,
+                    settings.LOG_EVENT_PREVIEW_MAX_LEN,
+                ),
+            ),
         )
         return keywords
 
