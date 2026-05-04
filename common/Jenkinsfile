@@ -23,6 +23,60 @@ pipeline {
             }
         }
 
+        stage('Detect Changed Services') {
+            steps {
+                sh '''
+                    set -eu
+
+                    echo "===== Detect changed services ====="
+
+                    BUILD_SERVICES_FILE=".build-services"
+                    BASE_COMMIT="${GIT_PREVIOUS_COMMIT:-${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-}}"
+
+                    append_service() {
+                      services="$1"
+                      service="$2"
+
+                      echo "$services" | grep -Eq "(^| )${service}( |$)" && {
+                        echo "$services"
+                        return
+                      }
+
+                      echo "$services $service" | xargs
+                    }
+
+                    if [ -z "$BASE_COMMIT" ] || ! git cat-file -e "$BASE_COMMIT^{commit}" 2>/dev/null; then
+                      echo "No valid previous commit. Build all application images."
+                      echo "spring frontend nginx fastapi" > "$BUILD_SERVICES_FILE"
+                      exit 0
+                    fi
+
+                    TARGET_COMMIT="${GIT_COMMIT:-HEAD}"
+                    CHANGED_FILES="$(git diff --name-only "$BASE_COMMIT" "$TARGET_COMMIT")"
+
+                    echo "Base commit: $BASE_COMMIT"
+                    echo "Target commit: $TARGET_COMMIT"
+                    echo "Changed files:"
+                    printf '%s\\n' "$CHANGED_FILES"
+
+                    SERVICES=""
+
+                    # Compose/Jenkins 변경은 서비스 의존 관계나 배포 방식 자체가 바뀔 수 있어 전체 이미지를 다시 빌드한다.
+                    if printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^(compose\\.yaml|common/Jenkinsfile)$'; then
+                      SERVICES="spring frontend nginx fastapi"
+                    else
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^be/' && SERVICES="$(append_service "$SERVICES" spring)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^fe/' && SERVICES="$(append_service "$SERVICES" frontend)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^nginx/' && SERVICES="$(append_service "$SERVICES" nginx)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^ai/' && SERVICES="$(append_service "$SERVICES" fastapi)"
+                    fi
+
+                    echo "$SERVICES" | xargs > "$BUILD_SERVICES_FILE"
+                    echo "Services selected for image build: $(cat "$BUILD_SERVICES_FILE")"
+                '''
+            }
+        }
+
         stage('Prepare Deploy Directory') {
             steps {
                 sh '''
@@ -41,6 +95,8 @@ pipeline {
                       --exclude='*/.gradle' \
                       --exclude='*/.pnpm-store' \
                       --exclude='./.env' \
+                      --exclude='./secrets' \
+                      --exclude='./be/src/main/resources/firebase/firebase-service-account.json' \
                       -cf - . | tar -C "${DEPLOY_DIR}" -xf -
 
                     echo "===== Deploy directory files ====="
@@ -54,14 +110,33 @@ pipeline {
                 withCredentials([file(credentialsId: 'marketing-env-file', variable: 'ENV_FILE_PATH')]) {
                     sh '''
                         set +x
-        
+
                         echo "===== Create .env from Jenkins Secret File ====="
-        
+
                         cp "$ENV_FILE_PATH" "${DEPLOY_DIR}/.env"
                         sed -i 's/\\r$//' "${DEPLOY_DIR}/.env"
                         chmod 600 "${DEPLOY_DIR}/.env"
-        
+
                         echo ".env created at ${DEPLOY_DIR}/.env"
+                    '''
+                }
+            }
+        }
+
+        stage('Prepare Firebase Secret') {
+            steps {
+                withCredentials([file(credentialsId: 'marketing-firebase-service-account-file', variable: 'FIREBASE_SERVICE_ACCOUNT_FILE')]) {
+                    sh '''
+                        set +x
+                        set -eu
+
+                        echo "===== Create Firebase service account secret ====="
+
+                        mkdir -p "${DEPLOY_DIR}/secrets"
+                        cp "$FIREBASE_SERVICE_ACCOUNT_FILE" "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                        chmod 600 "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+
+                        echo "Firebase service account secret file created."
                     '''
                 }
             }
@@ -72,12 +147,12 @@ pipeline {
                 sh '''
                     set +x
                     set -eu
-        
+
                     echo "===== Validate required env values ====="
-        
+
                     ENV_PATH="${DEPLOY_DIR}/.env"
                     test -s "$ENV_PATH"
-                    
+
                     echo "===== .env keys only ====="
                     awk -F= \'
                       /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ {
@@ -86,13 +161,13 @@ pipeline {
                         print "line " NR ": " key
                       }
                     ' "$ENV_PATH"
-        
+
                     # CRLF 방지
                     if grep -q "$(printf '\\r')" "$ENV_PATH"; then
                       echo "ERROR: .env contains CRLF. Use LF line endings."
                       exit 1
                     fi
-        
+
                     # 중복 key 방지
                     DUP_KEYS=$(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_PATH" | cut -d= -f1 | sort | uniq -d || true)
                     if [ -n "$DUP_KEYS" ]; then
@@ -100,21 +175,21 @@ pipeline {
                       echo "$DUP_KEYS"
                       exit 1
                     fi
-        
+
                     get_env() {
                       key="$1"
                       grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2-
                     }
-        
+
                     require_env() {
                       key="$1"
                       value="$(get_env "$key" || true)"
-        
+
                       if [ -z "$value" ]; then
                         echo "ERROR: missing or empty env: $key"
                         exit 1
                       fi
-        
+
                       case "$value" in
                         "changeme"|"CHANGE_ME"|"your_domain"|"your-bucket-name"|"TODO"|"todo"|"null"|"undefined")
                           echo "ERROR: placeholder value is not allowed for $key"
@@ -122,25 +197,43 @@ pipeline {
                           ;;
                       esac
                     }
-        
+
                     require_env POSTGRES_DB
                     require_env POSTGRES_USER
                     require_env POSTGRES_PASSWORD
                     require_env REDIS_PASSWORD
-        
+
                     require_env S3_BUCKET_NAME
                     require_env S3_REGION
                     require_env S3_ACCESS_KEY
                     require_env S3_SECRET_KEY
                     require_env CLOUDFRONT_DOMAIN
-        
+
+                    require_env VITE_KAKAO_MAP_KEY
+                    require_env VITE_FIREBASE_API_KEY
+                    require_env VITE_FIREBASE_AUTH_DOMAIN
+                    require_env VITE_FIREBASE_PROJECT_ID
+                    require_env VITE_FIREBASE_STORAGE_BUCKET
+                    require_env VITE_FIREBASE_MESSAGING_SENDER_ID
+                    require_env VITE_FIREBASE_MEASUREMENT_ID
+                    require_env VITE_FIREBASE_APP_ID
+                    require_env VITE_FIREBASE_VAPID_KEY
+                    require_env VITE_API_BACKEND_URL
+
+                    require_env JWT_SECRET
+                    require_env OAUTH_REDIRECT_URI
+                    require_env FRONTEND_URL
+                    require_env INSTAGRAM_CLIENT_ID
+                    require_env INSTAGRAM_CLIENT_SECRET
+                    require_env FIREBASE_ENABLED
+
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
                     echo "$S3_REGION_VALUE" | grep -Eq '^[a-z]{2}-[a-z]+-[0-9]+$' || {
                       echo "ERROR: invalid S3_REGION format"
                       exit 1
                     }
-        
+
                     # CloudFront domain 형식 간단 검증
                     CLOUDFRONT_DOMAIN_VALUE="$(get_env CLOUDFRONT_DOMAIN)"
                     echo "$CLOUDFRONT_DOMAIN_VALUE" | grep -Eq '^https?://' && {
@@ -148,12 +241,18 @@ pipeline {
                       echo "Example: dxxxxx.cloudfront.net"
                       exit 1
                     }
-        
+
                     echo "$CLOUDFRONT_DOMAIN_VALUE" | grep -Eq '^[A-Za-z0-9.-]+$' || {
                       echo "ERROR: invalid CLOUDFRONT_DOMAIN format"
                       exit 1
                     }
-        
+
+                    FIREBASE_ENABLED_VALUE="$(get_env FIREBASE_ENABLED)"
+                    echo "$FIREBASE_ENABLED_VALUE" | grep -Eq '^(true|false)$' || {
+                      echo "ERROR: FIREBASE_ENABLED should be true or false"
+                      exit 1
+                    }
+
                     echo ".env validation passed"
                 '''
             }
@@ -171,6 +270,7 @@ pipeline {
                     test -f "${DEPLOY_DIR}/be/Dockerfile"
                     test -f "${DEPLOY_DIR}/fe/Dockerfile"
                     test -f "${DEPLOY_DIR}/ai/Dockerfile"
+                    test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
                 '''
@@ -194,7 +294,9 @@ pipeline {
                 dir("${DEPLOY_DIR}") {
                     sh '''
                         echo "===== Validate compose.yaml ====="
-                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env config
+                        # docker compose config는 env 값을 펼쳐 출력할 수 있으므로 검증 결과만 남긴다.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env config >/dev/null
+                        echo "Compose config validation passed"
                     '''
                 }
             }
@@ -204,13 +306,59 @@ pipeline {
             steps {
                 dir("${DEPLOY_DIR}") {
                     sh '''
-                echo "===== Build without cache and Force Recreate ====="
-                # --no-cache 옵션을 추가하여 이전 빌드 기록을 완전히 무시하고 새로 구움
-                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build --no-cache frontend nginx fastapi
-                
-                # 그 후 컨테이너 실행
-                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --force-recreate --remove-orphans
-            '''
+                        set -eu
+
+                        echo "===== Build changed services and deploy ====="
+
+                        BUILD_SERVICES="$(cat .build-services 2>/dev/null || true)"
+                        export BUILD_COMMIT="${GIT_COMMIT:-unknown}"
+
+                        append_service() {
+                          services="$1"
+                          service="$2"
+
+                          echo "$services" | grep -Eq "(^| )${service}( |$)" && {
+                            echo "$services"
+                            return
+                          }
+
+                          echo "$services $service" | xargs
+                        }
+
+                        # 서버에 이미지가 없는 첫 배포/정리 직후에는 Git 변경 여부와 무관하게 필요한 이미지를 빌드한다.
+                        docker image inspect marketing-spring:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" spring)"
+                        docker image inspect marketing-frontend:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" frontend)"
+                        docker image inspect marketing-fastapi:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" fastapi)"
+                        docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
+
+                        echo "Build commit: $BUILD_COMMIT"
+                        echo "Build services: ${BUILD_SERVICES:-none}"
+
+                        if [ -n "$BUILD_SERVICES" ]; then
+                          # 변경된 도메인의 이미지만 다시 빌드한다. BUILD_COMMIT은 이미지 라벨로 남아 배포 커밋 추적에 사용된다.
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build $BUILD_SERVICES
+
+                          # 애플리케이션 컨테이너 교체 전에 공용 인프라 컨테이너를 먼저 보장한다.
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis
+
+                          # 변경된 서비스만 새 이미지로 교체한다. DB/Redis 같은 의존 서비스는 불필요하게 재시작하지 않는다.
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --no-deps --force-recreate $BUILD_SERVICES
+                        else
+                          echo "No application image changes detected. Skip image build."
+                        fi
+
+                        # compose.yaml 기준으로 누락/삭제된 컨테이너 상태를 정리한다.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --remove-orphans
+
+                        echo "===== Running containers ====="
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env ps
+
+                        echo "===== Deployed image revisions ====="
+                        docker inspect project-spring --format 'spring={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-frontend --format 'frontend={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                    '''
                 }
             }
         }

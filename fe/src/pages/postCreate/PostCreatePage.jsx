@@ -2,14 +2,14 @@ import { useEffect } from "react"
 import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
 import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep"
 
-import QuestionStep from "@/features/postCreate/components/QuestionStep"
-import LoadingStep from "@/features/postCreate/components/LoadingStep"
+import QuestionStep from "@/features/postCreate/steps/QuestionStep"
+import LoadingStep from "@/features/postCreate/steps/LoadingStep"
 
-import CameraStep from "@/features/postCreate/components/CameraStep"
-import ExtractLoadingStep from "@/features/postCreate/components/ExtractLoadingStep"
-import PhotoConfirmStep from "@/features/postCreate/components/PhotoConfirmStep"
-import GeneratedPostStep from "@/features/postCreate/components/GeneratedPostStep"
-import PublishResultStep from "@/features/postCreate/components/PublishResultStep"
+import CameraStep from "@/features/postCreate/steps/CameraStep"
+import ExtractLoadingStep from "@/features/postCreate/steps/ExtractLoadingStep"
+import PhotoConfirmStep from "@/features/postCreate/steps/PhotoConfirmStep"
+import GeneratedPostStep from "@/features/postCreate/steps/GeneratedPostStep"
+import PublishResultStep from "@/features/postCreate/steps/PublishResultStep"
 import { useNavigate } from "react-router-dom"
 import CharacterListen from "@/assets/character/CharacterListen.png"
 import CharacterCamera from "@/assets/character/CharacterCamera.png"
@@ -90,7 +90,7 @@ export default function PostCreatePage() {
   const handlePhotoConfirmNext = () => {
     setGeneratedPost({
       content: "오늘 새벽에도 어김없이 시장에 다녀왔습니다. 눈으로 직접 보고 손으로 만져봐야 직성이 풀리는 성격이라, 20년째 국산 쌀이랑 깨는 제 손으로만 골라옵니다.",
-      hashtags: ["#신메뉴", "#맛집", "#오늘추천"],
+      hashtags: ["신메뉴", "맛집", "오늘추천"],
     })
 
     setStep(POST_CREATE_STEP.GENERATED_POST)
@@ -100,11 +100,17 @@ export default function PostCreatePage() {
     setStep(POST_CREATE_STEP.PUBLISH_LOADING)
   }
 
+  const handleLeaveToHome = () => {
+    resetPostCreate()
+    navigate("/home")
+  }
+
   if (step === POST_CREATE_STEP.POST_QUESTION) {
     return (
       <QuestionStep
         title="이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
         onNext={handlePostQuestionNext}
+        onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
         characterSrc={CharacterListen}
         characterAlt="듣고 있는 캐릭터"
@@ -124,8 +130,9 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.CAMERA_QUESTION) {
     return (
       <QuestionStep
-        title="신메뉴 치즈 라떼를 만드는 영상을 찍어볼까요?"
+        title="신메뉴 치즈라떼를 만드는 영상을 찍어볼까요?"
         onNext={handleCameraQuestionNext}
+        onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
         characterSrc={CharacterCamera}
         characterAlt="카메라를 든 캐릭터"

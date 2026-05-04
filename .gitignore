@@ -52,7 +52,11 @@ application-prod.yml
 # Etc
 ######################################################################
 coverage/
-docs-for-me/
 
 # SSL Certs
 nginx/certs/
+
+# Firebase service account secrets
+be/src/main/resources/firebase/firebase-service-account.json
+secrets/
+**/firebase-service-account.json

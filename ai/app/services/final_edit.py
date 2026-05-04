@@ -7,11 +7,13 @@ import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+import time
 
 from fastapi import Request
 from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.logging import build_log_extra
 from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import FinalEditRequest
 from app.services.sessions import session_key, upsert_content_session
@@ -164,6 +166,18 @@ class FinalEditService:
                 debug_fields["debug:s3_uploader_configured"] = str(
                     self.uploader.is_configured
                 ).lower()
+                logger.warning(
+                    "Final edit aborted because S3 is unavailable.",
+                    extra=build_log_extra(
+                        "final_edit.s3_config_check",
+                        component="final_edit",
+                        stage="s3_config_check",
+                        session_id=session_id,
+                        outcome="failed",
+                        error_type="s3_unavailable",
+                        draft_count=len(drafts),
+                    ),
+                )
                 return FinalEditResult(
                     status=STATUS_FAIL,
                     results=[],
@@ -175,9 +189,48 @@ class FinalEditService:
                 debug_fields["debug:stage"] = f"download_draft_{final_index}"
                 debug_fields[f"debug:draft_key:{final_index}"] = draft_key
                 draft_path = session_dir / f"draft-{final_index:03d}.jpg"
+                download_started_at = time.perf_counter()
+                logger.info(
+                    "Downloading draft image for final edit.",
+                    extra=build_log_extra(
+                        "final_edit.download_draft.started",
+                        component="final_edit",
+                        stage="download_draft",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        outcome="started",
+                    ),
+                )
                 await self.downloader.download_draft(draft_key, draft_path)
+                logger.info(
+                    "Downloaded draft image for final edit.",
+                    extra=build_log_extra(
+                        "final_edit.download_draft.completed",
+                        component="final_edit",
+                        stage="download_draft",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        outcome="succeeded",
+                        elapsed_ms=int((time.perf_counter() - download_started_at) * 1000),
+                    ),
+                )
 
                 debug_fields["debug:stage"] = f"predict_orientation_{final_index}"
+                predict_started_at = time.perf_counter()
+                logger.info(
+                    "Predicting draft image orientation.",
+                    extra=build_log_extra(
+                        "final_edit.predict_orientation.started",
+                        component="final_edit",
+                        stage="predict_orientation",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        outcome="started",
+                    ),
+                )
                 predicted_angle = await asyncio.to_thread(
                     self.predictor.predict_angle,
                     draft_path,
@@ -187,26 +240,36 @@ class FinalEditService:
                 )
                 logger.info(
                     "Predicted orientation angle for draft image.",
-                    extra={
-                        "session_id": session_id,
-                        "final_index": final_index,
-                        "draft_key": draft_key,
-                        "predicted_angle": f"{predicted_angle:.6f}",
-                    },
+                    extra=build_log_extra(
+                        "final_edit.predict_orientation.completed",
+                        component="final_edit",
+                        stage="predict_orientation",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        predicted_angle=f"{predicted_angle:.6f}",
+                        outcome="succeeded",
+                        elapsed_ms=int((time.perf_counter() - predict_started_at) * 1000),
+                    ),
                 )
 
                 debug_fields["debug:stage"] = f"correct_orientation_{final_index}"
                 corrected_path = session_dir / f"final-{final_index:03d}.jpg"
                 applied_rotation = -predicted_angle
+                correct_started_at = time.perf_counter()
                 logger.info(
                     "Applying orientation correction to draft image.",
-                    extra={
-                        "session_id": session_id,
-                        "final_index": final_index,
-                        "draft_key": draft_key,
-                        "predicted_angle": f"{predicted_angle:.6f}",
-                        "applied_rotation": f"{applied_rotation:.6f}",
-                    },
+                    extra=build_log_extra(
+                        "final_edit.correct_orientation.started",
+                        component="final_edit",
+                        stage="correct_orientation",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        predicted_angle=f"{predicted_angle:.6f}",
+                        applied_rotation=f"{applied_rotation:.6f}",
+                        outcome="started",
+                    ),
                 )
                 await asyncio.to_thread(
                     self.predictor.correct_orientation,
@@ -214,14 +277,56 @@ class FinalEditService:
                     corrected_path,
                     predicted_angle,
                 )
+                logger.info(
+                    "Orientation correction completed for draft image.",
+                    extra=build_log_extra(
+                        "final_edit.correct_orientation.completed",
+                        component="final_edit",
+                        stage="correct_orientation",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        predicted_angle=f"{predicted_angle:.6f}",
+                        applied_rotation=f"{applied_rotation:.6f}",
+                        outcome="succeeded",
+                        elapsed_ms=int((time.perf_counter() - correct_started_at) * 1000),
+                    ),
+                )
 
                 debug_fields["debug:stage"] = f"upload_final_{final_index}"
+                upload_started_at = time.perf_counter()
+                logger.info(
+                    "Uploading final edited image.",
+                    extra=build_log_extra(
+                        "final_edit.upload_final.started",
+                        component="final_edit",
+                        stage="upload_final",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        outcome="started",
+                    ),
+                )
                 uploaded_path = await self.uploader.upload_final(
                     session_id,
                     corrected_path,
                     final_index,
                 )
                 uploaded_results.append(uploaded_path)
+                logger.info(
+                    "Uploaded final edited image.",
+                    extra=build_log_extra(
+                        "final_edit.upload_final.completed",
+                        component="final_edit",
+                        stage="upload_final",
+                        session_id=session_id,
+                        final_index=final_index,
+                        draft_key=draft_key,
+                        outcome="succeeded",
+                        uploaded_path=uploaded_path,
+                        elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
+                    ),
+                )
 
             debug_fields["debug:stage"] = "completed"
             return FinalEditResult(
@@ -235,7 +340,15 @@ class FinalEditService:
             debug_fields["debug:exception_message"] = str(exc)
             logger.exception(
                 "Final edit failed with an exception.",
-                extra={"session_id": session_id, "draft_count": len(drafts)},
+                extra=build_log_extra(
+                    "final_edit.exception",
+                    component="final_edit",
+                    stage=debug_fields["debug:stage"],
+                    session_id=session_id,
+                    draft_count=len(drafts),
+                    outcome="failed",
+                    error_type=exc.__class__.__name__,
+                ),
             )
             await self._rollback_uploaded(uploaded_results)
             return FinalEditResult(
@@ -245,6 +358,17 @@ class FinalEditService:
                 debug_fields=debug_fields,
             )
         finally:
+            logger.info(
+                "Cleaning up final edit temp directory.",
+                extra=build_log_extra(
+                    "final_edit.cleanup_tempdir",
+                    component="final_edit",
+                    stage="cleanup_tempdir",
+                    session_id=session_id,
+                    outcome="completed",
+                    session_dir=str(session_dir),
+                ),
+            )
             shutil.rmtree(session_dir, ignore_errors=True)
 
     async def _rollback_uploaded(self, uploaded_results: list[str]) -> None:
@@ -253,11 +377,38 @@ class FinalEditService:
 
         for uploaded_path in uploaded_results:
             try:
+                logger.info(
+                    "Rolling back uploaded final image.",
+                    extra=build_log_extra(
+                        "final_edit.rollback_delete_final.started",
+                        component="final_edit",
+                        stage="rollback_delete_final",
+                        outcome="started",
+                        uploaded_path=uploaded_path,
+                    ),
+                )
                 await self.uploader.delete_final(uploaded_path)
+                logger.info(
+                    "Rolled back uploaded final image.",
+                    extra=build_log_extra(
+                        "final_edit.rollback_delete_final.completed",
+                        component="final_edit",
+                        stage="rollback_delete_final",
+                        outcome="succeeded",
+                        uploaded_path=uploaded_path,
+                    ),
+                )
             except Exception:
                 logger.warning(
                     "Failed to delete uploaded final image during rollback.",
-                    extra={"uploaded_path": uploaded_path},
+                    extra=build_log_extra(
+                        "final_edit.rollback_delete_final.completed",
+                        component="final_edit",
+                        stage="rollback_delete_final",
+                        outcome="failed",
+                        error_type="rollback_delete_failed",
+                        uploaded_path=uploaded_path,
+                    ),
                     exc_info=True,
                 )
 
@@ -286,6 +437,18 @@ async def process_final_edit(
     }
     if payload.drafts:
         redis_payload["draft_count"] = str(len(payload.drafts))
+    logger.info(
+        "Persisting final edit result to redis.",
+        extra=build_log_extra(
+            "final_edit.persist_redis.started",
+            component="final_edit",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="started",
+            draft_count=len(payload.drafts),
+            result_status=result.status,
+        ),
+    )
 
     await upsert_content_session(
         redis,
@@ -293,6 +456,18 @@ async def process_final_edit(
         scalar_fields=redis_payload,
         photos=result.results,
         debug_fields=result.debug_fields,
+    )
+    logger.info(
+        "Persisted final edit result to redis.",
+        extra=build_log_extra(
+            "final_edit.persist_redis.completed",
+            component="final_edit",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="succeeded",
+            photo_count=len(result.results),
+            result_status=result.status,
+        ),
     )
 
     if result.status != STATUS_PHOTO_EDITED:

@@ -11,8 +11,8 @@ from app.core.config import settings
 from app.db.redis import get_redis
 from app.main import app
 
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
 class DefaultKeywordExtractionService:
@@ -47,11 +47,17 @@ def client(
         return fake_redis_async
 
     app.dependency_overrides[get_redis] = _get_redis
+    original_keyword_enabled = settings.KEYWORD_MODEL_ENABLED
+    original_debug = settings.DEBUG
+    settings.KEYWORD_MODEL_ENABLED = False
+    settings.DEBUG = False
     with TestClient(app) as test_client:
         try:
             app.state.keyword_extraction_service = DefaultKeywordExtractionService()
             yield test_client
         finally:
+            settings.KEYWORD_MODEL_ENABLED = original_keyword_enabled
+            settings.DEBUG = original_debug
             app.dependency_overrides.clear()
 
 

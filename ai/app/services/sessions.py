@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from redis.asyncio import Redis
 
 from app.core.config import settings
+from app.logging import build_log_extra, preview_text
 from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import KeywordExtractionService
 
@@ -83,6 +84,22 @@ async def upsert_content_session(
 ) -> None:
     key = session_key(session_id)
     ttl = settings.SESSION_TTL_SECONDS
+    logger.info(
+        "Persisting content session to redis.",
+        extra=build_log_extra(
+            "redis.content_session.upsert.started",
+            component="redis",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="started",
+            redis_key=key,
+            scalar_field_count=len(scalar_fields),
+            keyword_count=len(keywords or []),
+            draft_count=len(drafts or []),
+            photo_count=len(photos or []),
+            debug_field_count=len(debug_fields or {}),
+        ),
+    )
 
     mapping = {"status": STATUS_STARTED, **scalar_fields}
     await redis.hset(key, mapping=mapping)
@@ -102,6 +119,18 @@ async def upsert_content_session(
             await redis.hset(key, mapping=debug_fields)
 
     await redis.expire(key, ttl)
+    logger.info(
+        "Persisted content session to redis.",
+        extra=build_log_extra(
+            "redis.content_session.upsert.completed",
+            component="redis",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="succeeded",
+            redis_key=key,
+            ttl_seconds=ttl,
+        ),
+    )
 
 
 @dataclass
@@ -120,20 +149,35 @@ async def process_utterance(
 ) -> ProcessUtteranceResult:
     logger.info(
         "Starting keyword extraction for process-utterance.",
-        extra={
-            "session_id": session_id,
-            "owner_persona": payload.owner_persona,
-            "weather_condition": payload.weather.condition,
-        },
+        extra=build_log_extra(
+            "session.process_utterance.keyword_extraction.started",
+            component="session",
+            stage="keyword_extraction",
+            session_id=session_id,
+            outcome="started",
+            owner_persona=payload.owner_persona,
+            weather_condition=payload.weather.condition,
+            utterance_length=len(payload.utterance),
+            utterance_preview=preview_text(
+                payload.utterance,
+                settings.LOG_EVENT_PREVIEW_MAX_LEN,
+            )
+            if settings.LOG_INCLUDE_RAW_IDENTIFIERS
+            else None,
+        ),
     )
     keywords = await keyword_service.extract_keywords(payload.utterance)
     logger.info(
         "Keyword extraction finished.",
-        extra={
-            "session_id": session_id,
-            "keyword_count": len(keywords),
-            "keywords_preview": ", ".join(keywords[:3]),
-        },
+        extra=build_log_extra(
+            "session.process_utterance.keyword_extraction.completed",
+            component="session",
+            stage="keyword_extraction",
+            session_id=session_id,
+            outcome="succeeded",
+            keyword_count=len(keywords),
+            keywords_preview=", ".join(keywords[:3]),
+        ),
     )
     draft_caption, draft_hashtags = build_draft_caption(
         keywords,
@@ -169,10 +213,15 @@ async def process_utterance(
     )
     logger.info(
         "Stored process-utterance result in redis.",
-        extra={
-            "session_id": session_id,
-            "caption_length": len(stored_caption),
-        },
+        extra=build_log_extra(
+            "session.process_utterance.redis_store.completed",
+            component="session",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="succeeded",
+            caption_length=len(stored_caption),
+            hashtag_count=len(draft_hashtags),
+        ),
     )
 
     return ProcessUtteranceResult(

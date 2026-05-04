@@ -16,6 +16,9 @@ import java.io.InputStream;
 @Configuration
 public class FirebaseConfig {
 
+    @Value("${firebase.enabled:false}")
+    private boolean firebaseEnabled;
+
     @Value("${firebase.service-account-path}")
     private String serviceAccountPath;
 
@@ -27,6 +30,11 @@ public class FirebaseConfig {
 
     @PostConstruct
     public void initialize() {
+        if (!firebaseEnabled) {
+            log.info("Firebase is disabled. Skip Firebase application initialization.");
+            return;
+        }
+
         try {
             Resource resource = resourceLoader.getResource(serviceAccountPath);
             if (!resource.exists()) {
