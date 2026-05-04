@@ -1,12 +1,17 @@
 import { useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
+import { registerFcmToken } from '@/features/notification/api/FcmApi';
 
 function LandingPage() {
   const navigate = useNavigate();
 
   const handleOnboarding = () => {
     navigate('/auth/onboarding');
+  };
+
+  const handleRequestFcm = () => {
+    void registerFcmToken({ requestPermission: true })
   };
   
   return (
@@ -43,6 +48,14 @@ function LandingPage() {
         className="text-gray-400 text-lg font-medium"
       >
         처음이세요? 제가 도와드릴게요
+      </button>
+
+      {/* TODO: 임시 버튼 - FCM 토큰 발급 테스트용 */}
+      <button
+        onClick={handleRequestFcm}
+        className="mt-4 px-4 py-2 bg-gray-200 text-gray-600 text-sm rounded-lg"
+      >
+        🔔 알림 권한 요청 (임시)
       </button>
 
     </main>
