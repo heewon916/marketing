@@ -50,7 +50,7 @@ export default function WeeklyStatCard({
     circumference - (animatedPercent / 100) * circumference;
 
   return (
-    <CardShell className="flex flex-col items-center justify-center py-10">
+    <CardShell className="flex flex-col items-center justify-center py-6">
       <div className="relative flex h-[190px] w-[190px] items-center justify-center">
         <svg
           width="190"
