@@ -1,5 +1,5 @@
-function MyPage() {
-  return <div>MyPage</div>
-}
+import MyPageMainSection from '@/features/mypage/sections/MyPageMainSection';
 
-export default MyPage
+export default function MyPage() {
+  return <MyPageMainSection />;
+}
