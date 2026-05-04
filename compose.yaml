@@ -3,6 +3,8 @@ services:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     container_name: project-nginx
     restart: unless-stopped
     ports:
@@ -21,6 +23,8 @@ services:
     build:
       context: ./be
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     image: marketing-spring:latest
     container_name: project-spring
     restart: unless-stopped
@@ -39,6 +43,13 @@ services:
       CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI}
+      FRONTEND_URL: ${FRONTEND_URL}
+      INSTAGRAM_CLIENT_ID: ${INSTAGRAM_CLIENT_ID}
+      INSTAGRAM_CLIENT_SECRET: ${INSTAGRAM_CLIENT_SECRET}
+      FIREBASE_ENABLED: ${FIREBASE_ENABLED:-false}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-classpath:firebase/firebase-service-account.json}
     expose:
       - "8080"
     depends_on:
@@ -52,6 +63,18 @@ services:
     build:
       context: ./fe
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
+        VITE_KAKAO_MAP_KEY: ${VITE_KAKAO_MAP_KEY}
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID}
+        VITE_FIREBASE_STORAGE_BUCKET: ${VITE_FIREBASE_STORAGE_BUCKET}
+        VITE_FIREBASE_MESSAGING_SENDER_ID: ${VITE_FIREBASE_MESSAGING_SENDER_ID}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID}
+        VITE_FIREBASE_MEASUREMENT_ID: ${VITE_FIREBASE_MEASUREMENT_ID}
+        VITE_FIREBASE_VAPID_KEY: ${VITE_FIREBASE_VAPID_KEY}
+        VITE_API_BACKEND_URL: ${VITE_API_BACKEND_URL}
     image: marketing-frontend:latest
     container_name: project-frontend
     restart: unless-stopped
@@ -102,6 +125,8 @@ services:
     build:
       context: ./ai
       dockerfile: Dockerfile
+      args:
+        BUILD_COMMIT: ${BUILD_COMMIT:-unknown}
     image: marketing-fastapi:latest
     container_name: project-fastapi
     restart: unless-stopped
