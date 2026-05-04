@@ -9,6 +9,8 @@ import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.domain.content.entity.ContentImage;
 import com.matketing.be.domain.content.repository.ContentImageRepository;
 import com.matketing.be.domain.content.repository.ContentRepository;
+import com.matketing.be.global.exception.BusinessException;
+import com.matketing.be.global.exception.ErrorCode;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -38,7 +40,7 @@ public class ContentService {
         findContentById(contentId);
 
         ContentImage contentImage = contentImageRepository.findByIdAndContent_Id(imageId, contentId)
-                .orElseThrow(() -> new IllegalArgumentException("해당 게시물에 속한 이미지를 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_IMAGE_NOT_FOUND));
 
         contentImageRepository.delete(contentImage);
 
@@ -63,11 +65,11 @@ public class ContentService {
 
     private Content findContentById(Long contentId) {
         return contentRepository.findById(contentId)
-                .orElseThrow(() -> new IllegalArgumentException("게시물을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
     }
 
     private Content getContentWithRelations(Long contentId) {
         return contentRepository.findWithImagesAndVideoRecordingsById(contentId)
-                .orElseThrow(() -> new IllegalArgumentException("게시물을 찾을 수 없습니다."));
+                .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
     }
 }
