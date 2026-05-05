@@ -21,7 +21,6 @@ async function resetFcmServiceWorkerState() {
     }
 
     await reg.unregister()
-    console.log("[getFcmToken] FCM SW unregister 완료:", reg.scope)
   }
 }
 
@@ -58,40 +57,30 @@ async function waitForActiveServiceWorker(registration, timeoutMs = 10000) {
 }
 
 export async function getFcmToken({ requestPermission = false } = {}) {
-  console.log("[getFcmToken] 시작")
-
   if (typeof window === "undefined" || !window.isSecureContext) {
-    console.warn("[getFcmToken] 보안 컨텍스트(HTTPS/localhost) 아님 - 토큰 발급 스킵")
     return null;
   }
 
   if (!("Notification" in window)) {
-    console.warn("[getFcmToken] Notification API 미지원")
     return null;
   }
 
   if (!("serviceWorker" in navigator)) {
-    console.warn("[getFcmToken] Service Worker 미지원")
     return null;
   }
 
   let permission = Notification.permission;
-  console.log("[getFcmToken] 현재 알림 권한:", permission)
 
   if (permission === "default" && requestPermission) {
     permission = await Notification.requestPermission();
-    console.log("[getFcmToken] 알림 권한 요청 결과:", permission)
   }
 
   if (permission !== "granted") {
-    console.warn("[getFcmToken] 알림 권한 미승인 - 토큰 발급 스킵")
     return null;
   }
 
   const messaging = await getFirebaseMessaging();
-  console.log("[getFcmToken] messaging 인스턴스:", messaging)
   if (!messaging) {
-    console.warn("[getFcmToken] messaging이 null - FCM 미지원 환경")
     return null;
   }
 
@@ -104,7 +93,6 @@ export async function getFcmToken({ requestPermission = false } = {}) {
   // SW가 active 상태가 된 뒤에만 Push subscribe(getToken)를 호출한다.
   const registration = await navigator.serviceWorker.register(FCM_SW_URL, { scope: "/" })
   await waitForActiveServiceWorker(registration)
-  console.log("[getFcmToken] FCM SW 등록 및 활성화 완료")
 
   const attemptList = [
     {
@@ -123,19 +111,15 @@ export async function getFcmToken({ requestPermission = false } = {}) {
 
   for (const attempt of attemptList) {
     try {
-      console.log(`[getFcmToken] getToken 시도: ${attempt.label}`)
       const token = await getToken(messaging, attempt.options)
 
       if (!token) {
-        console.warn(`[getFcmToken] 토큰 비어있음: ${attempt.label}`)
         continue
       }
 
-      console.log(`[getFcmToken] FCM 토큰 획득 성공: ${attempt.label}`)
       return token
     } catch (error) {
       lastError = error
-      console.warn(`[getFcmToken] getToken 실패: ${attempt.label}`, error?.message)
     }
   }
 
@@ -144,8 +128,6 @@ export async function getFcmToken({ requestPermission = false } = {}) {
     String(lastError?.message || "").toLowerCase().includes("push service error")
 
   if (isPushServiceError) {
-    console.warn("[getFcmToken] push service error 감지 - SW/구독 정리 후 1회 재시도")
-
     await resetFcmServiceWorkerState()
 
     const retryRegistration = await navigator.serviceWorker.register(FCM_SW_URL, { scope: "/" })
@@ -158,12 +140,10 @@ export async function getFcmToken({ requestPermission = false } = {}) {
       })
 
       if (retryToken) {
-        console.log("[getFcmToken] 재시도 토큰 획득 성공")
         return retryToken
       }
     } catch (retryError) {
       lastError = retryError
-      console.warn("[getFcmToken] 재시도 실패:", retryError?.message)
     }
   }
 
