@@ -47,6 +47,8 @@ public class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html",
                         "/swagger-resources/**",
+                        "/api/v1/internal/notifications/**",
+                        "/api/v1/users/me/fcm-token",
                         "/webjars/**"
                 ).permitAll()
                 .anyRequest().authenticated()
