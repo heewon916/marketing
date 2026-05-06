@@ -92,8 +92,7 @@ public class OnboardingController {
     // [API 5] 프론트엔드 장소 상세 조회 요청을 크롤러로 프록시 전달
     @org.springframework.web.bind.annotation.GetMapping("/search/{placeId}")
     public ResponseEntity<?> getPlaceDetail(
-            @org.springframework.web.bind.annotation.PathVariable String placeId,
-            @AuthenticationPrincipal OAuth2User oauth2User) {
+            @org.springframework.web.bind.annotation.PathVariable String placeId) {
         
         try {
             Object result = onboardingService.getPlaceDetailViaCrawler(placeId);
