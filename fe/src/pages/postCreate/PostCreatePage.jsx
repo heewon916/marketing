@@ -9,6 +9,7 @@ import CameraStep from "@/features/postCreate/steps/CameraStep"
 import ExtractLoadingStep from "@/features/postCreate/steps/ExtractLoadingStep"
 import PhotoConfirmStep from "@/features/postCreate/steps/PhotoConfirmStep"
 import GeneratedPostStep from "@/features/postCreate/steps/GeneratedPostStep"
+import GeneratedPostEditStep from "@/features/postCreate/steps/GeneratedPostEditStep"
 import PublishResultStep from "@/features/postCreate/steps/PublishResultStep"
 import { useBlocker, useNavigate } from "react-router-dom"
 import CharacterListen from "@/assets/character/CharacterListen.png"
@@ -26,6 +27,7 @@ const STEP_NUM = {
   [POST_CREATE_STEP.EXTRACT_LOADING]: 3,
   [POST_CREATE_STEP.PHOTO_CONFIRM]: 3,
   [POST_CREATE_STEP.GENERATED_POST]: 4,
+  [POST_CREATE_STEP.GENERATED_POST_EDIT]: 4,
   [POST_CREATE_STEP.PUBLISH_LOADING]: 5,
   [POST_CREATE_STEP.PUBLISH_SUCCESS]: 5,
   [POST_CREATE_STEP.PUBLISH_FAIL]: 5,
@@ -133,8 +135,18 @@ export default function PostCreatePage() {
     setStep(POST_CREATE_STEP.GENERATED_POST)
   }
 
-  const handlePublish = () => {
+  const handlePublish = (post) => {
+    if (post) {
+      setGeneratedPost(post)
+    }
     setStep(POST_CREATE_STEP.PUBLISH_LOADING)
+  }
+
+  const handlePreviewFromEdit = (post) => {
+    if (post) {
+      setGeneratedPost(post)
+    }
+    setStep(POST_CREATE_STEP.GENERATED_POST)
   }
 
   const handleLeaveToHome = () => {
@@ -202,8 +214,20 @@ export default function PostCreatePage() {
       <GeneratedPostStep
         post={generatedPost}
         photos={photos}
+        onEdit={() => setStep(POST_CREATE_STEP.GENERATED_POST_EDIT)}
         onPublish={handlePublish}
-        onExit={() => setStep(POST_CREATE_STEP.PHOTO_CONFIRM)}
+        stepNum={stepNum}
+      />
+    )
+  }
+
+  if (step === POST_CREATE_STEP.GENERATED_POST_EDIT) {
+    content = (
+      <GeneratedPostEditStep
+        post={generatedPost}
+        photos={photos}
+        onPublish={handlePublish}
+        onExit={handlePreviewFromEdit}
         stepNum={stepNum}
       />
     )
@@ -235,7 +259,7 @@ export default function PostCreatePage() {
         type="fail"
         stepNum={stepNum}
         onGoHome={() => { resetPostCreate(); navigate("/home") }}
-        onRetry={() => setStep(POST_CREATE_STEP.GENERATED_POST)}
+        onRetry={() => setStep(POST_CREATE_STEP.GENERATED_POST_EDIT)}
       />
     )
   }

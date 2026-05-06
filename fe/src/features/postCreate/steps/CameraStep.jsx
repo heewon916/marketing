@@ -312,7 +312,7 @@ export default function CameraStep({ onRecorded, onClose }) {
 				)}
 			</section>
 
-			<section className="relative mt-4 w-full shrink-0 aspect-[4/5] overflow-hidden rounded-[34px] bg-[#1f1f1f]">
+			<section className="relative mt-4 w-full shrink-0 aspect-[3/4] overflow-hidden rounded-[15px] bg-[#1f1f1f]">
 				<video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover opacity-70" />
 				<canvas ref={canvasRef} className="hidden" />
 				<div className="absolute inset-0 bg-black/20" />
@@ -324,7 +324,7 @@ export default function CameraStep({ onRecorded, onClose }) {
 
 			{errorMessage ? <p className="mt-4 text-center text-sm text-red-400">{errorMessage}</p> : null}
 
-			<section className="mt-3 flex items-center justify-center">
+			<section className="mt-15 flex items-center justify-center">
 				<button
 					type="button"
 					onClick={isRecording ? stopRecording : startRecording}
