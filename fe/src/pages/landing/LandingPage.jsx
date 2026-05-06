@@ -27,7 +27,7 @@ function LandingPage() {
     <main className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
       {/* 상단 뱃지 */}
       <div className="mb-4 px-5 py-1.5 bg-surface-100 rounded-full text-base font-medium text-gray-500">
-        사장님의 든든한 AI 손녀딸
+        사장님의 든든한 AI 홍보 도우미
       </div>
 
       {/* 메인 텍스트 */}
