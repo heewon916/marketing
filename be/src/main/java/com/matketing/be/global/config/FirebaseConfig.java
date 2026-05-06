@@ -28,6 +28,7 @@ public class FirebaseConfig {
         this.resourceLoader = resourceLoader;
     }
 
+    // Firebase Admin SDK를 초기화한다.
     @PostConstruct
     public void initialize() {
         if (!firebaseEnabled) {
