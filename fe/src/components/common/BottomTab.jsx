@@ -1,4 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { GoHomeFill } from 'react-icons/go';
+import { IoPerson } from 'react-icons/io5';
 
 function BottomTab() {
   const navigate = useNavigate();
@@ -6,29 +8,32 @@ function BottomTab() {
 
   const currentPath = location.pathname;
 
+  const isHome =
+    currentPath.startsWith('/home') ||
+    currentPath.startsWith('/post-create');
+
+  const isMyPage = currentPath.startsWith('/mypage');
+
   return (
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-200">
-      
       <div className="flex h-20">
-
         {/* 홈 */}
         <button
+          type="button"
           onClick={() => navigate('/home')}
           className="flex-1 flex flex-col items-center justify-center"
         >
-          <span
-            className={`material-icons text-5xl scale-150 ${
-              currentPath === '/home' || currentPath === '/post-create'
+          <GoHomeFill
+            className={`text-[32px] ${
+              isHome
                 ? 'text-[var(--color-primary-100)]'
                 : 'text-gray-400'
             }`}
-          >
-            home
-          </span>
+          />
 
           <span
             className={
-              currentPath === '/home' || currentPath === '/post-create'
+              isHome
                 ? 'text-[var(--color-primary-100)] text-lg font-medium'
                 : 'text-gray-400 text-lg'
             }
@@ -39,22 +44,21 @@ function BottomTab() {
 
         {/* 내 정보 */}
         <button
+          type="button"
           onClick={() => navigate('/mypage')}
           className="flex-1 flex flex-col items-center justify-center"
         >
-          <span
-            className={`material-icons text-5xl scale-150 ${
-              currentPath === '/mypage'
+          <IoPerson
+            className={`text-[32px] ${
+              isMyPage
                 ? 'text-[var(--color-primary-100)]'
                 : 'text-gray-400'
             }`}
-          >
-            person
-          </span>
+          />
 
           <span
             className={
-              currentPath === '/mypage'
+              isMyPage
                 ? 'text-[var(--color-primary-100)] text-lg font-medium'
                 : 'text-gray-400 text-lg'
             }
@@ -62,7 +66,6 @@ function BottomTab() {
             내 정보
           </span>
         </button>
-
       </div>
     </div>
   );

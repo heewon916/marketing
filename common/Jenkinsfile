@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+    }
+
     environment {
         DEPLOY_DIR = '/home/ubuntu/deploy/S14P31A401'
         COMPOSE_FILE = 'compose.yaml'
@@ -31,7 +35,7 @@ pipeline {
                     echo "===== Detect changed services ====="
 
                     BUILD_SERVICES_FILE=".build-services"
-                    BASE_COMMIT="${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-${GIT_PREVIOUS_COMMIT:-}}"
+                    BASE_COMMIT="${GIT_PREVIOUS_COMMIT:-${GIT_PREVIOUS_SUCCESSFUL_COMMIT:-}}"
 
                     append_service() {
                       services="$1"
