@@ -6,7 +6,9 @@ from redis.asyncio import Redis
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
 from app.schemas.sessions import ProcessUtteranceRequest
-from app.services.keyword_extraction import KeywordExtractionService
+from app.services.keyword_extraction import (
+    KeywordExtractionService,
+)
 
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
@@ -136,6 +138,7 @@ async def upsert_content_session(
 @dataclass
 class ProcessUtteranceResult:
     keywords: list[str]
+    weather_signals: list[str]
     draft_caption: str
     draft_hashtags: list[str]
     guide_text: str
@@ -167,7 +170,9 @@ async def process_utterance(
             else None,
         ),
     )
-    keywords = await keyword_service.extract_keywords(payload.utterance)
+    extraction_result = await keyword_service.extract_keywords(payload.utterance)
+    keywords = extraction_result.keywords
+    weather_signals = extraction_result.weather_signals
     logger.info(
         "Keyword extraction finished.",
         extra=build_log_extra(
@@ -178,6 +183,8 @@ async def process_utterance(
             outcome="succeeded",
             keyword_count=len(keywords),
             keywords_preview=", ".join(keywords[:3]),
+            weather_signal_count=len(weather_signals),
+            weather_signals_preview=", ".join(weather_signals[:3]),
         ),
     )
     draft_caption, draft_hashtags = build_draft_caption(
@@ -211,6 +218,10 @@ async def process_utterance(
         session_id,
         scalar_fields=redis_payload,
         keywords=keywords,
+        debug_fields={
+            f"debug:weather_signal:{index}": value
+            for index, value in enumerate(weather_signals, start=1)
+        },
     )
     logger.info(
         "Stored process-utterance result in redis.",
@@ -227,6 +238,7 @@ async def process_utterance(
 
     return ProcessUtteranceResult(
         keywords=keywords,
+        weather_signals=weather_signals,
         draft_caption=stored_caption,
         draft_hashtags=draft_hashtags,
         guide_text=guide_text,

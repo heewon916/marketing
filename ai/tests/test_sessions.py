@@ -12,6 +12,7 @@ from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
 from app.services.keyword_extraction import (
+    KeywordExtractionResult,
     KeywordExtractionService,
     KeywordExtractionUnavailableError,
 )
@@ -63,17 +64,22 @@ class FakeKeywordExtractionService:
     def __init__(
         self,
         keywords: list[str] | None = None,
+        weather_signals: list[str] | None = None,
         error: Exception | None = None,
     ) -> None:
         self.keywords = keywords or ["signature menu", "cozy table"]
+        self.weather_signals = weather_signals or []
         self.error = error
         self.calls: list[str] = []
 
-    async def extract_keywords(self, utterance: str) -> list[str]:
+    async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         self.calls.append(utterance)
         if self.error is not None:
             raise self.error
-        return self.keywords
+        return KeywordExtractionResult(
+            keywords=self.keywords,
+            weather_signals=self.weather_signals,
+        )
 
 
 class StubDraftDownloader:
@@ -235,6 +241,31 @@ def test_redis_payload_persisted(
     assert "weather_temperature" not in saved
     assert "date" not in saved
     assert "expires_at" not in saved
+
+
+def test_weather_signals_persisted_in_debug_fields(
+    client: TestClient, fake_redis_sync: fakeredis.FakeStrictRedis
+) -> None:
+    session_id = "sess-weather-signal-1"
+    original_service = app.state.keyword_extraction_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        keywords=["막걸리", "파전"],
+        weather_signals=["비", "쌀쌀함"],
+    )
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_service
+
+    assert response.status_code == 200
+
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:weather_signal:1"] == "비"
+    assert saved["debug:weather_signal:2"] == "쌀쌀함"
 
 
 def test_redis_ttl_set(
@@ -514,6 +545,28 @@ def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
     assert keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804", "\ucc3b\uc794"]
 
 
+def test_keyword_extraction_service_parses_weather_signals_separately() -> None:
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+
+    result = service._parse_extraction_result(
+        "{"
+        '"keywords": ['
+        '"\\ubc24\\ud638\\ubc15", '
+        '"\\uc81c\\ucca0 \\uc74c\\uc2dd", '
+        '"\\ubd04\\ubc14\\ub78c"'
+        "], "
+        '"weather_signals": ['
+        '"\\ubd04\\ubc14\\ub78c", '
+        '"\\ub9d1\\uc74c", '
+        '"\\uc624\\ub298"'
+        "]"
+        "}"
+    )
+
+    assert result.keywords == ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"]
+    assert result.weather_signals == ["\ubd04\ubc14\ub78c", "\ub9d1\uc74c"]
+
+
 def test_keyword_extraction_service_rejects_non_json_output() -> None:
     service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
@@ -524,16 +577,17 @@ def test_keyword_extraction_service_rejects_non_json_output() -> None:
 def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
     service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
-    keywords = service._parse_keywords(
+    result = service._parse_extraction_result(
         '{'
         '"keywords": ['
         '"\\ub9c9\\uac78\\ub9ac", '
         '"\\ud30c\\uc804", '
         '"\\ub9e4\\uc7a5"'
-        "]}"
+        '], "weather_signals": ["\\ube44"]}'
     )
 
-    assert keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
+    assert result.keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
+    assert result.weather_signals == ["\ube44"]
 
 
 @pytest.mark.asyncio

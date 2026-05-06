@@ -10,14 +10,18 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.db.redis import get_redis
 from app.main import app
+from app.services.keyword_extraction import KeywordExtractionResult
 
 if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
 class DefaultKeywordExtractionService:
-    async def extract_keywords(self, utterance: str) -> list[str]:
-        return ["signature menu", "cozy table"]
+    async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
+        return KeywordExtractionResult(
+            keywords=["signature menu", "cozy table"],
+            weather_signals=[],
+        )
 
 
 @pytest.fixture
