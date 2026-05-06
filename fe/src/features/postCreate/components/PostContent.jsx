@@ -1,4 +1,12 @@
-function PostContent({ content = "", onChange }) {
+function PostContent({ content = "", onChange, isEditMode = true }) {
+  if (!isEditMode) {
+    return (
+      <div className="rounded-2xl bg-gray-50 px-5 py-4 text-lg text-accent-100 leading-relaxed whitespace-pre-wrap">
+        {content || "본문이 없습니다"}
+      </div>
+    )
+  }
+
   return (
     <div className="rounded-2xl bg-gray-50 px-5 py-4 text-lg text-accent-100 leading-relaxed">
       <textarea

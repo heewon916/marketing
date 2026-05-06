@@ -27,6 +27,6 @@ export const router = createBrowserRouter([
   },
   {
     path: '*',
-    element: <div>Not Found</div>,
+    element: <div className="mx-auto w-full max-w-md ">Not Found</div>,
   },
 ])

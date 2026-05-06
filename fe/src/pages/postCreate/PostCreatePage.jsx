@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
 import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep"
 
@@ -10,12 +10,13 @@ import ExtractLoadingStep from "@/features/postCreate/steps/ExtractLoadingStep"
 import PhotoConfirmStep from "@/features/postCreate/steps/PhotoConfirmStep"
 import GeneratedPostStep from "@/features/postCreate/steps/GeneratedPostStep"
 import PublishResultStep from "@/features/postCreate/steps/PublishResultStep"
-import { useNavigate } from "react-router-dom"
+import { useBlocker, useNavigate } from "react-router-dom"
 import CharacterListen from "@/assets/character/CharacterListen.png"
 import CharacterCamera from "@/assets/character/CharacterCamera.png"
 import coffeeTest1 from "@/assets/test/coffee_test1.jpg"
 import coffeeTest2 from "@/assets/test/coffee_test2.jpg"
 import coffeeTest3 from "@/assets/test/coffee_test3.jpg"
+import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreateLeaveHomeModal"
 
 const STEP_NUM = {
   [POST_CREATE_STEP.POST_QUESTION]: 1,
@@ -32,6 +33,8 @@ const STEP_NUM = {
 
 export default function PostCreatePage() {
   const navigate = useNavigate()
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false)
+  const [isNavigationConfirmed, setIsNavigationConfirmed] = useState(false)
   const step = usePostCreateStore((state) => state.step)
   const stepNum = STEP_NUM[step] ?? 1
 
@@ -47,6 +50,13 @@ export default function PostCreatePage() {
   const setPhotos = usePostCreateStore((state) => state.setPhotos)
   const setGeneratedPost = usePostCreateStore((state) => state.setGeneratedPost)
   const resetPostCreate = usePostCreateStore((state) => state.resetPostCreate)
+
+  const shouldGuardLeave =
+    !isNavigationConfirmed &&
+    step !== POST_CREATE_STEP.PUBLISH_SUCCESS &&
+    step !== POST_CREATE_STEP.PUBLISH_FAIL
+
+  const blocker = useBlocker(shouldGuardLeave)
 
   useEffect(() => {
     if (step === POST_CREATE_STEP.POST_LOADING) {
@@ -72,6 +82,33 @@ export default function PostCreatePage() {
       return () => clearTimeout(timer)
     }
   }, [step])
+
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      setIsLeaveModalOpen(true)
+    }
+  }, [blocker])
+
+  const handleCancelLeave = () => {
+    setIsLeaveModalOpen(false)
+
+    if (blocker.state === "blocked") {
+      blocker.reset()
+    }
+  }
+
+  const handleConfirmLeave = () => {
+    setIsLeaveModalOpen(false)
+    setIsNavigationConfirmed(true)
+    resetPostCreate()
+
+    if (blocker.state === "blocked") {
+      blocker.proceed()
+      return
+    }
+
+    navigate("/home", { replace: true })
+  }
 
   const handlePostQuestionNext = () => {
     setPostAnswer("예")
@@ -101,12 +138,13 @@ export default function PostCreatePage() {
   }
 
   const handleLeaveToHome = () => {
-    resetPostCreate()
     navigate("/home")
   }
 
+  let content = null
+
   if (step === POST_CREATE_STEP.POST_QUESTION) {
-    return (
+    content = (
       <QuestionStep
         title="이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
         onNext={handlePostQuestionNext}
@@ -119,7 +157,7 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.POST_LOADING) {
-    return (
+    content = (
       <LoadingStep
         title="멋진 게시물을 만드는 중..."
         stepNum={stepNum}
@@ -128,7 +166,7 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.CAMERA_QUESTION) {
-    return (
+    content = (
       <QuestionStep
         title="신메뉴 치즈라떼를 만드는 영상을 찍어볼까요?"
         onNext={handleCameraQuestionNext}
@@ -141,15 +179,15 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.CAMERA) {
-    return <CameraStep onRecorded={handleVideoRecorded} onClose={() => setStep(POST_CREATE_STEP.CAMERA_QUESTION)} stepNum={stepNum} />
+    content = <CameraStep onRecorded={handleVideoRecorded} onClose={() => setStep(POST_CREATE_STEP.CAMERA_QUESTION)} stepNum={stepNum} />
   }
 
   if (step === POST_CREATE_STEP.EXTRACT_LOADING) {
-    return <ExtractLoadingStep stepNum={stepNum} photos={photos} />
+    content = <ExtractLoadingStep stepNum={stepNum} photos={photos} />
   }
 
   if (step === POST_CREATE_STEP.PHOTO_CONFIRM) {
-    return (
+    content = (
       <PhotoConfirmStep
         photos={photos}
         onNext={handlePhotoConfirmNext}
@@ -160,7 +198,7 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.GENERATED_POST) {
-    return (
+    content = (
       <GeneratedPostStep
         post={generatedPost}
         photos={photos}
@@ -172,7 +210,7 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.PUBLISH_LOADING) {
-    return (
+    content = (
       <LoadingStep
         title="인스타그램에 발행하고 있어요"
         stepNum={stepNum}
@@ -181,7 +219,7 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.PUBLISH_SUCCESS) {
-    return (
+    content = (
       <PublishResultStep
         type="success"
         stepNum={stepNum}
@@ -192,7 +230,7 @@ export default function PostCreatePage() {
   }
 
   if (step === POST_CREATE_STEP.PUBLISH_FAIL) {
-    return (
+    content = (
       <PublishResultStep
         type="fail"
         stepNum={stepNum}
@@ -202,5 +240,16 @@ export default function PostCreatePage() {
     )
   }
 
-  return null
+  return (
+    <>
+      {content}
+
+      <PostCreateLeaveHomeModal
+        isOpen={isLeaveModalOpen}
+        onClose={handleCancelLeave}
+        onCancel={handleCancelLeave}
+        onConfirm={handleConfirmLeave}
+      />
+    </>
+  )
 }

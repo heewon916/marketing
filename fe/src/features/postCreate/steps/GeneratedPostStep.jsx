@@ -13,6 +13,7 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 	const [canScrollDown, setCanScrollDown] = useState(false)
 	const [hasDelayPassed, setHasDelayPassed] = useState(false)
 	const [hasUserScrolled, setHasUserScrolled] = useState(false)
+	const [isEditMode, setIsEditMode] = useState(false)
 	const contentSectionRef = useRef(null)
 
 	const handleScroll = (e) => {
@@ -83,6 +84,8 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 					hashtags={editedHashtags}
 					onContentChange={setEditedContent}
 					onHashtagsChange={setEditedHashtags}
+					isEditMode={isEditMode}
+					onEditModeToggle={() => setIsEditMode(!isEditMode)}
 				/>
 
 				{/* 버튼 */}
@@ -90,21 +93,21 @@ export default function GeneratedPostStep({ post, photos = [], onPublish, onExit
 					<Button variant="white" size="sm" onClick={onExit}>나가기</Button>
 					<Button variant="primary" size="sm" onClick={() => onPublish?.({ content: editedContent, hashtags: editedHashtags })}>발행하기</Button>
 				</div>
+
+				<div
+					className={`pointer-events-none absolute inset-x-0 bottom-20 z-10 h-24 bg-gradient-to-t from-black/20 to-transparent transition-opacity duration-200 ${shouldShowChevron ? "opacity-100" : "opacity-0"}`}
+					aria-hidden="true"
+				/>
+
+				<div
+					className={`pointer-events-none absolute bottom-20 left-1/2 z-20 -translate-x-1/2 transition-opacity duration-200 ${shouldShowChevron ? "opacity-100 animate-bounce" : "opacity-0"}`}
+					aria-hidden="true"
+				>
+					<svg viewBox="0 0 50 30" className="h-7 w-10" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<path d="M4 4L25 25L46 4" stroke="#FF8A3D" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+					</svg>
+				</div>
 			</section>
-
-			<div
-				className={`pointer-events-none absolute inset-x-0 bottom-20 z-10 h-24 bg-gradient-to-t from-black/20 to-transparent transition-opacity duration-200 ${shouldShowChevron ? "opacity-100" : "opacity-0"}`}
-				aria-hidden="true"
-			/>
-
-			<div
-				className={`pointer-events-none absolute bottom-20 left-1/2 z-20 -translate-x-1/2 transition-opacity duration-200 ${shouldShowChevron ? "opacity-100 animate-bounce" : "opacity-0"}`}
-				aria-hidden="true"
-			>
-				<svg viewBox="0 0 50 30" className="h-7 w-10" fill="none" xmlns="http://www.w3.org/2000/svg">
-					<path d="M4 4L25 25L46 4" stroke="#FF8A3D" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-				</svg>
-			</div>
 
 			<BottomTab />
 		</main>

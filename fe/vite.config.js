@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
           theme_color: '#FF7A3D',
           background_color: '#ffffff',
           display: 'standalone',
+          orientation: 'portrait',
           start_url: '/',
           icons: [
             { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },

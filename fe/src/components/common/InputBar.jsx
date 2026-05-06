@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { TiMicrophone } from 'react-icons/ti';
 
-function InputBar({ onTyping, disabled = false }) {
+function InputBar({ onTyping, disabled = false, isRecording = false, onMicClick }) {
   const textareaRef = useRef(null);
   const [text, setText] = useState('');
   
@@ -50,6 +51,26 @@ function InputBar({ onTyping, disabled = false }) {
         }`}
       >
 
+        {/* 마이크 버튼 */}
+        <button
+          type="button"
+          onClick={onMicClick}
+          aria-label={isRecording ? '녹음 중지' : '녹음 시작'}
+          className={`relative flex-shrink-0 w-10 h-10 mb-1 ml-1 rounded-full flex items-center justify-center transition-colors duration-200 ${
+            isRecording
+              ? 'bg-[#FFF3EC] shadow-[0_0_10px_rgba(255,122,61,0.4)]'
+              : 'bg-white border border-gray-200'
+          }`}
+        >
+          {isRecording && (
+            <span className="absolute inset-0 rounded-full animate-ping bg-[#ff7a3d] opacity-20" />
+          )}
+          <TiMicrophone
+            className={isRecording ? 'text-[#ff7a3d]' : 'text-gray-400'}
+            size={20}
+          />
+        </button>
+
         {/* 텍스트 입력 영역 */}
         <textarea
           ref={textareaRef}
@@ -58,7 +79,7 @@ function InputBar({ onTyping, disabled = false }) {
           onChange={handleChange}
           placeholder={disabled ? '음성 입력 중입니다...' : '메시지를 입력하세요...'}
           disabled={disabled}
-          className="w-full bg-transparent outline-none pl-4 pr-16 py-3 text-gray-700 placeholder:text-gray-400 resize-none overflow-y-auto min-h-12 disabled:cursor-not-allowed disabled:text-gray-500"
+          className="w-full bg-transparent outline-none pl-2 pr-16 py-3 text-gray-700 placeholder:text-gray-400 resize-none overflow-y-auto min-h-12 disabled:cursor-not-allowed disabled:text-gray-500"
           style={{ 
             maxHeight: isExpanded ? 'none' : `${MAX_HEIGHT}px`, 
           }}

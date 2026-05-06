@@ -2,10 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 const VIDEO_TYPES = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
 const MAX_RECORD_SECONDS = 60
+const TARGET_ASPECT_RATIO = 4 / 5
+const MAX_CANVAS_LONG_SIDE = 1440
+const OUTPUT_FPS = 30
 
 export default function CameraStep({ onRecorded, onClose }) {
 	const videoRef = useRef(null)
 	const streamRef = useRef(null)
+	const canvasRef = useRef(null)
+	const canvasStreamRef = useRef(null)
+	const drawFrameRef = useRef(null)
 	const mediaRecorderRef = useRef(null)
 	const chunksRef = useRef([])
 	const countdownTimerRef = useRef(null)
@@ -67,6 +73,14 @@ export default function CameraStep({ onRecorded, onClose }) {
 				mediaRecorderRef.current?.stop()
 			}
 
+			if (drawFrameRef.current) {
+				cancelAnimationFrame(drawFrameRef.current)
+				drawFrameRef.current = null
+			}
+
+			canvasStreamRef.current?.getTracks().forEach((track) => track.stop())
+			canvasStreamRef.current = null
+
 			streamRef.current?.getTracks().forEach((track) => track.stop())
 			streamRef.current = null
 		}
@@ -104,6 +118,102 @@ export default function CameraStep({ onRecorded, onClose }) {
 		}
 	}, [isRecording])
 
+	const startCanvasRendering = () => {
+		const video = videoRef.current
+		if (!video || !canvasRef.current) {
+			return false
+		}
+
+		if (!video.videoWidth || !video.videoHeight) {
+			return false
+		}
+
+		const getOutputSize = (sourceWidth, sourceHeight) => {
+			let outputWidth = sourceWidth
+			let outputHeight = sourceHeight
+			const sourceRatio = sourceWidth / sourceHeight
+
+			if (sourceRatio > TARGET_ASPECT_RATIO) {
+				outputWidth = Math.round(sourceHeight * TARGET_ASPECT_RATIO)
+				outputHeight = sourceHeight
+			} else {
+				outputWidth = sourceWidth
+				outputHeight = Math.round(sourceWidth / TARGET_ASPECT_RATIO)
+			}
+
+			const longSide = Math.max(outputWidth, outputHeight)
+			if (longSide > MAX_CANVAS_LONG_SIDE) {
+				const scale = MAX_CANVAS_LONG_SIDE / longSide
+				outputWidth = Math.round(outputWidth * scale)
+				outputHeight = Math.round(outputHeight * scale)
+			}
+
+			if (outputWidth % 2 !== 0) {
+				outputWidth -= 1
+			}
+
+			if (outputHeight % 2 !== 0) {
+				outputHeight -= 1
+			}
+
+			return {
+				width: Math.max(2, outputWidth),
+				height: Math.max(2, outputHeight),
+			}
+		}
+
+		const canvas = canvasRef.current
+		const { width, height } = getOutputSize(video.videoWidth, video.videoHeight)
+		canvas.width = width
+		canvas.height = height
+		const context = canvas.getContext("2d", { alpha: false })
+
+		if (!context) {
+			return false
+		}
+
+		const draw = () => {
+			if (!video.videoWidth || !video.videoHeight) {
+				drawFrameRef.current = requestAnimationFrame(draw)
+				return
+			}
+
+			const sourceWidth = video.videoWidth
+			const sourceHeight = video.videoHeight
+			const targetRatio = TARGET_ASPECT_RATIO
+			const sourceRatio = sourceWidth / sourceHeight
+
+			let sx = 0
+			let sy = 0
+			let sWidth = sourceWidth
+			let sHeight = sourceHeight
+
+			if (sourceRatio > targetRatio) {
+				sWidth = sourceHeight * targetRatio
+				sx = (sourceWidth - sWidth) / 2
+			} else {
+				sHeight = sourceWidth / targetRatio
+				sy = (sourceHeight - sHeight) / 2
+			}
+
+			context.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height)
+			drawFrameRef.current = requestAnimationFrame(draw)
+		}
+
+		draw()
+		return true
+	}
+
+	const stopCanvasRendering = () => {
+		if (drawFrameRef.current) {
+			cancelAnimationFrame(drawFrameRef.current)
+			drawFrameRef.current = null
+		}
+
+		canvasStreamRef.current?.getTracks().forEach((track) => track.stop())
+		canvasStreamRef.current = null
+	}
+
 	const startRecording = () => {
 		if (!streamRef.current || !mimeType) {
 			setErrorMessage("이 브라우저에서는 영상 녹화를 시작할 수 없습니다.")
@@ -111,10 +221,23 @@ export default function CameraStep({ onRecorded, onClose }) {
 		}
 
 		try {
+			if (!startCanvasRendering()) {
+				setErrorMessage("카메라 준비가 완료된 뒤 다시 시도해주세요.")
+				return
+			}
+
 			shouldEmitRecordingRef.current = true
 			chunksRef.current = []
 			setRemainingSeconds(MAX_RECORD_SECONDS)
-			const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType })
+
+			const canvasStream = canvasRef.current.captureStream(OUTPUT_FPS)
+			canvasStreamRef.current = canvasStream
+
+			const recordingStream = new MediaStream()
+			canvasStream.getVideoTracks().forEach((track) => recordingStream.addTrack(track))
+			streamRef.current.getAudioTracks().forEach((track) => recordingStream.addTrack(track))
+
+			const mediaRecorder = new MediaRecorder(recordingStream, { mimeType })
 			mediaRecorderRef.current = mediaRecorder
 
 			mediaRecorder.ondataavailable = (event) => {
@@ -128,6 +251,8 @@ export default function CameraStep({ onRecorded, onClose }) {
 					clearInterval(countdownTimerRef.current)
 					countdownTimerRef.current = null
 				}
+
+				stopCanvasRendering()
 
 				const blob = new Blob(chunksRef.current, { type: mimeType })
 				const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
@@ -151,6 +276,7 @@ export default function CameraStep({ onRecorded, onClose }) {
 			setIsRecording(true)
 			setErrorMessage("")
 		} catch {
+			stopCanvasRendering()
 			setErrorMessage("영상 녹화를 시작하지 못했습니다.")
 		}
 	}
@@ -186,8 +312,9 @@ export default function CameraStep({ onRecorded, onClose }) {
 				)}
 			</section>
 
-			<section className="relative mt-4 flex-1 overflow-hidden rounded-[34px] bg-[#1f1f1f]">
+			<section className="relative mt-4 w-full shrink-0 aspect-[4/5] overflow-hidden rounded-[34px] bg-[#1f1f1f]">
 				<video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover opacity-70" />
+				<canvas ref={canvasRef} className="hidden" />
 				<div className="absolute inset-0 bg-black/20" />
 
 				<div className="pointer-events-none absolute inset-0 flex items-center justify-center px-16 py-24">

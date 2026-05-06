@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-function PostHashtags({ hashtags = [], onChange }) {
+function PostHashtags({ hashtags = [], onChange, isEditMode = true }) {
   const [inputValue, setInputValue] = useState("")
   const [isAdding, setIsAdding] = useState(false)
 
@@ -53,6 +53,27 @@ function PostHashtags({ hashtags = [], onChange }) {
       setInputValue("")
       setIsAdding(false)
     }
+  }
+
+  if (!isEditMode) {
+    return (
+      <div className="rounded-2xl bg-gray-50 px-4 py-3 text-accent-100">
+        <div className="flex min-h-12 flex-wrap items-center gap-2">
+          {hashtags.length === 0 ? (
+            <span className="text-accent-100/50">해시태그가 없습니다</span>
+          ) : (
+            hashtags.map((tag, index) => (
+              <span
+                key={`${tag}-${index}`}
+                className="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3 py-1 text-lg font-medium text-accent-100"
+              >
+                #{tag}
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
