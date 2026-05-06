@@ -1,6 +1,7 @@
 import { useState } from "react"
+import { X } from "lucide-react"
 
-function PostHashtags({ hashtags = [], onChange }) {
+function PostHashtags({ hashtags = [], onChange, isEditMode = true }) {
   const [inputValue, setInputValue] = useState("")
   const [isAdding, setIsAdding] = useState(false)
 
@@ -55,22 +56,43 @@ function PostHashtags({ hashtags = [], onChange }) {
     }
   }
 
+  if (!isEditMode) {
+    return (
+      <div className="rounded-2xl bg-gray-50 px-4 py-3">
+        <div className="flex min-h-12 flex-wrap items-center gap-2">
+          {hashtags.length === 0 ? (
+            <span className="text-accent-100/50">해시태그가 없습니다</span>
+          ) : (
+            hashtags.map((tag, index) => (
+              <span
+                key={`${tag}-${index}`}
+                className="inline-flex items-center rounded-full px-3 py-1.5 text-lg font-medium border border-red-300 bg-white"
+              >
+                #{tag}
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="rounded-2xl bg-gray-50 px-4 py-3 text-accent-100">
+    <div className="rounded-2xl border border-gray-300 bg-white px-4 py-3 text-accent-100 focus-within:border-accent-100 transition-colors">
       <div className="flex min-h-12 flex-wrap items-center gap-2">
         {hashtags.map((tag, index) => (
           <span
             key={`${tag}-${index}`}
-            className="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3 py-1 text-lg font-medium text-accent-100"
+            className="inline-flex items-center gap-1.5 rounded-full border border-accent-100/30 bg-accent-50 pl-3 pr-1.5 py-0.5 text-base font-medium"
           >
             #{tag}
             <button
               type="button"
               aria-label={`remove-${tag}`}
-              className="text-accent-100/70 hover:text-accent-100 "
+              className="flex h-4 w-4 items-center justify-center rounded-full bg-gray-400"
               onClick={() => handleRemove(index)}
             >
-              x
+              <X size={12} strokeWidth={3} className="text-white" />
             </button>
           </span>
         ))}

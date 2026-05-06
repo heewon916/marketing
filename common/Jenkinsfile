@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        disableConcurrentBuilds()
+    }
+
     environment {
         DEPLOY_DIR = '/home/ubuntu/deploy/S14P31A401'
         COMPOSE_FILE = 'compose.yaml'

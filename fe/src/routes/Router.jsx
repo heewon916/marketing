@@ -8,6 +8,7 @@ import AuthPage from '../pages/auth/AuthPage.jsx'
 import OnboardingPage from '../pages/auth/onboarding/OnboardingPage.jsx';
 import AccountPage from '../pages/mypage/AccountPage.jsx';
 import OperatingHoursPage from '../pages/mypage/OperatingHoursPage.jsx';
+import InstagramCallbackPage from '../pages/auth/InstagramCallbackPage.jsx';
 
 export const router = createBrowserRouter([
   {
@@ -17,8 +18,8 @@ export const router = createBrowserRouter([
       { index: true, element: <LandingPage /> },
       { path: 'home', element: <HomePage /> },
       { path: 'post-create', element: <PostCreatePage /> },
-      { path: 'mypage', element: <MyPage /> },
       { path: 'auth', element: <AuthPage /> },
+      { path: 'auth/callback', element: <InstagramCallbackPage /> },
       { path: 'auth/onboarding', element: <OnboardingPage /> },
       { path: 'mypage', element: <MyPage /> },
       { path: 'mypage/account', element: <AccountPage /> },
@@ -27,6 +28,6 @@ export const router = createBrowserRouter([
   },
   {
     path: '*',
-    element: <div>Not Found</div>,
+    element: <div className="mx-auto w-full max-w-md ">Not Found</div>,
   },
 ])

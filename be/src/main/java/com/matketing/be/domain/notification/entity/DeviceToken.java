@@ -49,16 +49,19 @@ public class DeviceToken {
         this.isActive = isActive;
     }
 
+    // 기기 토큰과 플랫폼 정보를 갱신하고 활성화 상태로 변경한다.
     public void updateToken(String token, DevicePlatform platform) {
         this.token = token;
         this.platform = platform;
         this.isActive = true;
     }
 
+    // 해당 토큰을 비활성화 상태로 변경한다.
     public void deactivate() {
         this.isActive = false;
     }
     
+    // 해당 토큰을 활성화 상태로 변경한다.
     public void activate() {
         this.isActive = true;
     }

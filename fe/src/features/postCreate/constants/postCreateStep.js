@@ -9,6 +9,7 @@ export const POST_CREATE_STEP = {
   PHOTO_CONFIRM: "photo-confirm",
 
   GENERATED_POST: "generated-post",
+  GENERATED_POST_EDIT: "generated-post-edit",
 
   PUBLISH_LOADING: "publish-loading",
   PUBLISH_SUCCESS: "publish-success",

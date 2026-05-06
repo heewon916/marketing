@@ -16,7 +16,7 @@ export default function ExtractLoadingStep({ stepNum, photos = [] }) {
 				</section>
 
 				<section className="flex flex-1 items-center justify-center">
-					<Character type="run" />
+					<Character type="run" className="max-h-[40vh]" />
 				</section>
 
 				<ExtractPhotoGrid photos={photos} />

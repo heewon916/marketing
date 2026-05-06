@@ -25,7 +25,7 @@ public class OnboardingController {
 
     private final OnboardingService onboardingService;
 
-    // [API 1] POS 플러그인에서 난수와 가맹점 식별자를 등록
+    // [API 1] POS 플러그인에서 난수와 가맹점 식별자
     @PostMapping("/pin/register")
     public ResponseEntity<Map<String, String>> registerPin(@RequestBody PinRegisterRequest request) {
         if (request.pin() == null || request.merchantId() == null) {
@@ -57,7 +57,7 @@ public class OnboardingController {
     public ResponseEntity<SyncResponse> syncStoreData(
             @RequestBody SyncRequest request,
             @AuthenticationPrincipal OAuth2User oauth2User) { // 인증된 사용자 정보 가져오기
-        
+
         if (request.merchantId() == null) {
             return ResponseEntity.badRequest().body(new SyncResponse(false, "Merchant ID is required", null));
         }
@@ -80,7 +80,7 @@ public class OnboardingController {
     public ResponseEntity<?> searchPlaces(
             @org.springframework.web.bind.annotation.RequestParam String keyword,
             @AuthenticationPrincipal OAuth2User oauth2User) {
-        
+
         try {
             Object result = onboardingService.searchPlacesViaCrawler(keyword);
             return ResponseEntity.ok(result);
@@ -92,9 +92,8 @@ public class OnboardingController {
     // [API 5] 프론트엔드 장소 상세 조회 요청을 크롤러로 프록시 전달
     @org.springframework.web.bind.annotation.GetMapping("/search/{placeId}")
     public ResponseEntity<?> getPlaceDetail(
-            @org.springframework.web.bind.annotation.PathVariable String placeId,
-            @AuthenticationPrincipal OAuth2User oauth2User) {
-        
+            @org.springframework.web.bind.annotation.PathVariable String placeId) {
+
         try {
             Object result = onboardingService.getPlaceDetailViaCrawler(placeId);
             return ResponseEntity.ok(result);
