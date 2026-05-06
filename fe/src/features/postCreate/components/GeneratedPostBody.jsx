@@ -6,11 +6,11 @@ function GeneratedPostBody({ content = "", hashtags = [], onContentChange, onHas
     <section className="px-5 pt-5 flex flex-col gap-3">
       <div>
         <h2 className="text-xl font-bold text-accent-100 mb-3">본문</h2>
-        <PostContent content={content} onChange={onContentChange} />
+        <PostContent content={content} onChange={onContentChange} isEditMode />
       </div>
       <div>
         <h2 className="text-xl font-bold text-accent-100 mb-3 mt-3">해시태그</h2>
-        <PostHashtags hashtags={hashtags} onChange={onHashtagsChange} />
+        <PostHashtags hashtags={hashtags} onChange={onHashtagsChange} isEditMode />
       </div>
     </section>
   )

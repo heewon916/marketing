@@ -17,6 +17,7 @@ public class FcmTokenController {
 
     private final DeviceTokenService deviceTokenService;
 
+    // 현재 로그인한 사용자의 FCM 기기 토큰을 등록하거나 갱신한다.
     @PostMapping
     public ResponseEntity<FcmTokenRegisterResponse> registerToken(@Valid @RequestBody FcmTokenRegisterRequest request) {
         // TODO: Spring Security 적용 후 SecurityContextHolder에서 추출하도록 수정 필요

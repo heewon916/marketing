@@ -18,6 +18,7 @@ public class DeviceTokenService {
 
     private final DeviceTokenRepository deviceTokenRepository;
 
+    // 현재 사용자의 FCM 기기 토큰을 등록하거나 기존 토큰을 갱신한다.
     @Transactional
     public FcmTokenRegisterResponse registerOrUpdateToken(UUID userId, FcmTokenRegisterRequest request) {
         // 기존 같은 유저의 active 토큰들 모두 비활성화 처리
