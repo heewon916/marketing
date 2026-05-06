@@ -97,57 +97,87 @@ INSERT INTO maketing.store_hours (
 -- 4. menus
 -- ----------------------------------------------------
 -- 케이크·디저트 (가격 변동 → NULL)
-INSERT INTO maketing.menus (id, store_id, name, price, description, created_at, updated_at) VALUES
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '피스타치오티라미슈',           NULL, '직접 만드는 피스타치오스프레드와 구운피스타치오가 가득! 키에리만의 특별한 티라미슈입니다.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '하동말차티라미슈',             NULL, '하동말차로 만드는 키에리만의 스타일! 티라미슈입니다.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '촉촉 초코보스턴크림케이크',    NULL, '촉촉한 노버터 초콜릿케이크와 홈메이드보스턴크림', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '말차딸기시트케이크',           NULL, '촉촉하고 진한 말차시트와 (노버터) 수제딸기크림이 가득한 5호사이즈 조각케이크입니다.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '애플크럼블케이크',             NULL, '경북부사를 듬뿍 넣어 구운 사과크럼블케이크. 홈메이드캬라멜우유소스를 곁들여 먹는 케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박치즈케이크',             NULL, '제철 국내산 당도높은 미니밤호박을 사용해 만드는 치즈케이크입니다.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '바나나케이크',                 NULL, '바나나를 노버터시트와 크림에 넣어 촉촉하고 향긋한 티케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '얼그레이블랙티케이크',         NULL, 'Earl Grey & Afternoon Breakfast 잎차를 우려넣은 진한 티케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '바나나흑임자케이크',           NULL, '바나나시트에 흑임자스프레드가 레이어드된 시트케이크입니다.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '블루베리티라미슈',             NULL, '노버터 카카오 크럼블과 키에리만의 특별한 티라미슈크림에 홈메이드 블루베리콤포트의 만남', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '홈메이드유자티라미슈',         NULL, '홈메이드노버터크럼블과 1년숙성 고흥유자, 수제티라미슈크림', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박라떼크림케이크',         NULL, '밤호박노버터시트와 유기농에스프레소샷이 들어간 라떼크림 샌드케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '수분가득 말차딸기크림케이크',  NULL, '수분가득 촉촉한 하동말차노버터시트와 홈메이드딸기크림', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박라떼크림 트라이플케이크',NULL, '밤호박노버터시트와 유기농에스프레소샷을 넣은 홈메이드크림', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '초코트리플베리 트라이플케이크',NULL, '노버터초콜릿시트와 홈메이드트리플베리콤포트 홈메이드 크림', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콘크럼블치즈케이크',          NULL, '옥수수치즈케이크와 바삭한 노버터 크럼블 가득한 케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '뽕베리레이어드치즈케이크',    NULL, '3월부터 6월까지만 나오는 봄스페셜케이크!', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '쑥팥치즈케이크',              NULL, '인진쑥치즈케이크와 우리팥크림의 만남. 6월까지 시즌운영.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '헤이즐넛초콜릿치즈케이크',    NULL, '구운 헤이즐넛과 초콜릿치즈케이크. 고소하고 담백!', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '흑미콩크림쌀케이크',          NULL, '흑미쌀 제누와즈와 고소한 콩크림 / 노버터 쌀케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '애플크럼블치즈케이크',        NULL, '노버터 크럼블 위에 진한 치즈케이크, 그위에 사과와 크럼블 듬뿍! 시나몬·버터 미사용.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '단호박치즈케이크',            NULL, '단호박을 직접 찌고 다져서 치즈케이크에 듬뿍넣은 구황작물치즈케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '할머니의케이크',              NULL, '현미쌀시트와 캐슈넛크림 / 퍽퍽한 식감이 매력적인 고소한 쌀케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '피넛버터초콜릿케이크',        NULL, '초콜릿시트와 피넛버터크림! 고소하고 단맛이 강하지 않아 남녀노소 인기있는 디저트', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '리틀데블스케이크',            NULL, '다크초콜릿시트와 진한 초콜릿크림. 노버터초콜릿케이크.', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '고르곤졸라치즈케이크',        NULL, '이탈리아 고르곤졸라치즈를 넣어 꼬릿한 향이 매력적인 치즈케이크. 따뜻한 화이트초콜릿과 함께!', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '꿀고구마치즈케이크',          NULL, '고구마를 삶고 으깨어 듬뿍넣은 고구마 치즈케이크 / 시즌케이크', NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '에그타르트',                  NULL, '버터를 안넣은 파이지와 바닐라빈 듬뿍들어간 달걀필링! 주말 스페셜 메뉴', NOW(), NOW()),
--- 커피·음료 (고정 가격)
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '아메리카노',      5600, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카페라떼',        5900, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카페모카',        5900, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카라멜마끼아또',  5900, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '두유라떼',        5900, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콜드브루',        6000, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콜드브루라떼',    6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '소리라떼',        5800, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '코코넛 커피',     6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '바닐라 라떼',     6000, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '녹차라떼',        6000, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '초콜릿라떼',      6000, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '민트초코라떼',    6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카모마일티',      6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '페퍼민트티',      6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '히비스커스티',    6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '루이보스티',      6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '자스민플라워티',  6500, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '로얄밀크티',      7000, NULL, NOW(), NOW()),
-(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '타로밀크티',      7000, NULL, NOW(), NOW());
+-- INSERT INTO maketing.menus (id, store_id, name, price, description, created_at, updated_at) VALUES
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '피스타치오티라미슈',           NULL, '직접 만드는 피스타치오스프레드와 구운피스타치오가 가득! 키에리만의 특별한 티라미슈입니다.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '하동말차티라미슈',             NULL, '하동말차로 만드는 키에리만의 스타일! 티라미슈입니다.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '촉촉 초코보스턴크림케이크',    NULL, '촉촉한 노버터 초콜릿케이크와 홈메이드보스턴크림', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '말차딸기시트케이크',           NULL, '촉촉하고 진한 말차시트와 (노버터) 수제딸기크림이 가득한 5호사이즈 조각케이크입니다.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '애플크럼블케이크',             NULL, '경북부사를 듬뿍 넣어 구운 사과크럼블케이크. 홈메이드캬라멜우유소스를 곁들여 먹는 케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박치즈케이크',             NULL, '제철 국내산 당도높은 미니밤호박을 사용해 만드는 치즈케이크입니다.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '바나나케이크',                 NULL, '바나나를 노버터시트와 크림에 넣어 촉촉하고 향긋한 티케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '얼그레이블랙티케이크',         NULL, 'Earl Grey & Afternoon Breakfast 잎차를 우려넣은 진한 티케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '바나나흑임자케이크',           NULL, '바나나시트에 흑임자스프레드가 레이어드된 시트케이크입니다.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '블루베리티라미슈',             NULL, '노버터 카카오 크럼블과 키에리만의 특별한 티라미슈크림에 홈메이드 블루베리콤포트의 만남', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '홈메이드유자티라미슈',         NULL, '홈메이드노버터크럼블과 1년숙성 고흥유자, 수제티라미슈크림', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박라떼크림케이크',         NULL, '밤호박노버터시트와 유기농에스프레소샷이 들어간 라떼크림 샌드케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '수분가득 말차딸기크림케이크',  NULL, '수분가득 촉촉한 하동말차노버터시트와 홈메이드딸기크림', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박라떼크림 트라이플케이크',NULL, '밤호박노버터시트와 유기농에스프레소샷을 넣은 홈메이드크림', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '초코트리플베리 트라이플케이크',NULL, '노버터초콜릿시트와 홈메이드트리플베리콤포트 홈메이드 크림', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콘크럼블치즈케이크',          NULL, '옥수수치즈케이크와 바삭한 노버터 크럼블 가득한 케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '뽕베리레이어드치즈케이크',    NULL, '3월부터 6월까지만 나오는 봄스페셜케이크!', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '쑥팥치즈케이크',              NULL, '인진쑥치즈케이크와 우리팥크림의 만남. 6월까지 시즌운영.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '헤이즐넛초콜릿치즈케이크',    NULL, '구운 헤이즐넛과 초콜릿치즈케이크. 고소하고 담백!', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '흑미콩크림쌀케이크',          NULL, '흑미쌀 제누와즈와 고소한 콩크림 / 노버터 쌀케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '애플크럼블치즈케이크',        NULL, '노버터 크럼블 위에 진한 치즈케이크, 그위에 사과와 크럼블 듬뿍! 시나몬·버터 미사용.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '단호박치즈케이크',            NULL, '단호박을 직접 찌고 다져서 치즈케이크에 듬뿍넣은 구황작물치즈케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '할머니의케이크',              NULL, '현미쌀시트와 캐슈넛크림 / 퍽퍽한 식감이 매력적인 고소한 쌀케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '피넛버터초콜릿케이크',        NULL, '초콜릿시트와 피넛버터크림! 고소하고 단맛이 강하지 않아 남녀노소 인기있는 디저트', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '리틀데블스케이크',            NULL, '다크초콜릿시트와 진한 초콜릿크림. 노버터초콜릿케이크.', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '고르곤졸라치즈케이크',        NULL, '이탈리아 고르곤졸라치즈를 넣어 꼬릿한 향이 매력적인 치즈케이크. 따뜻한 화이트초콜릿과 함께!', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '꿀고구마치즈케이크',          NULL, '고구마를 삶고 으깨어 듬뿍넣은 고구마 치즈케이크 / 시즌케이크', NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '에그타르트',                  NULL, '버터를 안넣은 파이지와 바닐라빈 듬뿍들어간 달걀필링! 주말 스페셜 메뉴', NOW(), NOW()),
+-- -- 커피·음료 (고정 가격)
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '아메리카노',      5600, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카페라떼',        5900, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카페모카',        5900, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카라멜마끼아또',  5900, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '두유라떼',        5900, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콜드브루',        6000, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콜드브루라떼',    6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '소리라떼',        5800, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '코코넛 커피',     6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '바닐라 라떼',     6000, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '녹차라떼',        6000, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '초콜릿라떼',      6000, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '민트초코라떼',    6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카모마일티',      6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '페퍼민트티',      6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '히비스커스티',    6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '루이보스티',      6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '자스민플라워티',  6500, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '로얄밀크티',      7000, NULL, NOW(), NOW()),
+-- (gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '타로밀크티',      7000, NULL, NOW(), NOW());
 
+
+INSERT INTO maketing.menus (id, store_id, name, price, description, weather_tags, created_at, updated_at) VALUES
+-- [과일/산뜻] 더운 날, 맑은 날, 고습도 추천
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '블루베리티라미슈', NULL, '노버터 카카오 크럼블과 키에리만의 특별한 티라미슈크림에 홈메이드 블루베리콤포트의 만남', '["TEMP_HOT", "PRECIP_CLEAR", "HUMID_HIGH"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '홈메이드유자티라미슈', NULL, '홈메이드노버터크럼블과 1년숙성 고흥유자, 수제티라미슈크림', '["TEMP_SCORCHING", "TEMP_HOT", "HUMID_HIGH"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '수분가득 말차딸기크림케이크', NULL, '수분가득 촉촉한 하동말차노버터시트와 홈메이드딸기크림', '["TEMP_MILD", "PRECIP_CLEAR", "HUMID_LOW"]', NOW(), NOW()),
+
+-- [구황작물/구수한] 흐린 날, 비 오는 날, 환절기 추천
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '밤호박치즈케이크', NULL, '제철 국내산 당도높은 미니밤호박을 사용해 만드는 치즈케이크입니다.', '["PRECIP_CLOUDY", "PRECIP_RAIN", "SPECIAL_SEASONAL_CHANGE"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '쑥팥치즈케이크', NULL, '인진쑥치즈케이크와 우리팥크림의 만남. 6월까지 시즌운영.', '["PRECIP_RAIN", "TEMP_COLD", "SPECIAL_SEASONAL_CHANGE"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '단호박치즈케이크', NULL, '단호박을 직접 찌고 다져서 치즈케이크에 듬뿍넣은 구황작물치즈케이크', '["PRECIP_CLOUDY", "TEMP_COLD"]', NOW(), NOW()),
+
+-- [초코/진한] 추운 날, 눈 오는 날, 스트레스(고습도) 추천
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '리틀데블스케이크', NULL, '다크초콜릿시트와 진한 초콜릿크림. 노버터초콜릿케이크.', '["TEMP_FREEZING", "PRECIP_SNOW", "HUMID_HIGH"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '촉촉 초코보스턴크림케이크', NULL, '촉촉한 노버터 초콜릿케이크와 홈메이드보스턴크림', '["TEMP_COLD", "PRECIP_SNOW"]', NOW(), NOW()),
+
+-- [티/에스테틱] 미세먼지, 건조한 날, 환절기 추천
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '얼그레이블랙티케이크', NULL, 'Earl Grey & Afternoon Breakfast 잎차를 우려넣은 진한 티케이크', '["PRECIP_SNOW", "HUMID_LOW", "TEMP_MILD"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카모마일티', 6500, NULL, '["SPECIAL_FINE_DUST", "SPECIAL_SEASONAL_CHANGE", "HUMID_LOW"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '페퍼민트티', 6500, NULL, '["SPECIAL_FINE_DUST", "HUMID_HIGH", "TEMP_HOT"]', NOW(), NOW()),
+
+-- [커피/기본] 날씨별 세분화
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '아메리카노', 5600, NULL, '["TEMP_MILD", "PRECIP_CLEAR"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '카페라떼', 5900, NULL, '["TEMP_COLD", "PRECIP_SNOW"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '콜드브루', 6000, NULL, '["TEMP_SCORCHING", "TEMP_HOT"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '민트초코라떼', 6500, NULL, '["HUMID_HIGH", "TEMP_HOT"]', NOW(), NOW()),
+
+-- [기타 시그니처]
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '로얄밀크티', 7000, NULL, '["TEMP_FREEZING", "PRECIP_SNOW", "SPECIAL_SEASONAL_CHANGE"]', NOW(), NOW()),
+(gen_random_uuid(), '663c31d7-87c6-4b83-bc0b-756e84a7a3a7', '에그타르트', NULL, '버터를 안넣은 파이지와 바닐라빈 듬뿍들어간 달걀필링! 주말 스페셜 메뉴', '["PRECIP_CLEAR", "TEMP_MILD"]', NOW(), NOW());
 -- ----------------------------------------------------
 -- 5. holidays  (취급 이벤트일 기준 2025~2026)
 -- ----------------------------------------------------
