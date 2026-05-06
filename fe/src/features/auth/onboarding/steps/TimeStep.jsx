@@ -3,7 +3,7 @@ import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import DayTimeRow from '../components/DayTimeRow.jsx';
-import ScrollFadeArrow from '../components/ScrollFadeArrow.jsx';
+import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
 
 const days = ['월', '화', '수', '목', '금', '토', '일'];
 
