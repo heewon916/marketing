@@ -47,6 +47,7 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     build_keyword_extraction_service,
 )
+from app.services.menu_fallback import build_menu_keyword_fallback_service
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root / "final-edit",
     )
     app.state.keyword_extraction_service = build_keyword_extraction_service()
+    app.state.menu_keyword_fallback_service = build_menu_keyword_fallback_service()
     logger.info(
         "Keyword extraction configured.",
         extra=build_log_extra(

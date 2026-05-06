@@ -9,10 +9,12 @@ from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
+from app.services.menu_fallback import MenuKeywordFallbackService
 
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
 STATUS_TEXT_GENERATED = "TEXT_GENERATED"
+DEFAULT_FALLBACK_GUIDE_TEXT = "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
 logger = logging.getLogger(__name__)
 
 # TODO : owner_persona 동일한 레퍼런스 캡션 중 keywords 소재와 유사한 것, 날씨, 자신의 keywords 참고해 draft caption 생성하기 
@@ -150,6 +152,7 @@ async def process_utterance(
     payload: ProcessUtteranceRequest,
     redis: Redis,
     keyword_service: KeywordExtractionService,
+    menu_fallback_service: MenuKeywordFallbackService,
 ) -> ProcessUtteranceResult:
     logger.info(
         "Starting keyword extraction for process-utterance.",
@@ -173,6 +176,7 @@ async def process_utterance(
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
     keywords = extraction_result.keywords
     weather_signals = extraction_result.weather_signals
+    fallback_source: str | None = None
     logger.info(
         "Keyword extraction finished.",
         extra=build_log_extra(
@@ -187,12 +191,40 @@ async def process_utterance(
             weather_signals_preview=", ".join(weather_signals[:3]),
         ),
     )
+
+    if not keywords and weather_signals:
+        fallback_keyword, fallback_source = await menu_fallback_service.choose_menu_keyword(
+            payload.store_id,
+            weather_signals,
+        )
+        if fallback_keyword:
+            keywords = [fallback_keyword]
+            logger.info(
+                "Menu keyword fallback selected a menu.",
+                extra=build_log_extra(
+                    "session.process_utterance.menu_fallback.completed",
+                    component="session",
+                    stage="menu_fallback",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    fallback_source=fallback_source,
+                    fallback_keyword=fallback_keyword,
+                    weather_signals_preview=", ".join(weather_signals[:3]),
+                ),
+            )
+
     draft_caption, draft_hashtags = build_draft_caption(
         keywords,
         owner_persona=payload.owner_persona,
         weather_condition=payload.weather.condition,
     )
-    guide_text = build_guide_text(keywords)
+    guide_text = (
+        build_guide_text(keywords)
+        if keywords
+        else DEFAULT_FALLBACK_GUIDE_TEXT
+    )
+    if not keywords and fallback_source is None:
+        fallback_source = "default_guide"
     stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
 
     redis_payload = {
@@ -213,15 +245,19 @@ async def process_utterance(
         ],
     )
 
+    debug_fields = {
+        f"debug:weather_signal:{index}": value
+        for index, value in enumerate(weather_signals, start=1)
+    }
+    if fallback_source is not None:
+        debug_fields["debug:fallback_source"] = fallback_source
+
     await upsert_content_session(
         redis,
         session_id,
         scalar_fields=redis_payload,
         keywords=keywords,
-        debug_fields={
-            f"debug:weather_signal:{index}": value
-            for index, value in enumerate(weather_signals, start=1)
-        },
+        debug_fields=debug_fields,
     )
     logger.info(
         "Stored process-utterance result in redis.",

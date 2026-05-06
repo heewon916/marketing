@@ -532,9 +532,9 @@ class KeywordExtractionService:
             if len(weather_signals) == 3:
                 break
 
-        if not keywords:
+        if not keywords and not weather_signals:
             raise KeywordExtractionUnavailableError(
-                "Keyword extraction returned no usable keywords."
+                "Keyword extraction returned no usable keywords or weather signals."
             )
 
         logger.info(
