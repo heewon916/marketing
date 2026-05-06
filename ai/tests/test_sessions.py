@@ -545,6 +545,49 @@ def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
     assert keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804", "\ucc3b\uc794"]
 
 
+def test_keyword_extraction_service_strips_particles_from_keywords() -> None:
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+
+    assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
+    assert (
+        service._normalize_keyword("\uc81c\ucca0 \uc74c\uc2dd\uc740")
+        == "\uc81c\ucca0 \uc74c\uc2dd"
+    )
+    assert (
+        service._normalize_keyword("\ub538\uae30 \ub77c\ub5bc\ub791")
+        == "\ub538\uae30 \ub77c\ub5bc"
+    )
+
+
+def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+
+    assert service._normalize_keyword("\uba39\uace0 \uc0b4\uc544\uc57c\uc9c0") == ""
+    assert service._normalize_keyword("\uc81c\ucca0\uc774\uc57c") == ""
+
+
+def test_keyword_extraction_service_canonicalizes_weather_signals() -> None:
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+
+    assert service._normalize_weather_signal("\ube44 \uc624\ub294 \ub0a0\uc5d4") == "\ube44"
+    assert (
+        service._normalize_weather_signal(
+            "\uc624\ub298\uc740 \uc880 \uc3b8\uc3b8\ud574\uc11c"
+        )
+        == "\uc3b8\uc3b8\ud568"
+    )
+
+
+def test_keyword_extraction_service_falls_back_without_morph_analyzer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    monkeypatch.setattr(service, "_get_morph_analyzer", lambda: None)
+
+    assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
+    assert service._normalize_weather_signal("\ube44 \uc624\ub294 \ub0a0\uc5d4") == "\ube44"
+
+
 def test_keyword_extraction_service_parses_weather_signals_separately() -> None:
     service = KeywordExtractionService(model_path=Path("unused.gguf"))
 

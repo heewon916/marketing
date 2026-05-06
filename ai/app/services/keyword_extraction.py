@@ -35,6 +35,7 @@ _GENERIC_KEYWORDS = {
     "먹고 살기",
     "만만치 않다",
     "만만치",
+    "제철",
 }
 
 _WEATHER_SIGNAL_HINTS = (
@@ -89,6 +90,54 @@ _PURE_WEATHER_SIGNALS = {
     "초여름",
     "초가을",
 }
+
+_MORPH_ALLOWED_KEYWORD_TAG_PREFIXES = ("N", "SL", "SH", "SN", "XR")
+_MORPH_ALLOWED_WEATHER_TAG_PREFIXES = ("N", "SL", "SH", "SN", "XR", "V")
+_MORPH_DISALLOWED_TAIL_TAGS = {
+    "JKS",
+    "JKC",
+    "JKG",
+    "JKO",
+    "JKB",
+    "JKV",
+    "JKQ",
+    "JX",
+    "JC",
+    "EP",
+    "EF",
+    "EC",
+    "ETN",
+    "ETM",
+    "SF",
+    "SP",
+    "SS",
+    "SE",
+    "SO",
+    "SW",
+}
+_WEATHER_CANONICAL_BY_HINT = (
+    ("봄바람", "봄바람"),
+    ("초여름", "초여름"),
+    ("초가을", "초가을"),
+    ("장마", "장마"),
+    ("쌀쌀", "쌀쌀함"),
+    ("선선", "선선함"),
+    ("후텁", "후텁지근함"),
+    ("무더", "무더위"),
+    ("포근", "포근함"),
+    ("서늘", "서늘함"),
+    ("따뜻", "따뜻함"),
+    ("추위", "추위"),
+    ("더위", "더위"),
+    ("맑", "맑음"),
+    ("흐", "흐림"),
+    ("비", "비"),
+    ("눈", "눈"),
+    ("봄", "봄"),
+    ("여름", "여름"),
+    ("가을", "가을"),
+    ("겨울", "겨울"),
+)
 
 _PROMPT_TEMPLATE = """You extract Instagram-worthy Korean promotional angles from a raw shop-owner utterance.
 
@@ -157,6 +206,8 @@ class KeywordExtractionService:
         self.n_gpu_layers = n_gpu_layers
         self.timeout_seconds = timeout_seconds
         self._model: Any = None
+        self._morph_analyzer: Any = None
+        self._morph_analyzer_initialized = False
         self._lock = threading.Lock()
 
     async def preload(self) -> None:
@@ -522,11 +573,167 @@ class KeywordExtractionService:
             )
         return match.group(0)
 
+    def _get_morph_analyzer(self) -> Any | None:
+        if self._morph_analyzer_initialized:
+            return self._morph_analyzer
+
+        with self._lock:
+            if self._morph_analyzer_initialized:
+                return self._morph_analyzer
+
+            try:
+                from kiwipiepy import Kiwi
+
+                self._morph_analyzer = Kiwi()
+                logger.info(
+                    "Keyword morphology analyzer initialized.",
+                    extra=build_log_extra(
+                        "keyword_extraction.morph_analyzer_init.completed",
+                        component="keyword_extraction",
+                        stage="morph_analyzer_init",
+                        outcome="succeeded",
+                        morph_analyzer="kiwi",
+                    ),
+                )
+            except Exception as exc:
+                self._morph_analyzer = None
+                logger.warning(
+                    "Keyword morphology analyzer is unavailable; falling back to regex normalization.",
+                    extra=build_log_extra(
+                        "keyword_extraction.morph_analyzer_init.completed",
+                        component="keyword_extraction",
+                        stage="morph_analyzer_init",
+                        outcome="failed",
+                        error_type=exc.__class__.__name__,
+                        morph_analyzer="kiwi",
+                    ),
+                    exc_info=True,
+                )
+            finally:
+                self._morph_analyzer_initialized = True
+
+        return self._morph_analyzer
+
     @staticmethod
-    def _normalize_keyword(keyword: str) -> str:
-        normalized = keyword.strip().strip("\"'`")
+    def _basic_normalize_text(text: str) -> str:
+        normalized = text.strip().strip("\"'`")
         normalized = re.sub(r"^[\s\W_]+|[\s\W_]+$", "", normalized)
         normalized = re.sub(r"\s+", " ", normalized).strip()
+        return normalized
+
+    @staticmethod
+    def _fallback_strip_trailing_particles(text: str) -> str:
+        stripped = re.sub(
+            r"(이랑|랑|하고|에서|으로|로|은|는|이|가|을|를|와|과|도|만|엔|에|의)$",
+            "",
+            text,
+        )
+        return stripped.strip()
+
+    def _normalize_keyword(self, keyword: str) -> str:
+        normalized = self._basic_normalize_text(keyword)
+        if not normalized:
+            return ""
+
+        morphology_normalized = self._normalize_phrase_with_morphology(
+            normalized,
+            target="keyword",
+        )
+        if morphology_normalized is None:
+            return self._fallback_normalize_keyword(normalized)
+        if morphology_normalized:
+            return morphology_normalized
+        return ""
+
+    def _normalize_weather_signal(self, signal: str) -> str:
+        normalized = self._basic_normalize_text(signal)
+        if not normalized:
+            return ""
+
+        morphology_normalized = self._normalize_phrase_with_morphology(
+            normalized,
+            target="weather_signal",
+        )
+        if morphology_normalized is None:
+            return self._fallback_normalize_weather_signal(normalized)
+        if morphology_normalized:
+            return morphology_normalized
+        return ""
+
+    def _normalize_phrase_with_morphology(
+        self,
+        text: str,
+        target: str,
+    ) -> str | None:
+        analyzer = self._get_morph_analyzer()
+        if analyzer is None:
+            return None
+
+        try:
+            tokens = analyzer.tokenize(text)
+        except Exception as exc:
+            logger.warning(
+                "Keyword morphology analysis failed; falling back to regex normalization.",
+                extra=build_log_extra(
+                    "keyword_extraction.morph_analysis.completed",
+                    component="keyword_extraction",
+                    stage="morph_analysis",
+                    outcome="failed",
+                    error_type=exc.__class__.__name__,
+                    morph_target=target,
+                ),
+                exc_info=True,
+            )
+            return None
+
+        if target == "keyword":
+            return self._normalize_keyword_tokens(tokens)
+        return self._normalize_weather_tokens(tokens, text)
+
+    def _normalize_keyword_tokens(self, tokens: list[Any]) -> str:
+        pieces: list[str] = []
+
+        for token in tokens:
+            form = getattr(token, "form", "").strip()
+            tag = getattr(token, "tag", "")
+            if not form or not tag:
+                continue
+            if tag in _MORPH_DISALLOWED_TAIL_TAGS or tag in {"MAG", "MAJ", "IC"}:
+                continue
+            if tag.startswith("V") or tag in {"XSV", "XSA", "VCP", "VCN"}:
+                if pieces:
+                    break
+                continue
+            if tag.startswith(_MORPH_ALLOWED_KEYWORD_TAG_PREFIXES):
+                pieces.append(form)
+                continue
+            if pieces:
+                break
+
+        normalized = " ".join(pieces)
+        return self._fallback_normalize_keyword(normalized)
+
+    def _normalize_weather_tokens(self, tokens: list[Any], original_text: str) -> str:
+        pieces: list[str] = []
+
+        for token in tokens:
+            form = getattr(token, "form", "").strip()
+            tag = getattr(token, "tag", "")
+            if not form or not tag:
+                continue
+            if tag in _MORPH_DISALLOWED_TAIL_TAGS or tag in {"MAG", "MAJ", "IC"}:
+                continue
+            if tag.startswith(_MORPH_ALLOWED_WEATHER_TAG_PREFIXES):
+                pieces.append(form)
+
+        canonical = self._canonicalize_weather_signal(" ".join(pieces))
+        if canonical:
+            return canonical
+        return self._fallback_normalize_weather_signal(original_text)
+
+    def _fallback_normalize_keyword(self, keyword: str) -> str:
+        normalized = self._basic_normalize_text(keyword)
+        normalized = self._fallback_strip_trailing_particles(normalized)
 
         if len(normalized) < 2:
             return ""
@@ -542,19 +749,26 @@ class KeywordExtractionService:
             return ""
         return normalized
 
-    @staticmethod
-    def _normalize_weather_signal(signal: str) -> str:
-        normalized = signal.strip().strip("\"'`")
-        normalized = re.sub(r"^[\s\W_]+|[\s\W_]+$", "", normalized)
-        normalized = re.sub(r"\s+", " ", normalized).strip()
+    def _fallback_normalize_weather_signal(self, signal: str) -> str:
+        normalized = self._basic_normalize_text(signal)
+        normalized = self._fallback_strip_trailing_particles(normalized)
+        return self._canonicalize_weather_signal(normalized)
 
+    @staticmethod
+    def _canonicalize_weather_signal(signal: str) -> str:
+        normalized = KeywordExtractionService._basic_normalize_text(signal)
         if len(normalized) < 1:
             return ""
         if len(normalized) > 20:
             return ""
-        if not any(hint in normalized for hint in _WEATHER_SIGNAL_HINTS):
-            return ""
         if not re.search(r"[가-힣A-Za-z]", normalized):
+            return ""
+
+        for hint, canonical in _WEATHER_CANONICAL_BY_HINT:
+            if hint in normalized:
+                return canonical
+
+        if not any(hint in normalized for hint in _WEATHER_SIGNAL_HINTS):
             return ""
         return normalized
 
