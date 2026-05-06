@@ -8,6 +8,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -38,7 +39,7 @@ public class NotificationQueryService {
     }
 
     // 조건(타입, 상태, 매장 ID)에 맞는 알림 목록을 페이징하여 조회한다.
-    public List<Notification> findNotifications(NotificationType type, NotificationStatus status, UUID storeId, Pageable pageable) {
+    public Page<Notification> findNotifications(NotificationType type, NotificationStatus status, UUID storeId, Pageable pageable) {
         // TODO: 동적 쿼리를 사용하여 개선 필요. 현재는 파라미터 유무에 따라 분기 처리.
         if (type != null && status != null) {
             return notificationRepository.findByTypeAndStatus(type, status, pageable);
@@ -49,7 +50,7 @@ public class NotificationQueryService {
         } else if (storeId != null) {
             return notificationRepository.findByStoreId(storeId, pageable);
         } else {
-            return notificationRepository.findAll(pageable).getContent();
+            return notificationRepository.findAll(pageable);
         }
     }
 }

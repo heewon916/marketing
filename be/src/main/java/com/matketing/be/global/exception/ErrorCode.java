@@ -14,6 +14,7 @@ public enum ErrorCode {
 
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
     INVALID_NOTIFICATION_BATCH_SIZE(HttpStatus.BAD_REQUEST, "유효하지 않은 알림 배치 크기입니다."),
+    INVALID_NOTIFICATION_PAGE_REQUEST(HttpStatus.BAD_REQUEST, "알림 조회 페이지 요청 값이 올바르지 않습니다."),
     NOTIFICATION_QUEUE_ENQUEUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "알림 큐 적재에 실패했습니다."),
     NOTIFICATION_DISPATCH_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "알림 디스패치에 실패했습니다."),
     INVALID_IMMEDIATE_NOTIFICATION_TYPE(HttpStatus.BAD_REQUEST, "즉시 발송할 수 없는 알림 타입입니다."),
