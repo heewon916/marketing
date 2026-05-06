@@ -3,7 +3,6 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 
-from app.core.config import settings
 from app.db.redis import get_redis
 from app.schemas.sessions import (
     ExtractFramesRequest,
@@ -48,7 +47,9 @@ async def process_utterance_endpoint(
         extra={
             "session_id": session_id,
             "payload_owner_persona": payload.owner_persona,
-            "payload_weather_condition": payload.weather.condition,
+            "payload_weather_cloud_cover": payload.weather.cloud_cover,
+            "payload_weather_temperature": payload.weather.temperature,
+            "payload_weather_precipitation": payload.weather.precipitation,
             "utterance_length": len(payload.utterance),
         },
     )
@@ -82,9 +83,9 @@ async def process_utterance_endpoint(
     )
     return ProcessUtteranceResponse(
         session_id=session_id,
+        status=result.status,
         guide_text=result.guide_text,
-        keywords=result.keywords if settings.DEBUG else None,
-        caption=result.caption
+        caption=result.caption,
     )
 
 

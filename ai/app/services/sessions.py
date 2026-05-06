@@ -21,16 +21,16 @@ logger = logging.getLogger(__name__)
 def build_draft_caption(
     keywords: list[str],
     owner_persona: str,
-    weather_condition: str,
+    cloud_cover: str,
 ) -> tuple[str, list[str]]:
     keyword_phrase = ", ".join(keywords) if keywords else "today's highlights"
     caption = (
-        f"{weather_condition} day, {owner_persona} mood. "
+        f"{cloud_cover} day, {owner_persona} mood. "
         f"How about sharing {keyword_phrase} with your audience today?"
     )
     hashtags = [f"#{kw.replace(' ', '')}" for kw in keywords[:5]]
-    if weather_condition:
-        hashtags.append(f"#{weather_condition.replace(' ', '')}")
+    if cloud_cover:
+        hashtags.append(f"#{cloud_cover.replace(' ', '')}")
     return caption, hashtags
 
 
@@ -139,12 +139,13 @@ async def upsert_content_session(
 
 @dataclass
 class ProcessUtteranceResult:
+    status: str
     keywords: list[str]
     weather_signals: list[str]
     draft_caption: str
     draft_hashtags: list[str]
     guide_text: str
-    caption : str
+    caption: str
 
 
 async def process_utterance(
@@ -183,7 +184,7 @@ async def process_utterance(
             session_id=session_id,
             outcome="started",
             owner_persona=payload.owner_persona,
-            weather_condition=payload.weather.condition,
+            weather_cloud_cover=payload.weather.cloud_cover,
             utterance_length=len(payload.utterance),
             utterance_preview=preview_text(
                 payload.utterance,
@@ -236,7 +237,7 @@ async def process_utterance(
     draft_caption, draft_hashtags = build_draft_caption(
         keywords,
         owner_persona=payload.owner_persona,
-        weather_condition=payload.weather.condition,
+        cloud_cover=payload.weather.cloud_cover,
     )
     guide_text = (
         build_guide_text(keywords)
@@ -293,10 +294,11 @@ async def process_utterance(
     )
 
     return ProcessUtteranceResult(
+        status=STATUS_TEXT_GENERATED,
         keywords=keywords,
         weather_signals=weather_signals,
         draft_caption=stored_caption,
         draft_hashtags=draft_hashtags,
         guide_text=guide_text,
-        caption = stored_caption 
+        caption=stored_caption,
     )

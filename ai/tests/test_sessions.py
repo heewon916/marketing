@@ -23,7 +23,19 @@ VALID_PAYLOAD = {
     "utterance": "warm lighting cozy table signature menu",
     "owner_persona": "aesthetic",
     "date": "2026-04-27",
-    "weather": {"condition": "rainy", "temperature": 18.5},
+    "weather": {
+        "temperature": 18.5,
+        "precipitation": 0.0,
+        "cloud_cover": "맑음",
+        "humidity": 45,
+        "wind_speed": 2.5,
+        "pm10": 85,
+        "pm25": 35,
+        "diurnal_range": 12.0,
+        "discomfort_index": 63,
+        "heavy_rain_warning": None,
+        "typhoon_warning": None,
+    },
 }
 
 VALID_EXTRACT_PAYLOAD = {
@@ -153,11 +165,14 @@ def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> N
     assert response.status_code == 200
     body = response.json()
     assert body["session_id"] == session_id
+    assert body["status"] == "TEXT_GENERATED"
     assert isinstance(body["guide_text"], str)
     assert len(body["guide_text"]) > 0
+    assert isinstance(body["caption"], str)
+    assert len(body["caption"]) > 0
 
 
-def test_keywords_hidden_when_debug_off(client: TestClient) -> None:
+def test_keywords_not_exposed_in_response(client: TestClient) -> None:
     response = client.post(
         "/ai/sessions/sess-1/process-utterance",
         json=VALID_PAYLOAD,
@@ -167,7 +182,7 @@ def test_keywords_hidden_when_debug_off(client: TestClient) -> None:
     assert "keywords" not in response.json()
 
 
-def test_keywords_exposed_when_debug_on(
+def test_keywords_not_exposed_even_when_debug_on(
     client: TestClient, debug_mode: None
 ) -> None:
     response = client.post(
@@ -177,9 +192,7 @@ def test_keywords_exposed_when_debug_on(
 
     assert response.status_code == 200
     body = response.json()
-    assert "keywords" in body
-    assert isinstance(body["keywords"], list)
-    assert len(body["keywords"]) > 0
+    assert "keywords" not in body
 
 
 def test_process_utterance_returns_503_when_keyword_extraction_fails(
@@ -233,10 +246,24 @@ def test_missing_owner_persona_rejected(client: TestClient) -> None:
 
 def test_invalid_temperature_rejected(client: TestClient) -> None:
     payload = dict(VALID_PAYLOAD)
-    payload["weather"] = {"condition": "rainy", "temperature": "hot"}
+    payload["weather"] = dict(VALID_PAYLOAD["weather"])
+    payload["weather"]["temperature"] = "hot"
 
     response = client.post(
         "/ai/sessions/sess-5/process-utterance",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_missing_cloud_cover_rejected(client: TestClient) -> None:
+    payload = dict(VALID_PAYLOAD)
+    payload["weather"] = dict(VALID_PAYLOAD["weather"])
+    payload["weather"].pop("cloud_cover")
+
+    response = client.post(
+        "/ai/sessions/sess-5b/process-utterance",
         json=payload,
     )
 
@@ -260,7 +287,7 @@ def test_redis_payload_persisted(
     assert saved["status"] == "TEXT_GENERATED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"]
-    assert "#rainy" in saved["caption"]
+    assert "#맑음" in saved["caption"]
     keyword_fields = [field for field in saved if field.startswith("keyword:")]
     assert 1 <= len(keyword_fields) <= 3
     assert "session_id" not in saved
