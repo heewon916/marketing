@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
 import { registerFcmToken } from '@/features/notification/api/FcmApi';
+import {
+  authApi,
+  INSTAGRAM_AUTH_PURPOSE,
+} from '@/features/auth/api.js';
 
 function LandingPage() {
   const navigate = useNavigate();
@@ -11,13 +15,16 @@ function LandingPage() {
     void registerFcmToken({ requestPermission: true });
   }, []);
 
+  const handleInstagramLogin = () => {
+    authApi.loginWithInstagram(INSTAGRAM_AUTH_PURPOSE.LOGIN);
+  };
+
   const handleOnboarding = () => {
     navigate('/auth/onboarding');
   };
-  
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 text-center">
-      
       {/* 상단 뱃지 */}
       <div className="mb-4 px-5 py-1.5 bg-surface-100 rounded-full text-base font-medium text-gray-500">
         사장님의 든든한 AI 손녀딸
@@ -39,8 +46,10 @@ function LandingPage() {
         className="w-full max-w-[340px] mb-12"
       />
 
-      {/* TODO: 인스타그램 OAuth API 연동 */}
-      <Button className="w-full max-w-[340px] font-bold shadow-lg shadow-primary-100/40 mb-6">
+      <Button
+        onClick={handleInstagramLogin}
+        className="w-full max-w-[340px] font-bold shadow-lg shadow-primary-100/40 mb-6"
+      >
         인스타그램으로 로그인
       </Button>
 
@@ -50,7 +59,6 @@ function LandingPage() {
       >
         처음이세요? 제가 도와드릴게요
       </button>
-
     </main>
   );
 }
