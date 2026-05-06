@@ -5,14 +5,27 @@ import com.matketing.be.domain.onboarding.dto.SyncResponse;
 import com.matketing.be.domain.onboarding.entity.PosPin;
 import com.matketing.be.domain.onboarding.repository.PosPinRepository;
 import com.matketing.be.domain.store.entity.Store;
+import com.matketing.be.domain.store.entity.Menu;
+import com.matketing.be.domain.store.entity.StoreHours;
 import com.matketing.be.domain.store.repository.MenuRepository;
 import com.matketing.be.domain.store.repository.StoreHoursRepository;
 import com.matketing.be.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
+import java.time.LocalTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,10 +34,33 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OnboardingService {
 
+    private static final String KEY_STATUS = "status";
+    private static final String KEY_SUCCESS = "success";
+    private static final String KEY_DATA = "data";
+    private static final String KEY_PLACE_ID = "place_id";
+    private static final String KEY_ADDRESS = "address";
+    private static final String KEY_BUSINESS_HOURS = "business_hours";
+    private static final String KEY_MENUS = "menus";
+    private static final String KEY_MENU_NAME = "menu_name";
+    private static final String KEY_PRICE = "price";
+    private static final String KEY_MENU_DESCRIPTION = "menu_description";
+    private static final String KEY_RESULT_TYPE = "resultType";
+    private static final String KEY_NAME = "name";
+
     private final PosPinRepository posPinRepository;
     private final StoreRepository storeRepository;
     private final MenuRepository menuRepository;
     private final StoreHoursRepository storeHoursRepository;
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Value("${toss.api.access-key:}")
+    private String tossAccessKey;
+
+    @Value("${toss.api.secret-key:}")
+    private String tossSecretKey;
+
+    @Value("${FASTAPI_BASE_URL:http://fastapi:8000}")
+    private String fastapiBaseUrl;
 
     public void registerPin(String pin, String merchantId) {
         // Redis에 난수와 merchantId 저장 (엔티티에 설정된 TTL 3분 자동 적용)
@@ -51,53 +87,173 @@ public class OnboardingService {
     }
 
     @Transactional
+    public void invalidatePin(String pin) {
+        posPinRepository.deleteById(pin);
+    }
+
+    @Transactional
     public SyncResponse syncStoreData(UUID userId, String merchantId) {
         log.info("Starting sync for user: {}, merchant: {}", userId, merchantId);
 
-        // 1. Toss OpenAPI 호출하여 상호명, 카테고리 등 기본 정보 및 메뉴 추출 (TODO: 실제 Toss API 연동)
-        String storeName = "테스트 매장"; // Toss에서 가져올 정보 Mocking
-        String category = "CAFE";
-        
-        // 2. 내부 FastAPI 크롤러 호출 (장소 검색: /api/search?keyword=storeName)
-        // String placeId = callCrawlerSearchApi(storeName);
-        String placeId = "123456"; // 크롤러에서 받아올 place_id Mocking
+        String storeName = getMerchantNameFromToss(merchantId);
+        String category = "CAFE"; // Toss API에서 category를 주지 않으므로 기본값 또는 추후 연동
 
-        // 3. 내부 FastAPI 크롤러 호출 (상세 정보: /api/place/{placeId})
-        // CrawlerDetailResponse detail = callCrawlerDetailApi(placeId);
-        // detail 객체에서 주소, 위경도, 영업시간, 메뉴 리스트 추출
+        Map<String, String> placeInfo = fetchPlaceInfo(storeName);
+        String placeId = placeInfo.get(KEY_PLACE_ID);
+        String address = placeInfo.getOrDefault(KEY_ADDRESS, "");
 
-        // 4. DB 엔티티 생성 및 병합 저장 (Store, StoreHours, Menu)
-        Store store = Store.builder()
+        Store store = storeRepository.save(Store.builder()
                 .userId(userId)
                 .merchantId(merchantId)
                 .storeName(storeName)
                 .category(category)
-                .address("서울특별시 강남구 테헤란로 123") // 크롤링 결과 예시
-                .build();
-        
-        store = storeRepository.save(store);
+                .address(address)
+                .build());
 
-        // TODO: StoreHours 및 Menu 엔티티들을 store와 연관관계 맺어 save() 하는 로직 추가
+        if (placeId != null && !placeId.isEmpty()) {
+            fetchAndSaveStoreDetails(placeId, store);
+        }
 
         log.info("Successfully synced store data for merchantId: {}", merchantId);
         return new SyncResponse(true, "가맹점 정보 동기화 및 DB 저장 완료", store.getId().toString());
     }
 
-    // --- 크롤러 연동 프록시 메서드 ---
-    
-    @org.springframework.beans.factory.annotation.Value("${FASTAPI_BASE_URL:http://fastapi:8000}")
-    private String fastapiBaseUrl;
-
-    public Object searchPlacesViaCrawler(String keyword) {
-        org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
-        String url = fastapiBaseUrl + "/api/search?keyword=" + keyword;
-        return restTemplate.getForObject(url, Object.class);
+    private Map<String, String> fetchPlaceInfo(String storeName) {
+        try {
+            Map<String, Object> searchResult = searchPlacesViaCrawler(storeName);
+            if (searchResult != null && KEY_SUCCESS.equals(searchResult.get(KEY_STATUS))) {
+                Object dataObj = searchResult.get(KEY_DATA);
+                if (dataObj instanceof List<?> dataList && !dataList.isEmpty()) {
+                    Object firstPlaceObj = dataList.getFirst();
+                    if (firstPlaceObj instanceof Map<?, ?> firstPlace) {
+                        String pId = firstPlace.get(KEY_PLACE_ID) instanceof String s ? s : null;
+                        String addr = firstPlace.get(KEY_ADDRESS) instanceof String s ? s : "";
+                        return Map.of(KEY_PLACE_ID, pId == null ? "" : pId, KEY_ADDRESS, addr);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Crawler search failed for keyword {}: {}", storeName, e.getMessage());
+        }
+        return Map.of();
     }
 
-    public Object getPlaceDetailViaCrawler(String placeId) {
-        org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+    private void fetchAndSaveStoreDetails(String placeId, Store store) {
+        try {
+            Map<String, Object> detailResult = getPlaceDetailViaCrawler(placeId);
+            if (detailResult == null || !KEY_SUCCESS.equals(detailResult.get(KEY_STATUS))) return;
+
+            Object dataObj = detailResult.get(KEY_DATA);
+            if (!(dataObj instanceof Map<?, ?> dataMap)) return;
+
+            saveStoreHours(store, dataMap.get(KEY_BUSINESS_HOURS));
+            saveMenus(store, dataMap.get(KEY_MENUS));
+
+        } catch (Exception e) {
+            log.warn("Crawler detail failed for placeId {}: {}", placeId, e.getMessage());
+        }
+    }
+
+    private void saveStoreHours(Store store, Object hoursObj) {
+        if (!(hoursObj instanceof Map<?, ?> hoursMap)) return;
+
+        StoreHours storeHours = StoreHours.builder()
+                .store(store)
+                .mondayOpen(parseTime(hoursMap.get("mon_hours"), true))
+                .mondayClose(parseTime(hoursMap.get("mon_hours"), false))
+                .tuesdayOpen(parseTime(hoursMap.get("tues_hours"), true))
+                .tuesdayClose(parseTime(hoursMap.get("tues_hours"), false))
+                .wednesdayOpen(parseTime(hoursMap.get("wed_hours"), true))
+                .wednesdayClose(parseTime(hoursMap.get("wed_hours"), false))
+                .thursdayOpen(parseTime(hoursMap.get("thur_hours"), true))
+                .thursdayClose(parseTime(hoursMap.get("thur_hours"), false))
+                .fridayOpen(parseTime(hoursMap.get("fri_hours"), true))
+                .fridayClose(parseTime(hoursMap.get("fri_hours"), false))
+                .saturdayOpen(parseTime(hoursMap.get("sat_hours"), true))
+                .saturdayClose(parseTime(hoursMap.get("sat_hours"), false))
+                .sundayOpen(parseTime(hoursMap.get("sun_hours"), true))
+                .sundayClose(parseTime(hoursMap.get("sun_hours"), false))
+                .build();
+        storeHoursRepository.save(storeHours);
+    }
+
+    private void saveMenus(Store store, Object menusObj) {
+        if (!(menusObj instanceof List<?> menusList)) return;
+
+        for (Object menuObj : menusList) {
+            if (!(menuObj instanceof Map<?, ?> menuMap)) continue;
+
+            String menuName = menuMap.get(KEY_MENU_NAME) instanceof String s ? s : "이름 없음";
+            Integer price = menuMap.get(KEY_PRICE) instanceof Number n ? n.intValue() : 0;
+            String description = menuMap.get(KEY_MENU_DESCRIPTION) instanceof String s ? s : null;
+
+            Menu menu = Menu.builder()
+                    .store(store)
+                    .name(menuName)
+                    .price(price)
+                    .description(description)
+                    .build();
+            menuRepository.save(menu);
+        }
+    }
+
+    private LocalTime parseTime(Object timeRangeObj, boolean isOpen) {
+        if (!(timeRangeObj instanceof String timeRange) || timeRange.isEmpty() || "휴무".equals(timeRange)) {
+            return null;
+        }
+        try {
+            String[] parts = timeRange.split("-");
+            if (parts.length == 2) {
+                String timeStr = isOpen ? parts[0].trim() : parts[1].trim();
+                if ("24:00".equals(timeStr)) return LocalTime.MAX;
+                return LocalTime.parse(timeStr);
+            }
+        } catch (Exception e) {
+            log.trace("Failed to parse time range: {}", timeRange);
+        }
+        return null;
+    }
+
+    private String getMerchantNameFromToss(String merchantId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("x-access-key", tossAccessKey);
+            headers.set("x-secret-key", tossSecretKey);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            String url = "https://open-api.tossplace.com/api-public/openapi/v1/merchants/" + merchantId;
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {});
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> body = response.getBody();
+                if ("SUCCESS".equals(body.get(KEY_RESULT_TYPE))) {
+                    Object successObj = body.get(KEY_SUCCESS);
+                    if (successObj instanceof Map<?, ?> successData && successData.containsKey(KEY_NAME)) {
+                        Object nameObj = successData.get(KEY_NAME);
+                        return nameObj instanceof String s ? s : "테스트 매장";
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch merchant info from Toss API for {}: {}", merchantId, e.getMessage());
+        }
+        return "테스트 매장";
+    }
+
+    public Map<String, Object> searchPlacesViaCrawler(String keyword) {
+        String url = fastapiBaseUrl + "/api/search?keyword=" + keyword;
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        return response.getBody();
+    }
+
+    public Map<String, Object> getPlaceDetailViaCrawler(String placeId) {
         String url = fastapiBaseUrl + "/api/place/" + placeId;
-        return restTemplate.getForObject(url, Object.class);
+        ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
+        return response.getBody();
     }
 }
-

@@ -118,8 +118,8 @@ services:
       - "yes"
     volumes:
       - redis_data:/data
-    expose:
-      - "6379"
+    ports:
+      - "127.0.0.1:6379:6379"
     networks:
       - project-network
 
