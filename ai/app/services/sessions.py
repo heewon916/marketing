@@ -173,6 +173,24 @@ async def process_utterance(
             else None,
         ),
     )
+    await upsert_content_session(
+        redis,
+        session_id,
+        scalar_fields={
+            "utterance": payload.utterance,
+        },
+    )
+    logger.info(
+        "Stored request utterance in redis before keyword extraction.",
+        extra=build_log_extra(
+            "session.process_utterance.redis_store_request.completed",
+            component="session",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="succeeded",
+            utterance_length=len(payload.utterance),
+        ),
+    )
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
     keywords = extraction_result.keywords
     weather_signals = extraction_result.weather_signals

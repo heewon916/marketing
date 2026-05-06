@@ -202,7 +202,9 @@ def test_process_utterance_returns_503_when_keyword_extraction_fails(
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Keyword extraction is unavailable."
-    assert fake_redis_sync.hgetall(session_key(session_id)) == {}
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "STARTED"
+    assert saved["utterance"] == VALID_PAYLOAD["utterance"]
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -255,6 +257,7 @@ def test_redis_payload_persisted(
     saved = fake_redis_sync.hgetall(session_key(session_id))
 
     assert saved["status"] == "TEXT_GENERATED"
+    assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"]
     assert "#rainy" in saved["caption"]
     keyword_fields = [field for field in saved if field.startswith("keyword:")]
