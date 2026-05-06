@@ -229,4 +229,5 @@ async def process_utterance(
         draft_caption=stored_caption,
         draft_hashtags=draft_hashtags,
         guide_text=guide_text,
+        caption = stored_caption 
     )

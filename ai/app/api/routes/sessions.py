@@ -81,6 +81,7 @@ async def process_utterance_endpoint(
         session_id=session_id,
         guide_text=result.guide_text,
         keywords=result.keywords if settings.DEBUG else None,
+        caption=result.caption
     )
 
 

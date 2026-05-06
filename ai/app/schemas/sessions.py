@@ -23,6 +23,7 @@ class ProcessUtteranceResponse(BaseModel):
     session_id: str
     guide_text: str
     keywords: list[str] | None = None
+    caption : str | None = None 
 
 
 class ExtractFramesRequest(BaseModel):
