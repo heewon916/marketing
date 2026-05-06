@@ -19,6 +19,7 @@ public class ImmediateNotificationService {
 
     private final NotificationCommandService notificationCommandService;
     private final NotificationQueueService notificationQueueService;
+    private final NotificationMessageResolver notificationMessageResolver;
 
     @Transactional
     public ImmediateNotificationResponse sendImmediate(UUID storeId, NotificationType type, UUID referenceId) {
@@ -26,16 +27,8 @@ public class ImmediateNotificationService {
             throw new BusinessException(ErrorCode.INVALID_IMMEDIATE_NOTIFICATION_TYPE);
         }
 
-        String notificationText;
-        String webUrl;
-
-        if (type == NotificationType.POSTING_SUCCESS) {
-            notificationText = "인스타그램 게시물 발행이 완료됐어요.";
-            webUrl = "/contents/" + referenceId + "/publish/status";
-        } else {
-            notificationText = "인스타그램 게시물 발행에 실패했어요. 다시 시도해 주세요.";
-            webUrl = "/contents/" + referenceId + "/edit?source=posting_failed";
-        }
+        String notificationText = notificationMessageResolver.resolveNotificationText(type);
+        String webUrl = notificationMessageResolver.resolveWebUrl(type, referenceId);
 
         Notification notification = notificationCommandService.createPendingNotification(
                 storeId,
