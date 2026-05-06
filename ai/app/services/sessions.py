@@ -13,7 +13,7 @@ STATUS_STARTED = "STARTED"
 STATUS_TEXT_GENERATED = "TEXT_GENERATED"
 logger = logging.getLogger(__name__)
 
-
+# TODO : owner_persona 동일한 레퍼런스 캡션 중 keywords 소재와 유사한 것, 날씨, 자신의 keywords 참고해 draft caption 생성하기 
 def build_draft_caption(
     keywords: list[str],
     owner_persona: str,
@@ -139,6 +139,7 @@ class ProcessUtteranceResult:
     draft_caption: str
     draft_hashtags: list[str]
     guide_text: str
+    caption : str
 
 
 async def process_utterance(
