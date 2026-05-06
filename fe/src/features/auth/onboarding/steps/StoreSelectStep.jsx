@@ -5,7 +5,7 @@ import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import StoreCard from '../components/StoreCard.jsx';
-import ScrollFadeArrow from '../components/ScrollFadeArrow.jsx';
+import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
 import StoreNotFoundModal from '../components/StoreNotFoundModal.jsx';
 
 function StoreSelectStep({ onNext, onPrev, onManualInput }) {

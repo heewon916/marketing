@@ -142,16 +142,35 @@ function OnboardingPage() {
             onChange={(value) =>
               setFormData((prev) => ({ ...prev, authCode: value }))
             }
+            onVerified={(merchantId) =>
+              setFormData((prev) => ({ ...prev, merchantId }))
+            }
             onGoToQR={() => moveToStep(6)}
             onNext={() => moveToStep(7)}
           />
         );
 
-      case 6:
-        return <QRStep {...commonProps} onSuccess={nextStep} />;
+        case 6:
+          return (
+            <QRStep
+              {...commonProps}
+              onSuccess={() => moveToStep(7)}
+              onVerified={(merchantId) =>
+                setFormData((prev) => ({ ...prev, merchantId }))
+              }
+            />
+          );
 
       case 7:
-        return <LoadingStep {...commonProps} />;
+        return (
+          <LoadingStep
+            {...commonProps}
+            merchantId={formData.merchantId}
+            onSynced={(storeId) =>
+              setFormData((prev) => ({ ...prev, storeId }))
+            }
+          />
+        );
 
       case 8:
         return <PosSuccessStep {...commonProps} />;

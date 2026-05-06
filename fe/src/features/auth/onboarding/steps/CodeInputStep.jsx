@@ -1,10 +1,20 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
+import { authApi } from '@/features/auth/api.js';
 
-function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
+function CodeInputStep({
+  onNext,
+  onPrev,
+  value = '',
+  onChange,
+  onGoToQR,
+  onVerified,
+}) {
   const inputRefs = useRef([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleChange = (e, idx) => {
     const val = e.target.value.replace(/[^0-9]/g, '');
@@ -16,15 +26,47 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
     const newValue = newValueArray.join('');
 
     onChange(newValue);
+    setErrorMessage('');
 
     if (val !== '' && idx < 5) {
-      inputRefs.current[idx + 1].focus();
+      inputRefs.current[idx + 1]?.focus();
     }
   };
 
   const handleKeyDown = (e, idx) => {
     if (e.key === 'Backspace' && !value[idx] && idx > 0) {
-      inputRefs.current[idx - 1].focus();
+      inputRefs.current[idx - 1]?.focus();
+    }
+  };
+
+  const handleNext = async () => {
+    if (value.length !== 6) {
+      setErrorMessage('6자리 인증 코드를 입력해 주세요.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setErrorMessage('');
+
+      const response = await authApi.verifyPosPin(value);
+      const { success, merchantId, message } = response.data;
+
+      if (!success || !merchantId) {
+        setErrorMessage(message || '인증 코드 검증에 실패했습니다.');
+        return;
+      }
+
+      onVerified?.(merchantId);
+      onNext();
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        '인증 코드 검증 중 오류가 발생했습니다. 다시 시도해 주세요.';
+
+      setErrorMessage(message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -57,12 +99,12 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
       footer={
         <OnboardingFooterButtons
           onPrev={onPrev}
-          onNext={onNext}
+          onNext={handleNext}
+          nextText={isLoading ? '확인 중' : '다음'}
         />
       }
     >
       <div className="flex flex-col items-center mt-2 w-full">
-        {/* 인증 코드 입력 영역 */}
         <div className="flex gap-2 justify-center">
           {Array.from({ length: 6 }).map((_, idx) => (
             <input
@@ -74,15 +116,23 @@ function CodeInputStep({ onNext, onPrev, value = '', onChange, onGoToQR }) {
               value={value[idx] || ''}
               onChange={(e) => handleChange(e, idx)}
               onKeyDown={(e) => handleKeyDown(e, idx)}
-              className="w-12 h-14 border border-gray-300 rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-primary-100 focus:ring-4 focus:ring-primary-100/20 transition-all"
+              disabled={isLoading}
+              className="w-12 h-14 border border-gray-300 rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-primary-100 focus:ring-4 focus:ring-primary-100/20 transition-all disabled:bg-gray-50"
             />
           ))}
         </div>
 
-        {/* QR 인증 이동 버튼 */}
+        {errorMessage && (
+          <p className="mt-4 text-sm font-medium text-red-500">
+            {errorMessage}
+          </p>
+        )}
+
         <button
+          type="button"
           onClick={onGoToQR}
-          className="mt-8 text-lg text-gray-500 font-sm underline underline-offset-4 "
+          disabled={isLoading}
+          className="mt-8 text-lg text-gray-500 font-sm underline underline-offset-4 disabled:text-gray-300"
         >
           QR로 인증하기
         </button>
