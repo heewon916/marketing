@@ -1,9 +1,15 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
+import { registerFcmToken } from '@/features/notification/api/FcmApi';
 
 function LandingPage() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    void registerFcmToken({ requestPermission: true });
+  }, []);
 
   const handleOnboarding = () => {
     navigate('/auth/onboarding');
