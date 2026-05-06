@@ -16,6 +16,8 @@ public enum ErrorCode {
     INVALID_NOTIFICATION_BATCH_SIZE(HttpStatus.BAD_REQUEST, "유효하지 않은 알림 배치 크기입니다."),
     NOTIFICATION_QUEUE_ENQUEUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "알림 큐 적재에 실패했습니다."),
     NOTIFICATION_DISPATCH_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "알림 디스패치에 실패했습니다."),
+    INVALID_IMMEDIATE_NOTIFICATION_TYPE(HttpStatus.BAD_REQUEST, "즉시 발송할 수 없는 알림 타입입니다."),
+    IMMEDIATE_NOTIFICATION_ENQUEUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "즉시 알림을 큐에 적재하지 못했습니다."),
 
     MISSING_REFRESH_TOKEN(HttpStatus.BAD_REQUEST, "리프레시 토큰이 필요합니다."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않은 리프레시 토큰입니다."),
