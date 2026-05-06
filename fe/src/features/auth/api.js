@@ -1,1 +1,14 @@
-export const authApi = {}
+const BACKEND_URL = import.meta.env.VITE_API_BACKEND_URL;
+
+export const INSTAGRAM_AUTH_PURPOSE = {
+  LOGIN: 'login',
+  ONBOARDING: 'onboarding',
+};
+
+export const authApi = {
+  loginWithInstagram(purpose = INSTAGRAM_AUTH_PURPOSE.LOGIN) {
+    sessionStorage.setItem('instagramAuthPurpose', purpose);
+
+    window.location.href = `${BACKEND_URL}/api/v1/users/instagram`;
+  },
+};

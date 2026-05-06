@@ -22,23 +22,14 @@ import OnboardingLeaveConfirmModal from '@/features/auth/onboarding/components/O
 function OnboardingPage() {
   const navigate = useNavigate();
 
-  const [step, setStep] = useState(1);
+  const isInstagramSuccess =
+    new URLSearchParams(window.location.search).get('instagram') === 'success';
+
+  const [step, setStep] = useState(() => (isInstagramSuccess ? 3 : 1));
   const [, setStepHistory] = useState([]);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
-  const getProgressStep = (step) => {
-    if (step <= 3) return 1;
-    if (step <= 6) return 2;
-    if (step === 7) return 3;
-    if (step === 8) return 4;
-    if (step <= 10) return 5;
-    if (step <= 14) return 6;
-    return 7;
-  };
-
-  const progressStep = getProgressStep(step);
-
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     storeId: '',
     merchantId: '',
     storeName: '',
@@ -52,8 +43,26 @@ function OnboardingPage() {
     operatingHours: {},
     menus: [],
     authCode: '',
-    isInstagramConnected: false,
-  });
+    isInstagramConnected: isInstagramSuccess,
+  }));
+
+  const getProgressStep = (step) => {
+    if (step <= 3) return 1;
+    if (step <= 6) return 2;
+    if (step === 7) return 3;
+    if (step === 8) return 4;
+    if (step <= 10) return 5;
+    if (step <= 14) return 6;
+    return 7;
+  };
+
+  const progressStep = getProgressStep(step);
+
+  useEffect(() => {
+    if (isInstagramSuccess) {
+      window.history.replaceState({}, document.title, '/auth/onboarding');
+    }
+  }, [isInstagramSuccess]);
 
   useEffect(() => {
     window.history.pushState({ onboardingGuard: true }, '');
