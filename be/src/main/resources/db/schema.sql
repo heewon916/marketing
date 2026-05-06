@@ -1,8 +1,9 @@
 -- =============================================================
 --  SCHEMA: maketing
 -- =============================================================
+CREATE EXTENSION IF NOT EXISTS vector;  
 CREATE SCHEMA IF NOT EXISTS maketing;
-SET search_path TO maketing;
+SET search_path TO maketing, public;    
 
 -- =============================================================
 --  ENUM TYPES
@@ -89,8 +90,8 @@ CREATE TABLE maketing.menus (
     "name"          VARCHAR(200)  NOT NULL,
     "price"         INTEGER       NULL,
     "description"   TEXT          NULL,
-    "weather_tags"  JSONB         DEFAULT '' NULL,
-    "holiday_tags"  JSONB         DEFAULT '' NULL,
+    "weather_tags"  JSONB         DEFAULT '[]'::jsonb NULL,
+    "holiday_tags"  JSONB         DEFAULT '[]'::jsonb NULL,
     "created_at"    TIMESTAMPTZ   NULL,
     "updated_at"    TIMESTAMPTZ   NULL,
     "embedding"     VECTOR(1536)  NULL,
