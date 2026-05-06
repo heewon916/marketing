@@ -205,6 +205,7 @@ def test_process_utterance_returns_503_when_keyword_extraction_fails(
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["status"] == "STARTED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
+    assert saved["caption"] == ""
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:

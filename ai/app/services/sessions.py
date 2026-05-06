@@ -154,6 +154,26 @@ async def process_utterance(
     keyword_service: KeywordExtractionService,
     menu_fallback_service: MenuKeywordFallbackService,
 ) -> ProcessUtteranceResult:
+    await upsert_content_session(
+        redis,
+        session_id,
+        scalar_fields={
+            "caption": "",
+            "utterance": payload.utterance,
+        },
+    )
+    logger.info(
+        "Stored initial process-utterance request fields in redis.",
+        extra=build_log_extra(
+            "session.process_utterance.redis_store_request.completed",
+            component="session",
+            stage="persist_redis",
+            session_id=session_id,
+            outcome="succeeded",
+            utterance_length=len(payload.utterance),
+            initialized_field_count=2,
+        ),
+    )
     logger.info(
         "Starting keyword extraction for process-utterance.",
         extra=build_log_extra(
@@ -171,24 +191,6 @@ async def process_utterance(
             )
             if settings.LOG_INCLUDE_RAW_IDENTIFIERS
             else None,
-        ),
-    )
-    await upsert_content_session(
-        redis,
-        session_id,
-        scalar_fields={
-            "utterance": payload.utterance,
-        },
-    )
-    logger.info(
-        "Stored request utterance in redis before keyword extraction.",
-        extra=build_log_extra(
-            "session.process_utterance.redis_store_request.completed",
-            component="session",
-            stage="persist_redis",
-            session_id=session_id,
-            outcome="succeeded",
-            utterance_length=len(payload.utterance),
         ),
     )
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
