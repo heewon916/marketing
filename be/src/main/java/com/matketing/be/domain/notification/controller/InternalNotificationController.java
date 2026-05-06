@@ -3,6 +3,7 @@ package com.matketing.be.domain.notification.controller;
 import com.matketing.be.domain.notification.dto.DispatchResult;
 import com.matketing.be.domain.notification.dto.ImmediateNotificationRequest;
 import com.matketing.be.domain.notification.dto.ImmediateNotificationResponse;
+import com.matketing.be.domain.notification.dto.NotificationBatchCreateResponse;
 import com.matketing.be.domain.notification.dto.NotificationDispatchRequest;
 import com.matketing.be.domain.notification.dto.NotificationDispatchResponse;
 import com.matketing.be.domain.notification.dto.NotificationHistoryItemResponse;
@@ -16,6 +17,7 @@ import com.matketing.be.domain.notification.enums.NotificationType;
 import com.matketing.be.domain.notification.repository.DeviceTokenRepository;
 import com.matketing.be.domain.notification.service.FcmPushService;
 import com.matketing.be.domain.notification.service.ImmediateNotificationService;
+import com.matketing.be.domain.notification.service.NotificationBatchCreateService;
 import com.matketing.be.domain.notification.service.NotificationDispatchService;
 import com.matketing.be.domain.notification.service.NotificationQueryService;
 import com.matketing.be.global.exception.BusinessException;
@@ -44,6 +46,7 @@ public class InternalNotificationController {
     private final ImmediateNotificationService immediateNotificationService;
     private final NotificationDispatchService notificationDispatchService;
     private final NotificationQueryService notificationQueryService;
+    private final NotificationBatchCreateService notificationBatchCreateService;
     private final DeviceTokenRepository deviceTokenRepository;
     private final FcmPushService fcmPushService;
 
@@ -127,5 +130,35 @@ public class InternalNotificationController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    // 리마인드 알림을 생성한다.
+    @PostMapping("/remind")
+    public ResponseEntity<NotificationBatchCreateResponse> createRemindBatch() {
+        return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.REMIND));
+    }
+
+    // 날씨 기반 메뉴 홍보 알림을 생성한다.
+    @PostMapping("/weather-menu")
+    public ResponseEntity<NotificationBatchCreateResponse> createWeatherMenuBatch() {
+        return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.WEATHER_MENU));
+    }
+
+    // 공휴일 기반 메뉴 홍보 알림을 생성한다.
+    @PostMapping("/holiday-menu")
+    public ResponseEntity<NotificationBatchCreateResponse> createHolidayMenuBatch() {
+        return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.HOLIDAY_MENU));
+    }
+
+    // 공휴일 영업 변경 유도 알림을 생성한다.
+    @PostMapping("/holiday-operation")
+    public ResponseEntity<NotificationBatchCreateResponse> createHolidayOperationBatch() {
+        return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.HOLIDAY_OPERATION));
+    }
+
+    // 주간 통계 알림을 생성한다.
+    @PostMapping("/weekly-stats")
+    public ResponseEntity<NotificationBatchCreateResponse> createWeeklyStatsBatch() {
+        return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.WEEKLY_STATS));
     }
 }
