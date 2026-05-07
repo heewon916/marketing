@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { registerFcmToken } from '@/features/notification/api/FcmApi';
 
 const baseURL = import.meta.env.DEV
   ? ''
@@ -42,6 +43,7 @@ api.interceptors.response.use(
         const newAccessToken = response.data.accessToken;
 
         localStorage.setItem('accessToken', newAccessToken);
+        void registerFcmToken();
 
         originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
 
