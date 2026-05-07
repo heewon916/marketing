@@ -221,10 +221,6 @@ class KeywordExtractionResult:
     draft_keywords: list[str]
     final_keywords: list[str] = field(default_factory=list)
 
-    @property
-    def weather_signals(self) -> list[str]:
-        return []
-
 
 class KeywordExtractionService:
     def __init__(

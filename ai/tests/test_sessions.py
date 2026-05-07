@@ -94,11 +94,12 @@ class FakeFinalEditService:
 class FakeKeywordExtractionService:
     def __init__(
         self,
+        purpose: str = "메뉴 홍보",
         draft_keywords: list[str] | None = None,
         final_keywords: list[str] | None = None,
-        weather_signals: list[str] | None = None,
         error: Exception | None = None,
     ) -> None:
+        self.purpose = purpose
         self.draft_keywords = (
             draft_keywords
             if draft_keywords is not None
@@ -107,7 +108,6 @@ class FakeKeywordExtractionService:
         self.final_keywords = (
             final_keywords if final_keywords is not None else list(self.draft_keywords)
         )
-        self.weather_signals = weather_signals if weather_signals is not None else []
         self.error = error
         self.calls: list[str] = []
 
@@ -116,33 +116,10 @@ class FakeKeywordExtractionService:
         if self.error is not None:
             raise self.error
         return KeywordExtractionResult(
+            purpose=self.purpose,
             draft_keywords=self.draft_keywords,
-            weather_signals=self.weather_signals,
             final_keywords=self.final_keywords,
         )
-
-
-class FakeMenuKeywordFallbackService:
-    def __init__(
-        self,
-        menu_name: str | None = None,
-        source: str | None = None,
-        error: Exception | None = None,
-    ) -> None:
-        self.menu_name = menu_name
-        self.source = source
-        self.error = error
-        self.calls: list[tuple[str, list[str]]] = []
-
-    async def choose_menu_keyword(
-        self,
-        store_id,
-        weather_signals: list[str],
-    ) -> tuple[str | None, str | None]:
-        self.calls.append((str(store_id), weather_signals))
-        if self.error is not None:
-            raise self.error
-        return self.menu_name, self.source
 
 
 class StubDraftDownloader:
@@ -364,14 +341,14 @@ def test_redis_payload_persisted(
     assert "expires_at" not in saved
 
 
-def test_weather_signals_persisted_in_debug_fields(
+def test_purpose_persisted_in_debug_fields(
     client: TestClient, fake_redis_sync: fakeredis.FakeStrictRedis
 ) -> None:
-    session_id = "sess-weather-signal-1"
+    session_id = "sess-purpose-1"
     original_service = app.state.keyword_extraction_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        draft_keywords=["막걸리", "파전"],
-        weather_signals=["비", "쌀쌀함"],
+        purpose="영업 공지",
+        draft_keywords=["임시 휴무", "정상영업"],
     )
 
     try:
@@ -385,89 +362,17 @@ def test_weather_signals_persisted_in_debug_fields(
     assert response.status_code == 200
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["debug:weather_signal:1"] == "비"
-    assert saved["debug:weather_signal:2"] == "쌀쌀함"
+    assert saved["debug:purpose"] == "영업 공지"
 
 
-def test_process_utterance_uses_weather_tag_fallback_keyword(
-    client: TestClient, fake_redis_sync: fakeredis.FakeStrictRedis
-) -> None:
-    session_id = "sess-weather-only-1"
-    original_keyword_service = app.state.keyword_extraction_service
-    original_menu_service = app.state.menu_keyword_fallback_service
-    app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        draft_keywords=[],
-        weather_signals=["비"],
-    )
-    app.state.menu_keyword_fallback_service = FakeMenuKeywordFallbackService(
-        menu_name="카모마일티",
-        source="weather_tag_menu",
-    )
-
-    try:
-        response = client.post(
-            f"/ai/sessions/{session_id}/process-utterance",
-            json=VALID_PAYLOAD,
-        )
-    finally:
-        app.state.keyword_extraction_service = original_keyword_service
-        app.state.menu_keyword_fallback_service = original_menu_service
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["guide_text"]
-    saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["status"] == "TEXT_GENERATED"
-    assert saved["debug:weather_signal:1"] == "비"
-    assert saved["draft_keyword:1"] == "카모마일티"
-    assert saved["final_keyword:1"] == "카모마일티"
-    assert saved["debug:fallback_source"] == "weather_tag_menu"
-
-
-def test_process_utterance_uses_random_menu_fallback_when_no_weather_tag_match(
-    client: TestClient, fake_redis_sync: fakeredis.FakeStrictRedis
-) -> None:
-    session_id = "sess-weather-random-1"
-    original_keyword_service = app.state.keyword_extraction_service
-    original_menu_service = app.state.menu_keyword_fallback_service
-    app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        draft_keywords=[],
-        weather_signals=["비"],
-    )
-    app.state.menu_keyword_fallback_service = FakeMenuKeywordFallbackService(
-        menu_name="피스타치오티라미슈",
-        source="random_menu",
-    )
-
-    try:
-        response = client.post(
-            f"/ai/sessions/{session_id}/process-utterance",
-            json=VALID_PAYLOAD,
-        )
-    finally:
-        app.state.keyword_extraction_service = original_keyword_service
-        app.state.menu_keyword_fallback_service = original_menu_service
-
-    assert response.status_code == 200
-    saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["draft_keyword:1"] == "피스타치오티라미슈"
-    assert saved["final_keyword:1"] == "피스타치오티라미슈"
-    assert saved["debug:fallback_source"] == "random_menu"
-
-
-def test_process_utterance_uses_default_guide_when_no_keywords_or_weather(
+def test_process_utterance_uses_default_guide_when_no_keywords(
     client: TestClient, fake_redis_sync: fakeredis.FakeStrictRedis
 ) -> None:
     session_id = "sess-default-guide-1"
     original_keyword_service = app.state.keyword_extraction_service
-    original_menu_service = app.state.menu_keyword_fallback_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="일상 공유",
         draft_keywords=[],
-        weather_signals=[],
-    )
-    app.state.menu_keyword_fallback_service = FakeMenuKeywordFallbackService(
-        menu_name=None,
-        source=None,
     )
 
     try:
@@ -477,44 +382,12 @@ def test_process_utterance_uses_default_guide_when_no_keywords_or_weather(
         )
     finally:
         app.state.keyword_extraction_service = original_keyword_service
-        app.state.menu_keyword_fallback_service = original_menu_service
 
     assert response.status_code == 200
     body = response.json()
     assert body["guide_text"] == "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
     saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["debug:fallback_source"] == "default_guide"
-    assert "draft_keyword:1" not in saved
-    assert "final_keyword:1" not in saved
-
-
-def test_process_utterance_uses_default_guide_when_menu_fallback_returns_none(
-    client: TestClient, fake_redis_sync: fakeredis.FakeStrictRedis
-) -> None:
-    session_id = "sess-weather-none-1"
-    original_keyword_service = app.state.keyword_extraction_service
-    original_menu_service = app.state.menu_keyword_fallback_service
-    app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        draft_keywords=[],
-        weather_signals=["비"],
-    )
-    app.state.menu_keyword_fallback_service = FakeMenuKeywordFallbackService()
-
-    try:
-        response = client.post(
-            f"/ai/sessions/{session_id}/process-utterance",
-            json=VALID_PAYLOAD,
-        )
-    finally:
-        app.state.keyword_extraction_service = original_keyword_service
-        app.state.menu_keyword_fallback_service = original_menu_service
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["guide_text"] == "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
-    saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["debug:fallback_source"] == "default_guide"
-    assert saved["debug:weather_signal:1"] == "비"
+    assert saved["debug:purpose"] == "일상 공유"
     assert "draft_keyword:1" not in saved
     assert "final_keyword:1" not in saved
 
@@ -756,7 +629,6 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.final_edit_service is not None
     assert app.state.final_edit_service.predictor.weights_path is not None
     assert app.state.keyword_extraction_service is not None
-    assert app.state.menu_keyword_fallback_service is not None
 
 
 def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() -> None:
@@ -818,18 +690,6 @@ def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
     assert service._normalize_keyword("\uc81c\ucca0\uc774\uc57c") == ""
 
 
-def test_keyword_extraction_service_canonicalizes_weather_signals() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
-
-    assert service._normalize_weather_signal("\ube44 \uc624\ub294 \ub0a0\uc5d4") == "\ube44"
-    assert (
-        service._normalize_weather_signal(
-            "\uc624\ub298\uc740 \uc880 \uc3b8\uc3b8\ud574\uc11c"
-        )
-        == "\uc3b8\uc3b8\ud568"
-    )
-
-
 def test_keyword_extraction_service_falls_back_without_morph_analyzer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -837,52 +697,55 @@ def test_keyword_extraction_service_falls_back_without_morph_analyzer(
     monkeypatch.setattr(service, "_get_morph_analyzer", lambda: None)
 
     assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
-    assert service._normalize_weather_signal("\ube44 \uc624\ub294 \ub0a0\uc5d4") == "\ube44"
 
 
-def test_keyword_extraction_service_parses_weather_signals_separately() -> None:
+def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
     service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
     result = service._parse_extraction_result(
         "{"
+        '"purpose": "\uba54\ub274 \ud64d\ubcf4", '
         '"keywords": ['
         '"\\ubc24\\ud638\\ubc15", '
         '"\\uc81c\\ucca0 \\uc74c\\uc2dd", '
-        '"\\ubd04\\ubc14\\ub78c"'
-        "], "
-        '"weather_signals": ['
-        '"\\ubd04\\ubc14\\ub78c", '
-        '"\\ub9d1\\uc74c", '
-        '"\\uc624\\ub298"'
+        '"\\ub9e4\\uc7a5"'
         "]"
         "}"
     )
 
+    assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"]
     assert result.final_keywords == ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"]
-    assert result.weather_signals == ["\ubd04\ubc14\ub78c", "\ub9d1\uc74c"]
 
 
-def test_keyword_extraction_service_accepts_weather_only_payload() -> None:
+def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
     service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
-    result = service._parse_extraction_result(
-        '{'
-        '"keywords": ["\\ube44\\uac00 \\ucd94\\uc801\\ucd94\\uc801 \\uc624\\ub2c8\\uae4c"], '
-        '"weather_signals": ["\\ube44"]'
-        "}"
-    )
+    with pytest.raises(
+        KeywordExtractionUnavailableError,
+        match="invalid purpose",
+    ):
+        service._parse_extraction_result(
+            '{'
+            '"purpose": "\\uae30\\ud0c0", '
+            '"keywords": ["\\ub9c9\\uac78\\ub9ac"]'
+            "}"
+        )
 
-    assert result.draft_keywords == []
-    assert result.final_keywords == []
-    assert result.weather_signals == ["\ube44"]
 
-
-def test_keyword_extraction_service_rejects_non_json_output() -> None:
+def test_keyword_extraction_service_rejects_empty_normalized_keywords() -> None:
     service = KeywordExtractionService(model_path=Path("unused.gguf"))
 
-    with pytest.raises(KeywordExtractionUnavailableError):
-        service._parse_keywords("\ub9c9\uac78\ub9ac, \ud30c\uc804")
+    with pytest.raises(
+        KeywordExtractionUnavailableError,
+        match="no usable draft_keywords",
+    ):
+        service._parse_extraction_result(
+            '{'
+            '"purpose": "\\uc77c\\uc0c1 \\uacf5\\uc720", '
+            '"keywords": ["\\uba39\\uace0 \\uc0b4\\uc544\\uc57c\\uc9c0"]'
+            "}"
+        )
 
 
 def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
@@ -890,16 +753,25 @@ def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
 
     result = service._parse_extraction_result(
         '{'
+        '"purpose": "\\uba54\\ub274 \\ud64d\\ubcf4", '
         '"keywords": ['
         '"\\ub9c9\\uac78\\ub9ac", '
         '"\\ud30c\\uc804", '
         '"\\ub9e4\\uc7a5"'
-        '], "weather_signals": ["\\ube44"]}'
+        "]"
+        "}"
     )
 
+    assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
     assert result.final_keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
-    assert result.weather_signals == ["\ube44"]
+
+
+def test_keyword_extraction_service_rejects_non_json_output() -> None:
+    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+
+    with pytest.raises(KeywordExtractionUnavailableError):
+        service._parse_keywords("\ub9c9\uac78\ub9ac, \ud30c\uc804")
 
 
 @pytest.mark.asyncio
@@ -926,7 +798,7 @@ async def test_keyword_extraction_service_calls_remote_server_successfully(
         calls.append(include_response_format)
         return _make_chat_response(
             200,
-            content='{"draft_keywords":["\\ub9c9\\uac78\\ub9ac"],"weather_signals":["\\ube44"]}',
+            content='{"purpose":"\\uba54\\ub274 \\ud64d\\ubcf4","keywords":["\\ub9c9\\uac78\\ub9ac"]}',
         )
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
@@ -936,8 +808,8 @@ async def test_keyword_extraction_service_calls_remote_server_successfully(
     )
 
     assert calls == [True]
+    assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
-    assert result.weather_signals == ["\ube44"]
 
 
 @pytest.mark.asyncio
@@ -963,7 +835,7 @@ async def test_keyword_extraction_service_retries_without_response_format(
             )
         return _make_chat_response(
             200,
-            content='{"draft_keywords":["\\ud30c\\uc804"],"weather_signals":[]}',
+            content='{"purpose":"\\uba54\\ub274 \\ud64d\\ubcf4","keywords":["\\ud30c\\uc804"]}',
         )
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
@@ -973,6 +845,7 @@ async def test_keyword_extraction_service_retries_without_response_format(
     )
 
     assert calls == [True, False]
+    assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ud30c\uc804"]
 
 
