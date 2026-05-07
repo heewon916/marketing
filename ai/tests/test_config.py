@@ -46,15 +46,12 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.LOG_INCLUDE_RAW_IDENTIFIERS is True
     assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 200
     assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
-    assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
-    assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
     assert settings.KEYWORD_MODEL_MAX_TOKENS == 32
     assert settings.KEYWORD_MODEL_TEMPERATURE == 0.2
     assert settings.KEYWORD_MODEL_TOP_P == 0.85
     assert settings.KEYWORD_MODEL_THREADS == 6
     assert settings.KEYWORD_MODEL_GPU_LAYERS == 12
     assert settings.KEYWORD_MODEL_ENABLED is True
-    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -164,30 +161,33 @@ def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
 
 
 def test_model_defaults_resolve_without_env(env_setup: None) -> None:
-    settings = Settings(_env_file=None)
+    assert DEFAULT_ORIENTATION_MODEL_NAME == "vit"
+    assert DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH.name == "model-vit-ang-loss.h5"
+    assert DEFAULT_KEYWORD_MODEL_PATH.name == "model.gguf"
+    assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
+    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
+    assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 30.0
 
-    assert settings.ORIENTATION_MODEL_NAME == DEFAULT_ORIENTATION_MODEL_NAME
-    assert settings.orientation_model_weights_path == DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-    assert settings.keyword_model_path == DEFAULT_KEYWORD_MODEL_PATH
 
-
-def test_model_env_vars_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_postgres(monkeypatch)
-    monkeypatch.setenv("ORIENTATION_MODEL_NAME", "resnet")
-    monkeypatch.setenv("ORIENTATION_MODEL_WEIGHTS_PATH", "custom/weights.h5")
-    monkeypatch.setenv("KEYWORD_MODEL_PATH", "custom/model.gguf")
-    monkeypatch.setenv("KEYWORD_MODEL_HF_REPO_ID", "custom/repo")
-    monkeypatch.setenv("KEYWORD_MODEL_HF_FILENAME", "custom.gguf")
-    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "1024")
+    monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "16")
+    monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.3")
+    monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.75")
+    monkeypatch.setenv("KEYWORD_MODEL_THREADS", "3")
+    monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "8")
+    monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "false")
 
     settings = Settings(_env_file=None)
 
-    assert settings.ORIENTATION_MODEL_NAME == DEFAULT_ORIENTATION_MODEL_NAME
-    assert settings.orientation_model_weights_path == DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-    assert settings.keyword_model_path == DEFAULT_KEYWORD_MODEL_PATH
-    assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
-    assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
-    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+    assert settings.KEYWORD_MODEL_CTX_SIZE == 1024
+    assert settings.KEYWORD_MODEL_MAX_TOKENS == 16
+    assert settings.KEYWORD_MODEL_TEMPERATURE == 0.3
+    assert settings.KEYWORD_MODEL_TOP_P == 0.75
+    assert settings.KEYWORD_MODEL_THREADS == 3
+    assert settings.KEYWORD_MODEL_GPU_LAYERS == 8
+    assert settings.KEYWORD_MODEL_ENABLED is False
 
 
 def test_s3_not_configured_when_bucket_missing(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -4,7 +4,10 @@ import pytest
 
 from app import keyword_model_download
 from app.core import config
-from app.core.config import settings
+from app.core.config import (
+    DEFAULT_KEYWORD_MODEL_HF_FILENAME,
+    DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+)
 from app.keyword_model_download import ensure_keyword_model_available
 
 
@@ -55,8 +58,8 @@ def test_ensure_keyword_model_available_uses_default_path_when_not_provided(
     downloaded.write_bytes(b"default")
 
     def fake_hf_hub_download(*, repo_id: str, filename: str, repo_type: str) -> str:
-        assert repo_id == settings.KEYWORD_MODEL_HF_REPO_ID
-        assert filename == settings.KEYWORD_MODEL_HF_FILENAME
+        assert repo_id == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
+        assert filename == DEFAULT_KEYWORD_MODEL_HF_FILENAME
         assert repo_type == "model"
         return str(downloaded)
 
