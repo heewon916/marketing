@@ -4,7 +4,6 @@ import Button from "@/components/common/Button"
 import BottomTab from "@/components/common/BottomTab"
 import GeneratedPostCarousel from "@/features/postCreate/components/GeneratedPostCarousel"
 import GeneratedPostBody from "@/features/postCreate/components/GeneratedPostBody"
-import ScrollFadeArrow from "@/components/common/ScrollFadeArrow"
 
 export default function GeneratedPostEditStep({ post, photos = [], onPublish, onExit, stepNum }) {
   const [editedContent, setEditedContent] = useState(post?.content ?? "")
@@ -25,9 +24,6 @@ export default function GeneratedPostEditStep({ post, photos = [], onPublish, on
         <StepProgress current={stepNum} />
       </section>
 
-      <div className="absolute bottom-20 left-0 w-full z-20 pointer-events-none">
-        <ScrollFadeArrow targetRef={contentSectionRef} />
-      </div>
 
       <section
         ref={contentSectionRef}
