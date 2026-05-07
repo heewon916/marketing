@@ -15,7 +15,7 @@ public record AiWeatherRequest(
         @JsonProperty("diurnal_range")
         Double diurnalRange,
         @JsonProperty("discomfort_index")
-        Double discomfortIndex,
+        Integer discomfortIndex,
         @JsonProperty("heavy_rain_warning")
         String heavyRainWarning,
         @JsonProperty("typhoon_warning")

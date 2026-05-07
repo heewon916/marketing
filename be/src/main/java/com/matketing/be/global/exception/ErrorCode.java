@@ -17,6 +17,8 @@ public enum ErrorCode {
     INVALID_AUDIO_FILE(HttpStatus.BAD_REQUEST, "지원하지 않는 음성 파일입니다."),
     EMPTY_UTTERANCE(HttpStatus.BAD_REQUEST, "캡션 생성을 위한 문장을 입력해 주세요."),
     AI_SERVER_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "캡션 생성에 실패했습니다. 잠시 후 다시 시도해 주세요."),
+    STORE_NOT_FOUND(HttpStatus.BAD_REQUEST, "매장 정보를 찾을 수 없습니다."),
+    STORE_COORDINATE_REQUIRED(HttpStatus.BAD_REQUEST, "매장 위치 정보가 필요합니다."),
 
     NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
     INVALID_NOTIFICATION_BATCH_SIZE(HttpStatus.BAD_REQUEST, "유효하지 않은 알림 배치 크기입니다."),
