@@ -3,7 +3,6 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 
-from app.core.config import settings
 from app.db.redis import get_redis
 from app.schemas.sessions import (
     ExtractFramesRequest,
@@ -22,6 +21,7 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     get_keyword_extraction_service,
 )
+from app.services.menu_fallback import get_menu_keyword_fallback_service
 from app.services.sessions import process_utterance
 
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
@@ -41,12 +41,15 @@ async def process_utterance_endpoint(
     redis: Redis = Depends(get_redis),
 ) -> ProcessUtteranceResponse:
     keyword_service = get_keyword_extraction_service(request)
+    menu_fallback_service = get_menu_keyword_fallback_service(request)
     logger.info(
         "process-utterance request received.",
         extra={
             "session_id": session_id,
             "payload_owner_persona": payload.owner_persona,
-            "payload_weather_condition": payload.weather.condition,
+            "payload_weather_cloud_cover": payload.weather.cloud_cover,
+            "payload_weather_temperature": payload.weather.temperature,
+            "payload_weather_precipitation": payload.weather.precipitation,
             "utterance_length": len(payload.utterance),
         },
     )
@@ -56,6 +59,7 @@ async def process_utterance_endpoint(
             payload,
             redis,
             keyword_service,
+            menu_fallback_service,
         )
     except KeywordExtractionUnavailableError as exc:
         cause = exc.__cause__
@@ -74,13 +78,15 @@ async def process_utterance_endpoint(
         "process-utterance completed successfully.",
         extra={
             "session_id": session_id,
-            "keyword_count": len(result.keywords),
+            "draft_keyword_count": len(result.draft_keywords),
+            "final_keyword_count": len(result.final_keywords),
         },
     )
     return ProcessUtteranceResponse(
         session_id=session_id,
+        status=result.status,
         guide_text=result.guide_text,
-        keywords=result.keywords if settings.DEBUG else None,
+        caption=result.caption,
     )
 
 

@@ -22,7 +22,19 @@ VALID_PAYLOAD = {
     "utterance": "warm lighting cozy table signature menu",
     "owner_persona": "aesthetic",
     "date": "2026-04-27",
-    "weather": {"condition": "rainy", "temperature": 18.5},
+    "weather": {
+        "temperature": 18.5,
+        "precipitation": 0.0,
+        "cloud_cover": "맑음",
+        "humidity": 45,
+        "wind_speed": 2.5,
+        "pm10": 85,
+        "pm25": 35,
+        "diurnal_range": 12.0,
+        "discomfort_index": 63,
+        "heavy_rain_warning": None,
+        "typhoon_warning": None,
+    },
 }
 
 

@@ -12,3 +12,4 @@ models/
 weights/
 *.h5
 *.gguf
+Agents.md
