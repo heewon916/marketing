@@ -1,3 +1,5 @@
+import { api } from '@/lib/Axios.js';
+
 const BACKEND_URL = import.meta.env.VITE_API_BACKEND_URL;
 
 export const INSTAGRAM_AUTH_PURPOSE = {
@@ -10,5 +12,9 @@ export const authApi = {
     sessionStorage.setItem('instagramAuthPurpose', purpose);
 
     window.location.href = `${BACKEND_URL}/api/v1/users/instagram`;
+  },
+
+  getMe() {
+    return api.get('/api/v1/users/me');
   },
 };

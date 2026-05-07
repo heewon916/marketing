@@ -17,6 +17,10 @@ function LandingPage() {
     () => location.state?.authError ?? null
   );
 
+  const [authRedirectTo, setAuthRedirectTo] = useState(
+    () => location.state?.redirectTo ?? null
+  );
+
   useEffect(() => {
     void registerFcmToken({ requestPermission: true });
   }, []);
@@ -40,6 +44,12 @@ function LandingPage() {
 
   const handleCloseAuthErrorModal = () => {
     setAuthError(null);
+
+    if (authRedirectTo) {
+      const nextPath = authRedirectTo;
+      setAuthRedirectTo(null);
+      navigate(nextPath, { replace: true });
+    }
   };
 
   return (
