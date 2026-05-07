@@ -1,5 +1,7 @@
 package com.matketing.be.domain.content.controller;
 
+import com.matketing.be.domain.content.dto.ChatRequest;
+import com.matketing.be.domain.content.dto.ChatResponse;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
@@ -8,6 +10,7 @@ import com.matketing.be.domain.content.dto.ContentRequest;
 import com.matketing.be.domain.content.dto.ContentResponseDto;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;

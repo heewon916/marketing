@@ -7,8 +7,17 @@ from pydantic import BaseModel, Field
 
 
 class WeatherInfo(BaseModel):
-    condition: str = Field(..., min_length=1)
     temperature: float
+    precipitation: float
+    cloud_cover: str = Field(..., min_length=1)
+    humidity: float
+    wind_speed: float
+    pm10: float
+    pm25: float
+    diurnal_range: float
+    discomfort_index: float
+    heavy_rain_warning: str | None = None
+    typhoon_warning: str | None = None
 
 
 class ProcessUtteranceRequest(BaseModel):
@@ -21,8 +30,9 @@ class ProcessUtteranceRequest(BaseModel):
 
 class ProcessUtteranceResponse(BaseModel):
     session_id: str
+    status: Literal["TEXT_GENERATED"]
     guide_text: str
-    keywords: list[str] | None = None
+    caption: str
 
 
 class ExtractFramesRequest(BaseModel):

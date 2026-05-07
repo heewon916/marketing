@@ -10,14 +10,28 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.db.redis import get_redis
 from app.main import app
+from app.services.keyword_extraction import KeywordExtractionResult
 
 if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 
 class DefaultKeywordExtractionService:
-    async def extract_keywords(self, utterance: str) -> list[str]:
-        return ["signature menu", "cozy table"]
+    async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
+        return KeywordExtractionResult(
+            draft_keywords=["signature menu", "cozy table"],
+            weather_signals=[],
+            final_keywords=["signature menu", "cozy table"],
+        )
+
+
+class DefaultMenuKeywordFallbackService:
+    async def choose_menu_keyword(
+        self,
+        store_id,
+        weather_signals: list[str],
+    ) -> tuple[str | None, str | None]:
+        return None, None
 
 
 @pytest.fixture
@@ -54,6 +68,9 @@ def client(
     with TestClient(app) as test_client:
         try:
             app.state.keyword_extraction_service = DefaultKeywordExtractionService()
+            app.state.menu_keyword_fallback_service = (
+                DefaultMenuKeywordFallbackService()
+            )
             yield test_client
         finally:
             settings.KEYWORD_MODEL_ENABLED = original_keyword_enabled
