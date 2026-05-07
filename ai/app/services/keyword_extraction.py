@@ -6,7 +6,7 @@ import re
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Request
 import httpx
@@ -179,6 +179,7 @@ _ALLOWED_PURPOSES = (
     "영업 공지",
     "일상 공유",
 )
+KeywordPurpose = Literal["메뉴 홍보", "영업 공지", "일상 공유"]
 
 _PROMPT_TEMPLATE = """You classify the purpose of a Korean shop-owner utterance and extract 1 to 3 reusable keyword candidates.
 
@@ -216,9 +217,13 @@ class KeywordExtractionUnavailableError(RuntimeError):
 
 @dataclass
 class KeywordExtractionResult:
+    purpose: KeywordPurpose
     draft_keywords: list[str]
-    weather_signals: list[str]
     final_keywords: list[str] = field(default_factory=list)
+
+    @property
+    def weather_signals(self) -> list[str]:
+        return []
 
 
 class KeywordExtractionService:
@@ -337,10 +342,9 @@ class KeywordExtractionService:
                 stage="inference",
                 outcome="succeeded",
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+                purpose=result.purpose,
                 draft_keyword_count=len(result.draft_keywords),
                 draft_keywords_preview=", ".join(result.draft_keywords),
-                weather_signal_count=len(result.weather_signals),
-                weather_signals_preview=", ".join(result.weather_signals),
             ),
         )
         return result
@@ -538,18 +542,18 @@ class KeywordExtractionService:
 
     def _parse_extraction_result(self, raw_output: str) -> KeywordExtractionResult:
         parsed = self._load_extraction_payload(raw_output)
-        draft_payload, weather_payload = self._split_extraction_payload(parsed)
+        purpose_payload, keyword_payload = self._split_extraction_payload(parsed)
+        purpose = self._validate_purpose_payload(purpose_payload)
 
-        if not isinstance(draft_payload, list):
+        if not isinstance(keyword_payload, list):
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction returned a non-list payload."
             )
-        draft_keywords = self._normalize_keywords_payload(draft_payload)
-        weather_signals = self._normalize_weather_payload(weather_payload)
+        draft_keywords = self._normalize_keywords_payload(keyword_payload)
 
-        if not draft_keywords and not weather_signals:
+        if not draft_keywords:
             raise KeywordExtractionUnavailableError(
-                "Keyword extraction returned no usable draft_keywords or weather signals."
+                "Keyword extraction returned no usable draft_keywords."
             )
 
         logger.info(
@@ -559,8 +563,8 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="parse",
                 outcome="succeeded",
+                purpose=purpose,
                 draft_keywords_preview=", ".join(draft_keywords),
-                weather_signals_preview=", ".join(weather_signals),
                 raw_output_preview=preview_text(
                     raw_output,
                     settings.LOG_EVENT_PREVIEW_MAX_LEN,
@@ -568,8 +572,8 @@ class KeywordExtractionService:
             ),
         )
         return KeywordExtractionResult(
+            purpose=purpose,
             draft_keywords=draft_keywords,
-            weather_signals=weather_signals,
             final_keywords=list(draft_keywords),
         )
 
@@ -601,26 +605,26 @@ class KeywordExtractionService:
     @staticmethod
     def _split_extraction_payload(
         payload: Any,
-    ) -> tuple[Any, list[Any]]:
+    ) -> tuple[Any, Any]:
         if isinstance(payload, dict):
-            weather_candidate = payload.get("weather_signals")
-            weather_payload = weather_candidate if isinstance(weather_candidate, list) else []
-            draft_payload = payload.get("draft_keywords")
-            if draft_payload is None:
-                draft_payload = payload.get("keywords")
-            return draft_payload, weather_payload
-        return payload, []
+            keyword_payload = payload.get("keywords")
+            if keyword_payload is None:
+                keyword_payload = payload.get("draft_keywords")
+            return payload.get("purpose"), keyword_payload
+        return None, payload
+
+    @staticmethod
+    def _validate_purpose_payload(payload: Any) -> KeywordPurpose:
+        if not isinstance(payload, str) or payload not in _ALLOWED_PURPOSES:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned an invalid purpose."
+            )
+        return payload
 
     def _normalize_keywords_payload(self, payload: list[Any]) -> list[str]:
         return self._normalize_unique_values(
             payload,
             normalizer=self._normalize_keyword,
-        )
-
-    def _normalize_weather_payload(self, payload: list[Any]) -> list[str]:
-        return self._normalize_unique_values(
-            payload,
-            normalizer=self._normalize_weather_signal,
         )
 
     @staticmethod
@@ -709,27 +713,9 @@ class KeywordExtractionService:
         if not normalized:
             return ""
 
-        morphology_normalized = self._normalize_phrase_with_morphology(
-            normalized,
-            target="keyword",
-        )
+        morphology_normalized = self._normalize_phrase_with_morphology(normalized)
         if morphology_normalized is None:
             return self._fallback_normalize_keyword(normalized)
-        if morphology_normalized:
-            return morphology_normalized
-        return ""
-
-    def _normalize_weather_signal(self, signal: str) -> str:
-        normalized = self._basic_normalize_text(signal)
-        if not normalized:
-            return ""
-
-        morphology_normalized = self._normalize_phrase_with_morphology(
-            normalized,
-            target="weather_signal",
-        )
-        if morphology_normalized is None:
-            return self._fallback_normalize_weather_signal(normalized)
         if morphology_normalized:
             return morphology_normalized
         return ""
@@ -737,7 +723,6 @@ class KeywordExtractionService:
     def _normalize_phrase_with_morphology(
         self,
         text: str,
-        target: str,
     ) -> str | None:
         analyzer = self._get_morph_analyzer()
         if analyzer is None:
@@ -754,15 +739,13 @@ class KeywordExtractionService:
                     stage="morph_analysis",
                     outcome="failed",
                     error_type=exc.__class__.__name__,
-                    morph_target=target,
+                    morph_target="keyword",
                 ),
                 exc_info=True,
             )
             return None
 
-        if target == "keyword":
-            return self._normalize_keyword_tokens(tokens)
-        return self._normalize_weather_tokens(tokens, text)
+        return self._normalize_keyword_tokens(tokens)
 
     def _normalize_keyword_tokens(self, tokens: list[Any]) -> str:
         pieces: list[str] = []
@@ -786,24 +769,6 @@ class KeywordExtractionService:
 
         normalized = " ".join(pieces)
         return self._fallback_normalize_keyword(normalized)
-
-    def _normalize_weather_tokens(self, tokens: list[Any], original_text: str) -> str:
-        pieces: list[str] = []
-
-        for token in tokens:
-            form = getattr(token, "form", "").strip()
-            tag = getattr(token, "tag", "")
-            if not form or not tag:
-                continue
-            if tag in _MORPH_DISALLOWED_TAIL_TAGS or tag in {"MAG", "MAJ", "IC"}:
-                continue
-            if tag.startswith(_MORPH_ALLOWED_WEATHER_TAG_PREFIXES):
-                pieces.append(form)
-
-        canonical = self._canonicalize_weather_signal(" ".join(pieces))
-        if canonical:
-            return canonical
-        return self._fallback_normalize_weather_signal(original_text)
 
     def _fallback_normalize_keyword(self, keyword: str) -> str:
         normalized = self._basic_normalize_text(keyword)
