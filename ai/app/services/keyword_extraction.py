@@ -174,6 +174,41 @@ Input: {utterance}
 Output:
 """
 
+_ALLOWED_PURPOSES = (
+    "메뉴 홍보",
+    "영업 공지",
+    "일상 공유",
+)
+
+_PROMPT_TEMPLATE = """You classify the purpose of a Korean shop-owner utterance and extract 1 to 3 reusable keyword candidates.
+
+Rules:
+- Return JSON object text only.
+- Use this schema: {{"purpose": "...", "keywords": ["..."]}}.
+- "purpose" must be exactly one of: "메뉴 홍보", "영업 공지", "일상 공유".
+- "keywords" must contain 1 to 3 short Korean keyword candidates copied or lightly normalized from the utterance.
+- Keep "keywords" focused on menu, product, event, notice, routine, or shop-operation phrases.
+- Drop filler talk, complaints, mood-only phrases, and general situation words.
+- Preserve useful phrases and deduplicate everything.
+- Do not explain your reasoning.
+
+Examples:
+Input: \uc624\ub298 \uc544\uc8fc \ube44\uc2fc \ubc14\ub2d0\ub77c\ub85c \ubc84\ud130 \ucfe0\ud0a4\ub97c \uad6c\uc6e0\ub294\ub370 \uc190\ub2d8\uc774 \uc601 \uc5c6\ub124...
+Output: {{"purpose": "메뉴 홍보", "keywords": ["\ubc84\ud130 \ucfe0\ud0a4"]}}
+
+Input: \uc624\ub298 \ube44\ub3c4 \uc624\uace0 \uc601 \ud558\ub298\uc774 \uafb8\ubb3c\uac70\ub9ac\ub294\ub370 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\uaca0\ub2e4
+Output: {{"purpose": "메뉴 홍보", "keywords": ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]}}
+
+Input: \uc624\ub298 \uc784\uc2dc\ud734\ubb34\ub77c\uc11c \uc800\ub141 \uc601\uc5c5\uc740 \uc26c\uace0 \ub0b4\uc77c \uc815\uc0c1\uc601\uc5c5\ud560\uac8c\uc694
+Output: {{"purpose": "영업 공지", "keywords": ["\uc784\uc2dc \ud734\ubb34", "\uc815\uc0c1\uc601\uc5c5"]}}
+
+Input: \uc624\ub298\uc740 \uac00\uac8c \ub9c8\uac10\ud558\uace0 \uc9d1\uc5d0\uc11c \ucc45 \uc77d\uc73c\uba74\uc11c \uc27d\ub2c8\ub2e4
+Output: {{"purpose": "일상 공유", "keywords": ["\uac00\uac8c \ub9c8\uac10", "\ucc45 \uc77d\uae30"]}}
+
+Input: {utterance}
+Output:
+"""
+
 
 class KeywordExtractionUnavailableError(RuntimeError):
     """Raised when the local keyword extraction model is unavailable."""
@@ -316,8 +351,7 @@ class KeywordExtractionService:
                 {
                     "role": "system",
                     "content": (
-                        "Return only a JSON object with Korean promotional keywords "
-                        'and weather_signals fields.'
+                        "Return only a JSON object with purpose and keywords fields."
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -332,19 +366,18 @@ class KeywordExtractionService:
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "draft_keywords": {
+                        "purpose": {
+                            "type": "string",
+                            "enum": list(_ALLOWED_PURPOSES),
+                        },
+                        "keywords": {
                             "type": "array",
                             "minItems": 1,
                             "maxItems": 3,
                             "items": {"type": "string"},
                         },
-                        "weather_signals": {
-                            "type": "array",
-                            "maxItems": 3,
-                            "items": {"type": "string"},
-                        },
                     },
-                    "required": ["draft_keywords"],
+                    "required": ["purpose", "keywords"],
                 },
             }
         return payload
