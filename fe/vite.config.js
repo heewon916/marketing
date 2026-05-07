@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.svg'],
+        includeAssets: ['favicon.svg', 'icon_192.png', 'icon_512.png'],
         manifest: {
           id: '/',
           name: '맡케팅',
@@ -29,10 +29,10 @@ export default defineConfig(({ mode }) => {
           orientation: 'portrait',
           start_url: '/',
           icons: [
-            { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-            { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icon_192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icon_512.png', sizes: '512x512', type: 'image/png' },
             {
-              src: '/pwa-512x512.png',
+              src: '/icon_512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

@@ -40,9 +40,7 @@ function HomePage() {
       <section className="fixed bottom-20 left-1/2 z-20 w-full max-w-md -translate-x-1/2">
         <InputBar
           onTyping={setIsTyping}
-          disabled={isRecording}
-          isRecording={isRecording}
-          onMicClick={() => setIsRecording((prev) => !prev)}
+          onRecordingChange={setIsRecording}
         />
       </section>
 

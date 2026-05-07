@@ -1,16 +1,19 @@
+import { useRef } from "react"
 import StepProgress from "@/components/common/StepProgress"
 import Button from "@/components/common/Button"
 import BottomTab from "@/components/common/BottomTab"
 import GeneratedPostPreview from "@/features/postCreate/components/GeneratedPostPreview"
 
 export default function GeneratedPostStep({ post, photos = [], onEdit, onPublish, stepNum }) {
+  const scrollRef = useRef(null)
+
   return (
     <main className="relative flex h-dvh flex-col bg-white">
       <section className="flex justify-center px-10 pb-3 pt-8 shrink-0">
         <StepProgress current={stepNum} />
       </section>
 
-      <section className="flex flex-1 flex-col overflow-y-auto px-6 pb-20">
+      <section ref={scrollRef} className="relative flex flex-1 flex-col overflow-y-auto px-6 pb-20">
         <GeneratedPostPreview post={post} photos={photos} />
 
         <div className="mt-auto pb-3 pt-5">
