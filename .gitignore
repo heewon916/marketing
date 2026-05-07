@@ -17,6 +17,7 @@
 .gradle/
 build/
 out/
+docs/
 
 # Node (프론트 대비)
 node_modules/
