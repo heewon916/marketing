@@ -16,7 +16,12 @@ from app.services.keyword_extraction import (
     KeywordExtractionService,
     KeywordExtractionUnavailableError,
 )
-from app.services.sessions import session_key
+from app.services.sessions import (
+    DEFAULT_FALLBACK_GUIDE_TEXT,
+    build_text_generation_result,
+    resolve_caption_keywords,
+    session_key,
+)
 
 VALID_PAYLOAD = {
     "store_id": str(uuid4()),
@@ -205,6 +210,32 @@ def test_keywords_not_exposed_even_when_debug_on(
     assert "keywords" not in body
     assert "draft_keywords" not in body
     assert "final_keywords" not in body
+
+
+def test_resolve_caption_keywords_prefers_final_keywords() -> None:
+    assert resolve_caption_keywords(["draft menu"], ["final menu"]) == ["final menu"]
+    assert resolve_caption_keywords(["draft menu"], []) == ["draft menu"]
+
+
+def test_build_text_generation_result_uses_default_guide_without_keywords() -> None:
+    (
+        draft_caption,
+        draft_hashtags,
+        guide_text,
+        stored_caption,
+        fallback_source,
+    ) = build_text_generation_result(
+        keywords=[],
+        owner_persona="calm",
+        cloud_cover="clear",
+        fallback_source=None,
+    )
+
+    assert draft_caption
+    assert draft_hashtags == ["#clear"]
+    assert guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
+    assert stored_caption.endswith("#clear")
+    assert fallback_source == "default_guide"
 
 
 def test_process_utterance_returns_503_when_keyword_extraction_fails(
