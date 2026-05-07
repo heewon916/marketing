@@ -219,6 +219,7 @@ def test_build_text_generation_result_uses_default_guide_without_keywords() -> N
         keywords=[],
         owner_persona="calm",
         cloud_cover="clear",
+        weather_tags=[],
         fallback_source=None,
     )
 
@@ -332,6 +333,19 @@ def test_redis_payload_persisted(
     assert len(draft_keyword_fields) == len(final_keyword_fields)
     assert saved["draft_keyword:1"] == "signature menu"
     assert saved["final_keyword:1"] == "signature menu"
+    weather_tag_fields = [
+        field for field in saved if field.startswith("weather_tag:")
+    ]
+    assert weather_tag_fields == [
+        "weather_tag:1",
+        "weather_tag:2",
+        "weather_tag:3",
+        "weather_tag:4",
+    ]
+    assert saved["weather_tag:1"] == "PRECIP_CLEAR"
+    assert saved["weather_tag:2"] == "TEMP_MILD"
+    assert saved["weather_tag:3"] == "SPECIAL_FINE_DUST"
+    assert saved["weather_tag:4"] == "SPECIAL_SEASONAL_CHANGE"
     assert "session_id" not in saved
     assert "store_id" not in saved
     assert "owner_persona" not in saved
