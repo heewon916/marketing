@@ -29,9 +29,6 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "DEBUG"
     LOG_INCLUDE_RAW_IDENTIFIERS: bool = True
     LOG_EVENT_PREVIEW_MAX_LEN: int = 200
-    PROVIDER: str = "openai"
-    DEFAULT_MODEL: str = "gpt-4o-mini"
-    OPENAI_API_KEY: str | None = None
 
     DEBUG: bool = True
 
