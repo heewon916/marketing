@@ -66,6 +66,19 @@ async def _replace_prefixed_fields(
         await redis.hset(key, mapping=mapping)
 
 
+async def _delete_prefixed_fields(
+    redis: Redis,
+    key: str,
+    prefixes: list[str],
+) -> None:
+    existing_fields = await redis.hkeys(key)
+    stale_fields = [
+        field for field in existing_fields if any(field.startswith(prefix) for prefix in prefixes)
+    ]
+    if stale_fields:
+        await redis.hdel(key, *stale_fields)
+
+
 async def _delete_fields(
     redis: Redis,
     key: str,
@@ -81,7 +94,8 @@ async def upsert_content_session(
     redis: Redis,
     session_id: str,
     scalar_fields: dict[str, str],
-    keywords: list[str] | None = None,
+    draft_keywords: list[str] | None = None,
+    final_keywords: list[str] | None = None,
     drafts: list[str] | None = None,
     photos: list[str] | None = None,
     debug_fields: dict[str, str] | None = None,
@@ -98,7 +112,8 @@ async def upsert_content_session(
             outcome="started",
             redis_key=key,
             scalar_field_count=len(scalar_fields),
-            keyword_count=len(keywords or []),
+            draft_keyword_count=len(draft_keywords or []),
+            final_keyword_count=len(final_keywords or []),
             draft_count=len(drafts or []),
             photo_count=len(photos or []),
             debug_field_count=len(debug_fields or {}),
@@ -108,8 +123,12 @@ async def upsert_content_session(
     mapping = {"status": STATUS_STARTED, **scalar_fields}
     await redis.hset(key, mapping=mapping)
 
-    if keywords is not None:
-        await _replace_prefixed_fields(redis, key, "keyword:", keywords)
+    if draft_keywords is not None:
+        await _replace_prefixed_fields(redis, key, "draft_keyword:", draft_keywords)
+    if final_keywords is not None:
+        await _replace_prefixed_fields(redis, key, "final_keyword:", final_keywords)
+    if draft_keywords is not None or final_keywords is not None:
+        await _delete_prefixed_fields(redis, key, ["keyword:"])
     if drafts is not None:
         await _replace_prefixed_fields(redis, key, "draft:", drafts)
     if photos is not None:
@@ -140,8 +159,9 @@ async def upsert_content_session(
 @dataclass
 class ProcessUtteranceResult:
     status: str
-    keywords: list[str]
+    draft_keywords: list[str]
     weather_signals: list[str]
+    final_keywords: list[str]
     draft_caption: str
     draft_hashtags: list[str]
     guide_text: str
@@ -195,8 +215,10 @@ async def process_utterance(
         ),
     )
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
-    keywords = extraction_result.keywords
+    draft_keywords = list(extraction_result.draft_keywords)
+    final_keywords = list(extraction_result.final_keywords or draft_keywords)
     weather_signals = extraction_result.weather_signals
+    caption_keywords = final_keywords or draft_keywords
     fallback_source: str | None = None
     logger.info(
         "Keyword extraction finished.",
@@ -206,20 +228,24 @@ async def process_utterance(
             stage="keyword_extraction",
             session_id=session_id,
             outcome="succeeded",
-            keyword_count=len(keywords),
-            keywords_preview=", ".join(keywords[:3]),
+            draft_keyword_count=len(draft_keywords),
+            draft_keywords_preview=", ".join(draft_keywords[:3]),
+            final_keyword_count=len(final_keywords),
+            final_keywords_preview=", ".join(final_keywords[:3]),
             weather_signal_count=len(weather_signals),
             weather_signals_preview=", ".join(weather_signals[:3]),
         ),
     )
 
-    if not keywords and weather_signals:
+    if not draft_keywords and weather_signals:
         fallback_keyword, fallback_source = await menu_fallback_service.choose_menu_keyword(
             payload.store_id,
             weather_signals,
         )
         if fallback_keyword:
-            keywords = [fallback_keyword]
+            draft_keywords = [fallback_keyword]
+            final_keywords = [fallback_keyword]
+            caption_keywords = final_keywords
             logger.info(
                 "Menu keyword fallback selected a menu.",
                 extra=build_log_extra(
@@ -235,16 +261,16 @@ async def process_utterance(
             )
 
     draft_caption, draft_hashtags = build_draft_caption(
-        keywords,
+        caption_keywords,
         owner_persona=payload.owner_persona,
         cloud_cover=payload.weather.cloud_cover,
     )
     guide_text = (
-        build_guide_text(keywords)
-        if keywords
+        build_guide_text(caption_keywords)
+        if caption_keywords
         else DEFAULT_FALLBACK_GUIDE_TEXT
     )
-    if not keywords and fallback_source is None:
+    if not caption_keywords and fallback_source is None:
         fallback_source = "default_guide"
     stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
 
@@ -277,7 +303,8 @@ async def process_utterance(
         redis,
         session_id,
         scalar_fields=redis_payload,
-        keywords=keywords,
+        draft_keywords=draft_keywords,
+        final_keywords=final_keywords,
         debug_fields=debug_fields,
     )
     logger.info(
@@ -295,9 +322,10 @@ async def process_utterance(
 
     return ProcessUtteranceResult(
         status=STATUS_TEXT_GENERATED,
-        keywords=keywords,
+        draft_keywords=draft_keywords,
         weather_signals=weather_signals,
-        draft_caption=stored_caption,
+        final_keywords=final_keywords,
+        draft_caption=draft_caption,
         draft_hashtags=draft_hashtags,
         guide_text=guide_text,
         caption=stored_caption,

@@ -78,7 +78,8 @@ async def process_utterance_endpoint(
         "process-utterance completed successfully.",
         extra={
             "session_id": session_id,
-            "keyword_count": len(result.keywords),
+            "draft_keyword_count": len(result.draft_keywords),
+            "final_keyword_count": len(result.final_keywords),
         },
     )
     return ProcessUtteranceResponse(
