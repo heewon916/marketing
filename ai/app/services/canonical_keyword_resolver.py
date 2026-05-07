@@ -75,7 +75,11 @@ class CanonicalKeywordResolverService:
             return self._build_fallback_resolution(draft_keywords)
 
         try:
-            embeddings = await asyncio.to_thread(self._embed_keywords, draft_keywords)
+            embeddings = await asyncio.to_thread(
+                self._embed_texts,
+                draft_keywords,
+                "query",
+            )
         except Exception as exc:
             logger.warning(
                 "Canonical keyword embeddings could not be generated. Falling back to draft keywords.",
@@ -137,6 +141,17 @@ class CanonicalKeywordResolverService:
             matches=matches,
         )
 
+    async def embed_display_names(self, display_names: list[str]) -> list[list[float]]:
+        if not display_names:
+            return []
+        if not self._enabled:
+            raise RuntimeError("Canonical keyword resolver is disabled.")
+        return await asyncio.to_thread(
+            self._embed_texts,
+            display_names,
+            "passage",
+        )
+
     def _ensure_model_loaded(self) -> None:
         if self._tokenizer is not None and self._model is not None:
             return
@@ -154,13 +169,13 @@ class CanonicalKeywordResolverService:
                 from_pt=True,
             )
 
-    def _embed_keywords(self, draft_keywords: list[str]) -> list[list[float]]:
+    def _embed_texts(self, texts: list[str], prefix: str) -> list[list[float]]:
         self._ensure_model_loaded()
         assert self._tokenizer is not None
         assert self._model is not None
 
         encoded = self._tokenizer(
-            [f"query: {keyword}" for keyword in draft_keywords],
+            [f"{prefix}: {text}" for text in texts],
             padding=True,
             truncation=True,
             return_tensors="tf",
