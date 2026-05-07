@@ -9,6 +9,7 @@ from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
+from app.services.weather_tags import evaluate_weather_tags
 
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
@@ -131,6 +132,7 @@ async def upsert_content_session(
     scalar_fields: dict[str, str],
     draft_keywords: list[str] | None = None,
     final_keywords: list[str] | None = None,
+    weather_tags: list[str] | None = None,
     drafts: list[str] | None = None,
     photos: list[str] | None = None,
     debug_fields: dict[str, str] | None = None,
@@ -149,6 +151,7 @@ async def upsert_content_session(
             scalar_field_count=len(scalar_fields),
             draft_keyword_count=len(draft_keywords or []),
             final_keyword_count=len(final_keywords or []),
+            weather_tag_count=len(weather_tags or []),
             draft_count=len(drafts or []),
             photo_count=len(photos or []),
             debug_field_count=len(debug_fields or {}),
@@ -164,6 +167,8 @@ async def upsert_content_session(
         await _replace_prefixed_fields(redis, key, "final_keyword:", final_keywords)
     if draft_keywords is not None or final_keywords is not None:
         await _delete_prefixed_fields(redis, key, ["keyword:"])
+    if weather_tags is not None:
+        await _replace_prefixed_fields(redis, key, "weather_tag:", weather_tags)
     if drafts is not None:
         await _replace_prefixed_fields(redis, key, "draft:", drafts)
     if photos is not None:
@@ -195,6 +200,7 @@ async def upsert_content_session(
 class ProcessUtteranceResult:
     status: str
     purpose: str
+    weather_tags: list[str]
     draft_keywords: list[str]
     final_keywords: list[str]
     draft_caption: str
@@ -207,6 +213,7 @@ async def _persist_process_utterance_started(
     redis: Redis,
     session_id: str,
     utterance: str,
+    weather_tags: list[str],
 ) -> None:
     await upsert_content_session(
         redis,
@@ -215,6 +222,7 @@ async def _persist_process_utterance_started(
             "caption": "",
             "utterance": utterance,
         },
+        weather_tags=weather_tags,
     )
     logger.info(
         "Stored initial process-utterance request fields in redis.",
@@ -225,6 +233,7 @@ async def _persist_process_utterance_started(
             session_id=session_id,
             outcome="succeeded",
             utterance_length=len(utterance),
+            weather_tag_count=len(weather_tags),
             initialized_field_count=2,
         ),
     )
@@ -267,6 +276,7 @@ async def _persist_process_utterance_result(
     redis: Redis,
     session_id: str,
     caption: str,
+    weather_tags: list[str],
     draft_keywords: list[str],
     final_keywords: list[str],
     debug_fields: dict[str, str],
@@ -291,6 +301,7 @@ async def _persist_process_utterance_result(
             "status": STATUS_TEXT_GENERATED,
             "caption": caption,
         },
+        weather_tags=weather_tags,
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         debug_fields=debug_fields,
@@ -314,7 +325,16 @@ async def process_utterance(
     redis: Redis,
     keyword_service: KeywordExtractionService,
 ) -> ProcessUtteranceResult:
-    await _persist_process_utterance_started(redis, session_id, payload.utterance)
+    weather_tags = evaluate_weather_tags(
+        payload.weather,
+        target_date=payload.date,
+    )
+    await _persist_process_utterance_started(
+        redis,
+        session_id,
+        payload.utterance,
+        weather_tags,
+    )
     logger.info(
         "Starting keyword extraction for process-utterance.",
         extra=build_log_extra(
@@ -359,6 +379,7 @@ async def process_utterance(
         redis=redis,
         session_id=session_id,
         caption=stored_caption,
+        weather_tags=weather_tags,
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         debug_fields=debug_fields,
@@ -367,6 +388,7 @@ async def process_utterance(
     return ProcessUtteranceResult(
         status=STATUS_TEXT_GENERATED,
         purpose=purpose,
+        weather_tags=weather_tags,
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         draft_caption=draft_caption,
