@@ -468,20 +468,37 @@ pipeline {
                             fi
                         done
 
-                        echo "===== Checking Spring to FastAPI ====="
+                        # Check the real AI containers directly instead of Spring's static ai-health endpoint.
+                        echo "===== Checking FastAPI Health ====="
                         for i in $(seq 1 30); do
-                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://nginx/api/ai-health; then
-                                echo "spring to fastapi is ready"
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://fastapi:8000/ai/health; then
+                                echo "fastapi is ready"
                                 break
                             fi
 
-                            echo "ai-health not ready yet... retry $i/30"
+                            echo "fastapi health not ready yet... retry $i/30"
                             sleep 2
 
                             if [ "$i" -eq 30 ]; then
-                                echo "ai-health check failed"
-                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs spring --tail=100
+                                echo "fastapi health check failed"
                                 docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs fastapi --tail=100
+                                exit 1
+                            fi
+                        done
+
+                        echo "===== Checking Keyword Server Health ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://keyword-server:8001/health; then
+                                echo "keyword-server is ready"
+                                break
+                            fi
+
+                            echo "keyword-server health not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "keyword-server health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs keyword-server --tail=100
                                 exit 1
                             fi
                         done
