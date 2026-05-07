@@ -68,6 +68,29 @@ FastAPI persists the normalized keyword state in Redis as before and also saves
 the classified purpose under `debug:purpose` for internal tracing. The API
 response still returns only the generated caption and guide text.
 
+## Canonical keyword flow
+
+After `draft_keywords` are produced, FastAPI now resolves each draft keyword to
+the nearest canonical keyword code.
+
+1. The AI service embeds each `draft_keyword` with
+   `intfloat/multilingual-e5-small`.
+2. It queries `maketing.canonical_keywords` with pgvector cosine similarity and
+   finds the nearest `display_name`.
+3. The matched row's `code` is stored as `final_keyword:*` in Redis.
+4. If lookup fails, the original `draft_keyword` is used as the `final_keyword`
+   fallback so the request still succeeds.
+
+Current implementation notes:
+
+- `draft_keyword:*` remains the human-readable normalized keyword.
+- `final_keyword:*` is the canonical `code` when resolution succeeds.
+- User-facing caption and guide generation still use readable draft keywords,
+  while canonical codes are stored for downstream internal use.
+- `canonical_keywords.embedding` is assumed to be stored in the same dimension
+  as the local embedding model.
+- Backfill helper: `uv run python scripts/backfill_canonical_keyword_embeddings.py`
+
 ## Weather tag flow
 
 During the first `process-utterance` call, FastAPI also evaluates reusable
