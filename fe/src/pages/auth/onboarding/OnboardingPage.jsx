@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import Modal from '@/components/common/Modal.jsx';
+import Button from '@/components/common/Button.jsx';
 
 import StartStep from '@/features/auth/onboarding/steps/StartStep.jsx';
 import InstagramConnectStep from '@/features/auth/onboarding/steps/InstagramConnectStep.jsx';
@@ -21,9 +23,18 @@ import OnboardingLeaveConfirmModal from '@/features/auth/onboarding/components/O
 
 function OnboardingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const isInstagramSuccess =
     new URLSearchParams(window.location.search).get('instagram') === 'success';
+
+  const [authNotice, setAuthNotice] = useState(
+    () => location.state?.authNotice ?? null
+  );
+
+  const [authRedirectTo, setAuthRedirectTo] = useState(
+    () => location.state?.redirectTo ?? null
+  );
 
   const [step, setStep] = useState(() => (isInstagramSuccess ? 3 : 1));
   const [, setStepHistory] = useState([]);
@@ -46,17 +57,14 @@ function OnboardingPage() {
     isInstagramConnected: isInstagramSuccess,
   }));
 
-  const getProgressStep = (step) => {
-    if (step <= 3) return 1;
-    if (step <= 6) return 2;
-    if (step === 7) return 3;
-    if (step === 8) return 4;
-    if (step <= 10) return 5;
-    if (step <= 14) return 6;
-    return 7;
-  };
+  useEffect(() => {
+    if (!location.state?.authNotice) return;
 
-  const progressStep = getProgressStep(step);
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
+  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     if (isInstagramSuccess) {
@@ -79,6 +87,18 @@ function OnboardingPage() {
     };
   }, []);
 
+  const getProgressStep = (step) => {
+    if (step <= 3) return 1;
+    if (step <= 6) return 2;
+    if (step === 7) return 3;
+    if (step === 8) return 4;
+    if (step <= 10) return 5;
+    if (step <= 14) return 6;
+    return 7;
+  };
+
+  const progressStep = getProgressStep(step);
+
   const moveToStep = (nextStep) => {
     setStepHistory((prev) => [...prev, step]);
     setStep(nextStep);
@@ -90,7 +110,10 @@ function OnboardingPage() {
 
   const prevStep = () => {
     setStepHistory((prev) => {
-      if (prev.length === 0) return prev;
+      if (prev.length === 0) {
+        navigate('/', { replace: true });
+        return prev;
+      }
 
       const previousStep = prev[prev.length - 1];
 
@@ -107,6 +130,16 @@ function OnboardingPage() {
   const handleConfirmLeave = () => {
     setIsLeaveModalOpen(false);
     navigate('/', { replace: true });
+  };
+
+  const handleCloseAuthNoticeModal = () => {
+    setAuthNotice(null);
+
+    if (authRedirectTo) {
+      const nextPath = authRedirectTo;
+      setAuthRedirectTo(null);
+      navigate(nextPath, { replace: true });
+    }
   };
 
   const commonProps = {
@@ -249,6 +282,30 @@ function OnboardingPage() {
         onCancel={handleCancelLeave}
         onConfirm={handleConfirmLeave}
       />
+
+      <Modal
+        isOpen={!!authNotice}
+        onClose={handleCloseAuthNoticeModal}
+        showClose={false}
+        closeOnBackdrop={false}
+      >
+        <div className="text-center">
+          <h3 className="text-xl font-bold text-gray-900">
+            {authNotice?.title}
+          </h3>
+
+          <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
+            {authNotice?.description}
+          </p>
+
+          <Button
+            onClick={handleCloseAuthNoticeModal}
+            className="mt-8 w-full font-bold"
+          >
+            확인
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }
