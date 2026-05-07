@@ -115,8 +115,7 @@ public class OnboardingController {
     // [API 4] 프론트엔드 장소 검색 요청을 크롤러로 프록시 전달
     @org.springframework.web.bind.annotation.GetMapping("/search")
     public ResponseEntity<?> searchPlaces(
-            @org.springframework.web.bind.annotation.RequestParam String keyword,
-            @AuthenticationPrincipal OAuth2User oauth2User) {
+            @org.springframework.web.bind.annotation.RequestParam String keyword) {
 
         try {
             Object result = onboardingService.searchPlacesViaCrawler(keyword);

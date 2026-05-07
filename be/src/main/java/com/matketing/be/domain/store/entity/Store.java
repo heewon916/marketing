@@ -73,12 +73,6 @@ public class Store {
         this.operatingHours = operatingHours;
     }
 
-    public void updateDetails(String address, BigDecimal latitude, BigDecimal longitude) {
-        this.address = address;
-        this.latitude = latitude;
-        this.longitude = longitude;
-    }
-
     public void updateAllDetails(String storeName, String category, String ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
         if (storeName != null) this.storeName = storeName;
         if (category != null) this.category = category;
