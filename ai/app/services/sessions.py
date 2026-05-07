@@ -44,6 +44,42 @@ def build_guide_text(keywords: list[str]) -> str:
     )
 
 
+def resolve_caption_keywords(
+    draft_keywords: list[str],
+    final_keywords: list[str],
+) -> list[str]:
+    return final_keywords or draft_keywords
+
+
+def build_text_generation_result(
+    keywords: list[str],
+    owner_persona: str,
+    cloud_cover: str,
+    fallback_source: str | None,
+) -> tuple[str, list[str], str, str, str | None]:
+    draft_caption, draft_hashtags = build_draft_caption(
+        keywords,
+        owner_persona=owner_persona,
+        cloud_cover=cloud_cover,
+    )
+    guide_text = (
+        build_guide_text(keywords)
+        if keywords
+        else DEFAULT_FALLBACK_GUIDE_TEXT
+    )
+    effective_fallback_source = fallback_source
+    if not keywords and effective_fallback_source is None:
+        effective_fallback_source = "default_guide"
+    stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
+    return (
+        draft_caption,
+        draft_hashtags,
+        guide_text,
+        stored_caption,
+        effective_fallback_source,
+    )
+
+
 def session_key(session_id: str) -> str:
     return f"{CONTENTS_KEY_PREFIX}:{session_id}"
 
@@ -345,21 +381,19 @@ async def process_utterance(
         menu_fallback_service=menu_fallback_service,
         session_id=session_id,
     )
-    caption_keywords = final_keywords or draft_keywords
-
-    draft_caption, draft_hashtags = build_draft_caption(
-        caption_keywords,
+    caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    (
+        draft_caption,
+        draft_hashtags,
+        guide_text,
+        stored_caption,
+        fallback_source,
+    ) = build_text_generation_result(
+        keywords=caption_keywords,
         owner_persona=payload.owner_persona,
         cloud_cover=payload.weather.cloud_cover,
+        fallback_source=fallback_source,
     )
-    guide_text = (
-        build_guide_text(caption_keywords)
-        if caption_keywords
-        else DEFAULT_FALLBACK_GUIDE_TEXT
-    )
-    if not caption_keywords and fallback_source is None:
-        fallback_source = "default_guide"
-    stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
     debug_fields = _build_process_utterance_debug_fields(
         weather_signals=weather_signals,
         fallback_source=fallback_source,
