@@ -6,11 +6,14 @@ import logging
 from pathlib import Path
 import threading
 
+from fastapi import Request
 import tensorflow as tf
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from transformers import AutoTokenizer, TFAutoModel
 
+from app.core.config import settings
+from app.db.postgres import get_session_factory
 from app.logging import build_log_extra
 
 logger = logging.getLogger(__name__)
@@ -231,3 +234,22 @@ class CanonicalKeywordResolverService:
             final_keywords=[match.final_keyword for match in matches],
             matches=matches,
         )
+
+
+def build_canonical_keyword_resolver_service() -> CanonicalKeywordResolverService:
+    return CanonicalKeywordResolverService(
+        session_factory=get_session_factory(),
+        model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+        embedding_dim=settings.CANONICAL_KEYWORD_EMBEDDING_DIM,
+        model_cache_dir=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR,
+        enabled=settings.CANONICAL_KEYWORD_RESOLVER_ENABLED,
+    )
+
+
+def get_canonical_keyword_resolver_service(
+    request: Request,
+) -> CanonicalKeywordResolverService:
+    service = getattr(request.app.state, "canonical_keyword_resolver_service", None)
+    if service is None:
+        raise RuntimeError("Canonical keyword resolver service is not initialized.")
+    return service

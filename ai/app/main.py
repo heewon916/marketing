@@ -51,6 +51,9 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     build_keyword_extraction_service,
 )
+from app.services.canonical_keyword_resolver import (
+    build_canonical_keyword_resolver_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +220,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root / "final-edit",
     )
     app.state.keyword_extraction_service = build_keyword_extraction_service()
+    app.state.canonical_keyword_resolver_service = (
+        build_canonical_keyword_resolver_service()
+    )
     logger.info(
         "Keyword extraction configured.",
         extra=build_log_extra(
@@ -225,6 +231,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
             keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
             keyword_timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
+        ),
+    )
+    logger.info(
+        "Canonical keyword resolver configured.",
+        extra=build_log_extra(
+            "app.startup.canonical_keyword_resolver_configured",
+            component="startup",
+            canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+            canonical_embedding_dim=settings.CANONICAL_KEYWORD_EMBEDDING_DIM,
+            canonical_embedding_cache_dir=str(
+                settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR
+            ),
         ),
     )
 
@@ -270,6 +288,34 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 error_type="unexpected_startup_error",
                 keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
                 keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+            ),
+        )
+
+    try:
+        await app.state.canonical_keyword_resolver_service.preload()
+        logger.info(
+            "Canonical keyword resolver preload completed.",
+            extra=build_log_extra(
+                "app.startup.canonical_keyword_resolver_preload",
+                component="startup",
+                stage="canonical_keyword_preload",
+                outcome="succeeded",
+                canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Canonical keyword resolver is unavailable at startup: %s. "
+            "The app will continue and fall back to draft keywords for final keyword storage.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.canonical_keyword_resolver_preload",
+                component="startup",
+                stage="canonical_keyword_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
+                canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
             ),
         )
 
