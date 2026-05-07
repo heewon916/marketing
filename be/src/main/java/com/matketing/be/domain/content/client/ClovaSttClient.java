@@ -40,14 +40,18 @@ public class ClovaSttClient {
         this.objectMapper = objectMapper;
     }
 
-    // Clova STT API에 오디오 파일을 multipart로 전달하고 인식된 텍스트만 반환한다.
-    // 파일 자체의 유효성은 ContentService에서 이미 검증하고, 이 Client는 외부 API 호출과 응답 파싱 실패를 STT_FAILED로 매핑한다.
+    /***
+     * Clova STT API에 오디오 파일을 전달하고, 인식된 텍스트를 반환받는 함수
+     * @param audioFile 사용자의 음성 파일
+     * @return 인식된 텍스트
+     */
     public String recognize(MultipartFile audioFile) {
         try {
-            // ByteArrayResource는 기본 파일명이 없어 multipart filename을 별도 Resource에서 보존한다.
+            // 1. ByteArrayResource는 기본 파일명이 없어 multipart filename을 별도 Resource에서 보존한다.
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             body.add("media", new MultipartByteArrayResource(audioFile.getBytes(), audioFile.getOriginalFilename()));
 
+            // 2. Clova STT에 multipart media로 전달한다
             String responseBody = restClient.post()
                     .header("X-CLOVASPEECH-API-KEY", properties.secretKey())
                     .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -55,6 +59,7 @@ public class ClovaSttClient {
                     .retrieve()
                     .body(String.class);
 
+            // 3. Clova 응답에서 text, utterance, result 중 텍스트를 추출한다
             return parseUtterance(responseBody);
         } catch (BusinessException exception) {
             throw exception;
@@ -63,13 +68,18 @@ public class ClovaSttClient {
             throw new BusinessException(ErrorCode.STT_FAILED, exception);
         } catch (Exception exception) {
             log.warn("content.clova-stt.recognize.invalid-response: response parsing failed.", exception);
-            throw new BusinessException(ErrorCode.STT_FAILED, exception);
+            throw new BusinessException(ErrorCode.STT_PARSING_FAILED, exception);
         }
     }
 
-    // Clova 응답 본문에서 실제 발화 텍스트를 추출한다.
-    // 운영 환경의 응답 필드가 text/utterance/result 중 무엇인지 달라질 수 있어 여러 후보를 순서대로 확인한다.
-    // 텍스트를 찾지 못하면 정상 HTTP 응답이어도 STT 실패로 처리한다.
+    /***
+     * Clover 응답 본문에서 실제 발화 텍스트를 추출한다
+     * 운영 환경의 응답 필드가 text/utterance/result 중 무엇인지 달라질 수 있어 여러 후보를 순서대로 확인한다.
+     * 텍스트를 못 찾으면 정상 HTTP 응답이어도 STT 실패로 처리한다
+     * @param responseBody
+     * @return
+     * @throws IOException
+     */
     private String parseUtterance(String responseBody) throws IOException {
         if (responseBody == null || responseBody.isBlank()) {
             throw new BusinessException(ErrorCode.STT_FAILED);

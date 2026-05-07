@@ -67,48 +67,54 @@ public class ContentService {
     private final ContentProperties contentProperties;
     private final StoreRepository storeRepository;
 
-    // 사용자 음성 파일을 텍스트 발화로 변환하는 STT 유스케이스다.
-    // Spring은 파일 정책 검증과 Clova 호출까지만 담당하고, 반환 상태는 STT 전용 상태인 TEXT_RECOGNIZED로 고정한다.
+
+    /**
+     * [사용자 발화 처리] /api/v1/contents/stt 핵심 비즈니스 로직
+     * - 사용자 음성 파일 -> 텍스트 처리
+     * 역할: 파일 정책 검증, Clova 호출
+     * 반환: TEXT_RECOGNIZED로 고정
+     * @param audioFile
+     * @return
+     */
     public SttResponse recognizeSpeech(MultipartFile audioFile) {
-        // Clova 호출 전에 Spring에서 파일 유효성을 먼저 차단해 외부 API 비용과 불필요한 장애를 줄인다.
-        validateAudioFile(audioFile);
+        validateAudioFile(audioFile); // Clova 호출 전에 Spring에서 파일 유효성을 먼저 차단해 외부 API 비용과 불필요한 장애를 줄인다.
 
         String utterance = clovaSttClient.recognize(audioFile);
         return new SttResponse(utterance, TEXT_RECOGNIZED);
     }
 
-    // 최종 발화로 guide_text/caption 생성을 요청하는 핵심 유스케이스다.
-    // 처리 순서:
-    // 1. utterance 필수값을 검증한다.
-    // 2. request_id 기준 Redis 멱등성 key를 생성해 최초 요청과 중복 요청을 나눈다.
-    // 3. 최초 요청이면 contents:{session_id} Hash를 STARTED 상태로 초기화하고 FastAPI를 호출한다.
-    // 4. FastAPI 응답의 텍스트 결과를 Redis에 반영한 뒤 프론트 응답으로 반환한다.
-    // 5. 중복 요청이면 FastAPI를 재호출하지 않고 기존 Redis 결과 또는 STARTED 상태를 반환한다.
+
+    /**
+     * [게시물 생성 로직] api/v1/contents/{sessionId}/caption 핵심 비즈니스 로직
+     * @param request request_id, 최종 utterance
+     * @param userId // TODO 체크 필요한 값
+     * @return
+     */
     public ChatResponse createTextContent(ChatRequest request, String userId) {
+        // 1. utterance empty 검사
         if (request.utterance() == null || request.utterance().isBlank()) {
             throw new BusinessException(ErrorCode.EMPTY_UTTERANCE);
         }
 
+        // 2. request_id + session_id 기준으로 Redis 멱등성 key 생성
         String requestId = request.requestId();
         String sessionId = UUID.randomUUID().toString();
-        // TTL 동안만 같은 request_id를 같은 session_id로 묶는다. 기본값 600은 600ms가 아니라 600초다.
-        // TTL 만료 후 같은 request_id가 다시 오면 새 요청으로 취급될 수 있다.
-        Duration ttl = Duration.ofSeconds(contentProperties.idempotencyTtlSeconds());
+        Duration ttl = Duration.ofSeconds(contentProperties.idempotencyTtlSeconds()); // 10분 동안은 같은 request_id는 중복 처리된다
+        boolean firstRequest = contentRedisRepository.setIdempotencyKeyIfAbsent(userId, requestId, sessionId, ttl); // Redis SET NX EX
 
-        // Redis SET NX EX를 한 번에 실행해 같은 request_id가 동시에 들어와도 session_id가 하나만 생성되게 한다.
-        boolean firstRequest = contentRedisRepository.setIdempotencyKeyIfAbsent(userId, requestId, sessionId, ttl);
-
+        // 3. 중복 요청일 경우 (처리 중, 처리 완료된)
         if (!firstRequest) {
-            // 이미 처리 중이거나 완료된 요청은 FastAPI를 다시 호출하지 않고 Redis에 남은 세션 결과만 반환한다.
+
+            // 3-1. fast api 호출 없이, redis 값 전달
             String existingSessionId = contentRedisRepository.getSessionIdByRequestId(userId, requestId);
+
+            // (예외) 매핑된 session_id가 없을 경우: 만료 시점의 race condition 원인
             if (existingSessionId == null || existingSessionId.isBlank()) {
-                // 이미 요청된 것으로 Redis가 판단했는데, 그 요청에 매핑된 sessionId를 읽을 수가 없다.
-                // e.g.) Redis key가 SET NX EX 판단 직후 만료되어, getSessionIdByRequestId()할 때 없어짐
                 throw new BusinessException(ErrorCode.AI_SERVER_FAILED);
             }
+
+            // 3-2. 이미 결과가 존재 -> 동일 request_id 재요쳥에도 동일 결과 리턴
             ContentRedisResult existingResult = contentRedisRepository.getContentResult(existingSessionId);
-            // 기존 결과가 아직 guide_text/caption 없이 STARTED라면 프론트는 처리 중 화면을 유지할 수 있다.
-            // 결과가 있으면 동일 request_id 재요청에도 같은 session_id와 같은 텍스트 결과를 받는다.
             return new ChatResponse(
                     existingSessionId,
                     existingResult.status(),
@@ -117,24 +123,28 @@ public class ContentService {
             );
         }
 
-        // Spring은 keyword/draft/photo/video 생성에 관여하지 않고, 세션 시작 상태와 최종 발화만 초기화한다.
+        // 4. 최초 요청일 경우: Redis에 contents:{sessionId}/ utterance만 초기화한다.
+        // TODO FastAPI는 sessionId로 검색하고, utterance는 GET만 진행한다.
         contentRedisRepository.createStartedContent(sessionId, request.utterance());
 
+        // 5. store 정보를 들고 온다
         StoreContext storeContext = getStoreContext(userId);
+
+        // 6. TODO 날씨 API로부터 필요한 데이터를 들고 온다
+
+        // 7. ai/sessions/{session_id}/process_utterance API를 호출하는 곳이다
         AiProcessUtteranceResponse aiResponse = aiContentClient.processUtterance(new AiProcessUtteranceRequest(
                 sessionId,
                 storeContext.storeId(),
                 request.utterance(),
                 storeContext.ownerPersona(),
                 LocalDate.now().toString(),
-                // 날씨 Open API 연동 전까지는 새 FastAPI 계약의 weather 구조만 유지하고 모든 필드를 null로 보낸다.
                 // TODO: 날씨 Open API 완료 후 실제 temperature/precipitation/cloud_cover 등으로 채운다.
                 AiWeatherRequest.empty()
         ));
 
+        // 8. AI서버의 응답을 파싱해서 프론트에 응답함과 동시에, putIfAbsent패턴으로 Redis를 갱신한다
         ContentStatus status = parseAiStatus(aiResponse.status());
-        // FastAPI도 Redis를 갱신할 수 있지만, Spring 응답과 재요청 조회를 위해 텍스트 생성 결과를 한 번 더 반영한다.
-        // Redis Repository 내부에서 FastAPI가 먼저 저장한 텍스트 필드는 덮지 않도록 방어한다.
         contentRedisRepository.updateTextGeneratedResult(
                 sessionId,
                 aiResponse.guideText(),
@@ -145,6 +155,11 @@ public class ContentService {
         return new ChatResponse(sessionId, status, aiResponse.guideText(), aiResponse.caption());
     }
 
+    /**
+     * [게시물 이미지 조회] /api/v1/contents/{content_id}/images 핵심 비즈니스 로직
+     * @param contentId
+     * @return
+     */
     @Transactional(readOnly = true)
     public ContentImageUrlsResponseDto getContentImages(Long contentId) {
         Content content = getContentWithRelations(contentId);
@@ -156,9 +171,15 @@ public class ContentService {
         );
     }
 
+    /**
+     * [게시물 이미지 삭제] /api/v1/contents/{content_id}/images/{image_id} 핵심 비즈니스 로직
+     * @param contentId
+     * @param imageId
+     * @return
+     */
     @Transactional
     public ContentImageDeleteResponseDto deleteContentImage(Long contentId, UUID imageId) {
-        // 현재 엔티티에는 soft delete 플래그가 없어 실제 삭제로 처리한다.
+        // TODO 이미지 정보 삭제는 redis에서 이루어진다. 이때 contentId가 필요한 것이 맞는지 sessionId가 필요한 것이 맞는지 확인이 필요하다
         findContentById(contentId);
 
         ContentImage contentImage = contentImageRepository.findByIdAndContent_Id(imageId, contentId)
@@ -170,11 +191,22 @@ public class ContentService {
         return new ContentImageDeleteResponseDto(true, remainingImages);
     }
 
+    /**
+     * [게시물 내용 조회] /api/v1/contents/{content_id} 핵심 비즈니스 로직
+     * @param contentId
+     * @return
+     */
     @Transactional(readOnly = true)
     public ContentResponseDto getContent(Long contentId) {
         return ContentResponseDto.from(getContentWithRelations(contentId));
     }
 
+    /**
+     * [게시물 텍스트 갱신] /api/v1/contents/{content_id}/edit 핵심 비즈니스 로직
+     * @param contentId
+     * @param requestDto 캡션만 수정 가능하다.
+     * @return 수정된
+     */
     @Transactional
     public ContentEditResponseDto updateContent(Long contentId, ContentEditRequestDto requestDto) {
         Content content = findContentById(contentId);
@@ -185,6 +217,9 @@ public class ContentService {
         return ContentEditResponseDto.from(content);
     }
 
+    //============================================
+    // 여기서부터는 부가 로직이다.
+    //============================================
     private Content findContentById(Long contentId) {
         return contentRepository.findById(contentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
@@ -223,10 +258,13 @@ public class ContentService {
         throw new BusinessException(ErrorCode.INVALID_AUDIO_FILE);
     }
 
+    /**
+     * 캡션 생성 시, store 정보 조회에 사용된다.
+     * TODO userId 값에 따라 store 정보를 제대로 들고 오는지 확인해야 한다
+     * @param userId
+     * @return
+     */
     private StoreContext getStoreContext(String userId) {
-        // FastAPI caption 생성에 필요한 매장 식별자와 점주 성향값을 조회한다.
-        // 현재 인증 userId가 UUID 문자열이라는 전제에서 stores.user_id와 매칭한다.
-        // 인증/온보딩 데이터가 아직 없거나 임시 유저라면 기본값으로 API 계약만 유지한다.
         Optional<Store> store = parseUuid(userId)
                 .flatMap(storeRepository::findFirstByUserId);
 

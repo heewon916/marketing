@@ -35,12 +35,15 @@ public class ContentRedisRepository {
         return redisTemplate.opsForValue().get(idempotencyKey(userId, requestId));
     }
 
-    // contents:{session_id} Hash의 최소 필드를 만든다.
-    // 이 Hash는 FastAPI와 공유하므로 status/utterance가 이미 있으면 Spring이 덮어쓰지 않는다.
-    // Spring이 보장하는 초기 상태는 "이 세션은 시작됐고, 최종 발화는 이것이다"까지만이다.
+
+    /**
+     * contents:{session_id} Hash의 최소 필드 생성
+     * - 주의사항: Fast API와 공유하므로, status/utterance는 putIfAbsent 패턴으로 처리한다
+     * @param sessionId
+     * @param utterance
+     */
     public void createStartedContent(String sessionId, String utterance) {
-        // 세션 Hash는 FastAPI와 공유하므로 Spring 초기화가 이미 저장된 AI 처리 결과를 덮지 않게 한다.
-        String key = contentKey(sessionId);
+        String key = contentKey(sessionId);  // contents:{sessionId} 생성
         redisTemplate.opsForHash().putIfAbsent(key, STATUS, ContentStatus.STARTED.name());
         redisTemplate.opsForHash().putIfAbsent(key, UTTERANCE, utterance);
     }
