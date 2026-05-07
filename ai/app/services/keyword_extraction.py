@@ -480,61 +480,15 @@ class KeywordExtractionService:
         return raw_output
 
     def _parse_extraction_result(self, raw_output: str) -> KeywordExtractionResult:
-        payload = self._extract_json_payload(raw_output)
+        parsed = self._load_extraction_payload(raw_output)
+        draft_payload, weather_payload = self._split_extraction_payload(parsed)
 
-        try:
-            parsed = json.loads(payload)
-        except json.JSONDecodeError as exc:
-            raise KeywordExtractionUnavailableError(
-                "Keyword extraction returned invalid JSON."
-            ) from exc
-
-        weather_payload: list[Any] = []
-        if isinstance(parsed, dict):
-            parsed_object = parsed
-            weather_candidate = parsed_object.get("weather_signals")
-            if isinstance(weather_candidate, list):
-                weather_payload = weather_candidate
-            parsed = parsed_object.get("draft_keywords")
-            if parsed is None:
-                parsed = parsed_object.get("keywords")
-
-        if not isinstance(parsed, list):
+        if not isinstance(draft_payload, list):
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction returned a non-list payload."
             )
-
-        draft_keywords: list[str] = []
-        seen_draft_keywords: set[str] = set()
-
-        for item in parsed:
-            if not isinstance(item, str):
-                continue
-
-            normalized = self._normalize_keyword(item)
-            if not normalized or normalized in seen_draft_keywords:
-                continue
-
-            seen_draft_keywords.add(normalized)
-            draft_keywords.append(normalized)
-            if len(draft_keywords) == 3:
-                break
-
-        weather_signals: list[str] = []
-        seen_weather_signals: set[str] = set()
-
-        for item in weather_payload:
-            if not isinstance(item, str):
-                continue
-
-            normalized = self._normalize_weather_signal(item)
-            if not normalized or normalized in seen_weather_signals:
-                continue
-
-            seen_weather_signals.add(normalized)
-            weather_signals.append(normalized)
-            if len(weather_signals) == 3:
-                break
+        draft_keywords = self._normalize_keywords_payload(draft_payload)
+        weather_signals = self._normalize_weather_payload(weather_payload)
 
         if not draft_keywords and not weather_signals:
             raise KeywordExtractionUnavailableError(
@@ -577,6 +531,64 @@ class KeywordExtractionService:
                 "Keyword extraction did not return JSON."
             )
         return match.group(0)
+
+    def _load_extraction_payload(self, raw_output: str) -> Any:
+        payload = self._extract_json_payload(raw_output)
+        try:
+            return json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned invalid JSON."
+            ) from exc
+
+    @staticmethod
+    def _split_extraction_payload(
+        payload: Any,
+    ) -> tuple[Any, list[Any]]:
+        if isinstance(payload, dict):
+            weather_candidate = payload.get("weather_signals")
+            weather_payload = weather_candidate if isinstance(weather_candidate, list) else []
+            draft_payload = payload.get("draft_keywords")
+            if draft_payload is None:
+                draft_payload = payload.get("keywords")
+            return draft_payload, weather_payload
+        return payload, []
+
+    def _normalize_keywords_payload(self, payload: list[Any]) -> list[str]:
+        return self._normalize_unique_values(
+            payload,
+            normalizer=self._normalize_keyword,
+        )
+
+    def _normalize_weather_payload(self, payload: list[Any]) -> list[str]:
+        return self._normalize_unique_values(
+            payload,
+            normalizer=self._normalize_weather_signal,
+        )
+
+    @staticmethod
+    def _normalize_unique_values(
+        payload: list[Any],
+        normalizer,
+        limit: int = 3,
+    ) -> list[str]:
+        normalized_values: list[str] = []
+        seen_values: set[str] = set()
+
+        for item in payload:
+            if not isinstance(item, str):
+                continue
+
+            normalized = normalizer(item)
+            if not normalized or normalized in seen_values:
+                continue
+
+            seen_values.add(normalized)
+            normalized_values.append(normalized)
+            if len(normalized_values) == limit:
+                break
+
+        return normalized_values
 
     def _get_morph_analyzer(self) -> Any | None:
         if self._morph_analyzer_initialized:
