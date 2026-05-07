@@ -18,9 +18,6 @@ from fastapi.routing import APIRoute
 
 from app.api.main import api_router
 from app.core.config import (
-    DEFAULT_KEYWORD_MODEL_HF_FILENAME,
-    DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
-    DEFAULT_KEYWORD_MODEL_PATH,
     DEFAULT_ORIENTATION_MODEL_NAME,
     DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
     settings,
@@ -227,28 +224,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         extra=build_log_extra(
             "app.startup.keyword_extraction_configured",
             component="startup",
-            keyword_model_repo_id=DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
-            keyword_model_filename=DEFAULT_KEYWORD_MODEL_HF_FILENAME,
-            keyword_model_path=str(DEFAULT_KEYWORD_MODEL_PATH),
-            keyword_model_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
+            keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+            keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+            keyword_timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
         ),
     )
 
     try:
         await app.state.keyword_extraction_service.preload()
         logger.info(
-            "Keyword extraction model preload completed.",
+            "Keyword extraction server connectivity check completed.",
             extra=build_log_extra(
                 "app.startup.keyword_preload",
                 component="startup",
                 stage="keyword_preload",
                 outcome="succeeded",
+                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
             ),
         )
     except KeywordExtractionUnavailableError as exc:
         logger.warning(
-            "Keyword extraction model is unavailable at startup: %s. "
-            "The app will continue, but process-utterance may return 503 until the model is ready.",
+            "Keyword extraction server is unavailable at startup: %s. "
+            "The app will continue, but process-utterance may return 503 until the server is reachable.",
             exc,
             exc_info=True,
             extra=build_log_extra(
@@ -257,12 +255,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type=exc.__class__.__name__,
+                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
             ),
         )
     except Exception:
         logger.warning(
-            "Keyword extraction model is unavailable at startup. "
-            "The app will continue, but process-utterance may return 503 until the model is ready.",
+            "Keyword extraction server is unavailable at startup. "
+            "The app will continue, but process-utterance may return 503 until the server is reachable.",
             exc_info=True,
             extra=build_log_extra(
                 "app.startup.keyword_preload",
@@ -270,6 +270,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type="unexpected_startup_error",
+                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
             ),
         )
 

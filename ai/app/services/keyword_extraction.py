@@ -220,7 +220,7 @@ class KeywordExtractionService:
         self._lock = threading.Lock()
 
     async def preload(self) -> None:
-        return None
+        await self._check_server_connection()
 
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         if not self.enabled:
@@ -239,7 +239,9 @@ class KeywordExtractionService:
                 stage="inference",
                 outcome="started",
                 keyword_timeout_seconds=self.timeout_seconds,
-                keyword_model_loaded=self._server_checked,
+                keyword_model_base_url=self.base_url,
+                keyword_chat_endpoint=self.chat_endpoint,
+                keyword_server_checked=self._server_checked,
                 utterance_length=len(utterance),
                 utterance_preview=preview_text(
                     utterance,
@@ -263,7 +265,8 @@ class KeywordExtractionService:
                     error_type="TimeoutError",
                     keyword_timeout_seconds=self.timeout_seconds,
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                    keyword_model_loaded=self._server_checked,
+                    keyword_model_base_url=self.base_url,
+                    keyword_chat_endpoint=self.chat_endpoint,
                 ),
             )
             raise KeywordExtractionUnavailableError(
@@ -281,7 +284,8 @@ class KeywordExtractionService:
                     outcome="failed",
                     error_type=exc.__class__.__name__,
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                    keyword_model_loaded=self._server_checked,
+                    keyword_model_base_url=self.base_url,
+                    keyword_chat_endpoint=self.chat_endpoint,
                 ),
                 exc_info=True,
             )
@@ -369,6 +373,38 @@ class KeywordExtractionService:
                 json=payload,
             )
 
+    async def _check_server_connection(self) -> None:
+        if not self.base_url:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server base URL is not configured."
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                response = await client.get(self._chat_url)
+        except httpx.TimeoutException as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server connectivity check timed out."
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server connectivity check failed."
+            ) from exc
+
+        self._server_checked = True
+        logger.info(
+            "Keyword extraction server connectivity check completed.",
+            extra=build_log_extra(
+                "keyword_extraction.server_check.completed",
+                component="keyword_extraction",
+                stage="server_check",
+                outcome="succeeded",
+                keyword_model_base_url=self.base_url,
+                keyword_chat_endpoint=self.chat_endpoint,
+                keyword_http_status=response.status_code,
+            ),
+        )
+
     @staticmethod
     def _is_response_format_unsupported(response: httpx.Response) -> bool:
         if response.status_code < 400:
@@ -396,6 +432,7 @@ class KeywordExtractionService:
             ),
         )
 
+        response: httpx.Response | None = None
         try:
             response = await self._post_chat_completion(
                 prompt,
@@ -442,6 +479,9 @@ class KeywordExtractionService:
                 stage="generate",
                 outcome="succeeded",
                 elapsed_ms=int((time.perf_counter() - generation_started_at) * 1000),
+                keyword_model_base_url=self.base_url,
+                keyword_chat_endpoint=self.chat_endpoint,
+                keyword_http_status=response.status_code if response is not None else None,
                 raw_output_preview=preview_text(
                     raw_output,
                     settings.LOG_EVENT_PREVIEW_MAX_LEN,
