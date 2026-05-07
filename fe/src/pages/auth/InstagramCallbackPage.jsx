@@ -4,6 +4,7 @@ import {
   // authApi,
   INSTAGRAM_AUTH_PURPOSE,
 } from '@/features/auth/api.js';
+import { registerFcmToken } from '@/features/notification/api/FcmApi';
 
 const AUTH_ERROR_MESSAGE = {
   LOGIN_FAILED: {
@@ -75,6 +76,7 @@ function InstagramCallbackPage() {
       }
 
       localStorage.setItem('accessToken', accessToken);
+      void registerFcmToken({ requestPermission: true });
       window.history.replaceState({}, document.title, '/auth/callback');
 
       try {

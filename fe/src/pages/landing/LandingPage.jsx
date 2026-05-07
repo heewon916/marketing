@@ -21,9 +21,6 @@ function LandingPage() {
     () => location.state?.redirectTo ?? null
   );
 
-  useEffect(() => {
-    void registerFcmToken({ requestPermission: true });
-  }, []);
 
   useEffect(() => {
     if (!location.state?.authError) return;

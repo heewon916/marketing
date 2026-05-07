@@ -4,7 +4,7 @@ import { api } from "@/lib/Axios"
 async function sendTokenToBackend(token) {
   try {
     const response = await api.post("/api/v1/users/me/fcm-token", {
-      deviceToken: token,
+      token,
       platform: "WEB",
     })
 
