@@ -9,7 +9,7 @@ const AUTH_ERROR_MESSAGE = {
   },
   TOKEN_MISSING: {
     title: '로그인 정보를 확인할 수 없어요',
-    description: '인증 정보가 전달되지 않았어요. 다시 로그인해주세요.',
+    description: '인증 정보가 전달되지 않았어요.\n다시 로그인해주세요.',
   },
 };
 

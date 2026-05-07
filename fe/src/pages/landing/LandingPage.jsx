@@ -87,7 +87,7 @@ function LandingPage() {
             {authError?.title}
           </h3>
 
-          <p className="mt-4 text-base leading-6 text-gray-500">
+          <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
             {authError?.description}
           </p>
 
