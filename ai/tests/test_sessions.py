@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 import fakeredis
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pathlib import Path
@@ -22,6 +23,19 @@ from app.services.sessions import (
     resolve_caption_keywords,
     session_key,
 )
+
+
+def _make_chat_response(
+    status_code: int,
+    *,
+    content: str = "",
+    url: str = "http://llama-server:8000/v1/chat/completions",
+) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        request=httpx.Request("POST", url),
+        json={"choices": [{"message": {"content": content}}]},
+    )
 
 VALID_PAYLOAD = {
     "store_id": str(uuid4()),
@@ -896,3 +910,145 @@ async def test_keyword_extraction_service_raises_when_disabled() -> None:
         await service.extract_keywords(
             "\uc624\ub298 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\ub2e4"
         )
+
+
+@pytest.mark.asyncio
+async def test_keyword_extraction_service_calls_remote_server_successfully(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+    )
+    calls: list[bool] = []
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        calls.append(include_response_format)
+        return _make_chat_response(
+            200,
+            content='{"draft_keywords":["\\ub9c9\\uac78\\ub9ac"],"weather_signals":["\\ube44"]}',
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    result = await service.extract_keywords(
+        "\uc624\ub298 \ube44\uc640\uc11c \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+    )
+
+    assert calls == [True]
+    assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
+    assert result.weather_signals == ["\ube44"]
+
+
+@pytest.mark.asyncio
+async def test_keyword_extraction_service_retries_without_response_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+    )
+    calls: list[bool] = []
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        calls.append(include_response_format)
+        if include_response_format:
+            return httpx.Response(
+                400,
+                request=httpx.Request(
+                    "POST",
+                    "http://llama-server:8000/v1/chat/completions",
+                ),
+                text="response_format is unsupported",
+            )
+        return _make_chat_response(
+            200,
+            content='{"draft_keywords":["\\ud30c\\uc804"],"weather_signals":[]}',
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    result = await service.extract_keywords(
+        "\uc624\ub298\uc740 \ud30c\uc804\uc774 \uc798 \ub098\uac08 \uac83 \uac19\ub2e4"
+    )
+
+    assert calls == [True, False]
+    assert result.draft_keywords == ["\ud30c\uc804"]
+
+
+@pytest.mark.asyncio
+async def test_keyword_extraction_service_raises_on_remote_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+    )
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    with pytest.raises(KeywordExtractionUnavailableError, match="timed out"):
+        await service.extract_keywords(
+            "\uc624\ub298 \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+        )
+
+
+@pytest.mark.asyncio
+async def test_keyword_extraction_service_raises_on_remote_http_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+    )
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        return httpx.Response(
+            503,
+            request=httpx.Request(
+                "POST",
+                "http://llama-server:8000/v1/chat/completions",
+            ),
+            text="server unavailable",
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    with pytest.raises(KeywordExtractionUnavailableError, match="HTTP 503"):
+        await service.extract_keywords(
+            "\uc624\ub298 \ud30c\uc804\uc774 \ub561\uae34\ub2e4"
+        )
+
+
+@pytest.mark.asyncio
+async def test_keyword_extraction_service_preload_raises_when_server_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+    )
+
+    class FailingAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url: str) -> httpx.Response:
+            raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr("app.services.keyword_extraction.httpx.AsyncClient", FailingAsyncClient)
+
+    with pytest.raises(
+        KeywordExtractionUnavailableError,
+        match="connectivity check failed",
+    ):
+        await service.preload()
