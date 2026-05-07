@@ -75,6 +75,7 @@ async def process_utterance_endpoint(
         "process-utterance completed successfully.",
         extra={
             "session_id": session_id,
+            "weather_tag_count": len(result.weather_tags),
             "draft_keyword_count": len(result.draft_keywords),
             "final_keyword_count": len(result.final_keywords),
         },

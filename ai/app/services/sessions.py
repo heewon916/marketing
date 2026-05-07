@@ -22,6 +22,7 @@ def build_draft_caption(
     keywords: list[str],
     owner_persona: str,
     cloud_cover: str,
+    weather_tags: list[str],
 ) -> tuple[str, list[str]]:
     keyword_phrase = ", ".join(keywords) if keywords else "today's highlights"
     caption = (
@@ -33,8 +34,7 @@ def build_draft_caption(
         hashtags.append(f"#{cloud_cover.replace(' ', '')}")
     return caption, hashtags
 
-
-def build_guide_text(keywords: list[str]) -> str:
+def build_guide_text(keywords: list[str], weather_tags: list[str]) -> str:
     if not keywords:
         return "Capture the store atmosphere clearly so the main subject stands out."
     keyword_phrase = ", ".join(keywords)
@@ -55,15 +55,17 @@ def build_text_generation_result(
     keywords: list[str],
     owner_persona: str,
     cloud_cover: str,
+    weather_tags: list[str],
     fallback_source: str | None,
 ) -> tuple[str, list[str], str, str, str | None]:
     draft_caption, draft_hashtags = build_draft_caption(
         keywords,
         owner_persona=owner_persona,
         cloud_cover=cloud_cover,
+        weather_tags=weather_tags,
     )
     guide_text = (
-        build_guide_text(keywords)
+        build_guide_text(keywords, weather_tags)
         if keywords
         else DEFAULT_FALLBACK_GUIDE_TEXT
     )
@@ -345,6 +347,8 @@ async def process_utterance(
             outcome="started",
             owner_persona=payload.owner_persona,
             weather_cloud_cover=payload.weather.cloud_cover,
+            weather_tag_count=len(weather_tags),
+            weather_tags_preview=", ".join(weather_tags[:3]),
             utterance_length=len(payload.utterance),
             utterance_preview=preview_text(
                 payload.utterance,
@@ -370,7 +374,22 @@ async def process_utterance(
         keywords=caption_keywords,
         owner_persona=payload.owner_persona,
         cloud_cover=payload.weather.cloud_cover,
+        weather_tags=weather_tags,
         fallback_source=None,
+    )
+    logger.info(
+        "Built text generation result for process-utterance.",
+        extra=build_log_extra(
+            "session.process_utterance.text_generation.completed",
+            component="session",
+            stage="text_generation",
+            session_id=session_id,
+            outcome="succeeded",
+            weather_tag_count=len(weather_tags),
+            weather_tags_preview=", ".join(weather_tags[:3]),
+            draft_caption_length=len(draft_caption),
+            guide_text_length=len(guide_text),
+        ),
     )
     debug_fields = _build_process_utterance_debug_fields(
         purpose=purpose,
