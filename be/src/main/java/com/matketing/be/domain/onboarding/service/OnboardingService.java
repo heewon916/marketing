@@ -143,17 +143,23 @@ public class OnboardingService {
     private Map<String, String> fetchPlaceInfo(String storeName) {
         try {
             Map<String, Object> searchResult = searchPlacesViaCrawler(storeName);
-            if (searchResult != null && KEY_SUCCESS.equals(searchResult.get(KEY_STATUS))) {
-                Object dataObj = searchResult.get(KEY_DATA);
-                if (dataObj instanceof List<?> dataList && !dataList.isEmpty()) {
-                    Object firstPlaceObj = dataList.getFirst();
-                    if (firstPlaceObj instanceof Map<?, ?> firstPlace) {
-                        String pId = firstPlace.get(KEY_PLACE_ID) instanceof String s ? s : null;
-                        String addr = firstPlace.get(KEY_ADDRESS) instanceof String s ? s : "";
-                        return Map.of(KEY_PLACE_ID, pId == null ? "" : pId, KEY_ADDRESS, addr);
-                    }
-                }
+            if (searchResult == null || !KEY_SUCCESS.equals(searchResult.get(KEY_STATUS))) {
+                return Map.of();
             }
+
+            Object dataObj = searchResult.get(KEY_DATA);
+            if (!(dataObj instanceof List<?> dataList) || dataList.isEmpty()) {
+                return Map.of();
+            }
+
+            Object firstPlaceObj = dataList.getFirst();
+            if (!(firstPlaceObj instanceof Map<?, ?> firstPlace)) {
+                return Map.of();
+            }
+
+            String pId = firstPlace.get(KEY_PLACE_ID) instanceof String s ? s : null;
+            String addr = firstPlace.get(KEY_ADDRESS) instanceof String s ? s : "";
+            return Map.of(KEY_PLACE_ID, pId == null ? "" : pId, KEY_ADDRESS, addr);
         } catch (Exception e) {
             log.warn("Crawler search failed for keyword {}: {}", storeName, e.getMessage());
         }
