@@ -123,6 +123,27 @@ services:
     networks:
       - project-network
 
+  keyword-server:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: project-keyword-server
+    restart: unless-stopped
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8001"
+      - -m
+      - /models/${KEYWORD_MODEL_FILE}
+      - -c
+      - "${KEYWORD_MODEL_CTX_SIZE:-2048}"
+    volumes:
+      # Provision the GGUF model from the Ubuntu host without baking it into the image.
+      - ${KEYWORD_MODEL_HOST_DIR}:/models:ro
+    expose:
+      - "8001"
+    networks:
+      - project-network
+
   fastapi:
     build:
       context: ./ai
@@ -140,9 +161,12 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       CLOUDFRONT_DOMAIN: ${CLOUDFRONT_DOMAIN}
+      KEYWORD_MODEL_BASE_URL: http://keyword-server:8001
       KEYWORD_MODEL_GPU_LAYERS: "0"
     expose:
       - "8000"
+    depends_on:
+      - keyword-server
     networks:
       - project-network
 
