@@ -20,7 +20,11 @@ function BottomTab() {
         {/* 홈 */}
         <button
           type="button"
-          onClick={() => navigate('/home')}
+          onClick={() => {
+            if (currentPath !== '/home') {
+              navigate('/home');
+            }
+          }}
           className="flex-1 flex flex-col items-center justify-center"
         >
           <GoHomeFill
@@ -45,7 +49,11 @@ function BottomTab() {
         {/* 내 정보 */}
         <button
           type="button"
-          onClick={() => navigate('/mypage')}
+          onClick={() => {
+            if (currentPath !== '/mypage') {
+              navigate('/mypage');
+            }
+          }}
           className="flex-1 flex flex-col items-center justify-center"
         >
           <IoPerson

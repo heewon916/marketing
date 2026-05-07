@@ -5,6 +5,7 @@ import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.servers.Server;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -46,6 +47,7 @@ public class SwaggerConfig {
 
         // 위에서 설정한 정보, 보안 요구사항, 컴포넌트를 OpenAPI 객체에 조립하여 반환합니다.
         return new OpenAPI()
+                .addServersItem(new Server().url("/"))
                 .info(info)
                 .addSecurityItem(securityRequirement)
                 .components(components);

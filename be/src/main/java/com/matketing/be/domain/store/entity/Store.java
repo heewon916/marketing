@@ -7,6 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -46,6 +48,7 @@ public class Store {
     @Column(name = "longitude", precision = 10, scale = 7)
     private BigDecimal longitude;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "operating_hours", columnDefinition = "jsonb")
     private String operatingHours;
 
@@ -70,9 +73,13 @@ public class Store {
         this.operatingHours = operatingHours;
     }
 
-    public void updateDetails(String address, BigDecimal latitude, BigDecimal longitude) {
-        this.address = address;
-        this.latitude = latitude;
-        this.longitude = longitude;
+    public void updateAllDetails(String storeName, String category, String ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+        if (storeName != null) this.storeName = storeName;
+        if (category != null) this.category = category;
+        if (ownerPersona != null) this.ownerPersona = ownerPersona;
+        if (address != null) this.address = address;
+        if (latitude != null) this.latitude = latitude;
+        if (longitude != null) this.longitude = longitude;
+        if (operatingHours != null) this.operatingHours = operatingHours;
     }
 }

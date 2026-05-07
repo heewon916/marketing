@@ -17,6 +17,7 @@ public class FcmPushService {
 
     private final DeviceTokenRepository deviceTokenRepository;
 
+    // 전달받은 디바이스 토큰 목록으로 FCM 푸시 알림을 발송하고 성공/실패 건수를 반환한다.
     @Transactional
     public int[] sendPushNotification(List<DeviceToken> deviceTokens, String title, String body, String webUrl) {
         int sentCount = 0;
