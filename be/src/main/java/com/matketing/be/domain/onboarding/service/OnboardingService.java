@@ -118,6 +118,28 @@ public class OnboardingService {
         return new SyncResponse(true, "가맹점 정보 동기화 및 DB 저장 완료", store.getId().toString());
     }
 
+    @Transactional
+    public SyncResponse updateStoreData(UUID storeId, UUID userId, com.matketing.be.domain.onboarding.dto.StoreUpdateRequest request) {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new IllegalArgumentException("Store not found"));
+
+        if (!store.getUserId().equals(userId)) {
+            throw new IllegalArgumentException("Not authorized to update this store");
+        }
+
+        store.updateAllDetails(
+                request.storeName(),
+                request.category(),
+                request.ownerPersona(),
+                request.address(),
+                request.latitude(),
+                request.longitude(),
+                request.operatingHours()
+        );
+
+        return new SyncResponse(true, "Store data updated successfully", store.getId().toString());
+    }
+
     private Map<String, String> fetchPlaceInfo(String storeName) {
         try {
             Map<String, Object> searchResult = searchPlacesViaCrawler(storeName);
