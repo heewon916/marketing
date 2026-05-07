@@ -1,15 +1,13 @@
 package com.matketing.be.domain.content.controller;
 
-import com.matketing.be.domain.content.dto.ChatRequest;
-import com.matketing.be.domain.content.dto.ChatResponse;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
+import com.matketing.be.domain.content.dto.ContentRequest;
 import com.matketing.be.domain.content.dto.ContentResponseDto;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
-import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
@@ -45,20 +43,20 @@ public class ContentController {
 
     /**
      * 게시물 캡션 생성 API
-     * - 같은 사용자 -> 동일 request_id로 구분 -> Redis 멱등성 Key로 중복 제거
-     * - 최초 요청: FAST API 트리거
-     * - 중복 요청: Redis에 존재하는 결과 반환
-     * @param request request_id, 최종 utterance
+     * - request_id가 포함된 기존 요청: Redis 멱등성 처리 후 FastAPI 캡션 생성 트리거
+     * - request_id가 없는 신규 요청: store/utterance 기반 AI 게시글 생성 참고 JSON 반환
+     * - store_id가 없으면 인증 사용자 기준으로 등록된 매장을 조회한다.
+     * @param request store_id, request_id(선택), 최종 utterance
      * @param authentication TODO SecurityContext에서 인증된 사용자로 변경
-     * @return
+     * @return 기존 캡션 생성 응답(ChatResponse) 또는 참고정보 응답(ContentResponse)
      */
     @PostMapping("/caption")
-    public ChatResponse createTextContent(
-            @Valid @RequestBody ChatRequest request,
+    public Object createTextContent(
+            @RequestBody ContentRequest request,
             Authentication authentication
     ) {
-        // TODO users.id, users.instagram_user_id, users.instagram_username 중 무엇인지 명확히 해야 한다
-        return contentService.createTextContent(request, getCurrentUserId(authentication));
+        // Controller는 인증 사용자 식별자만 Service에 전달하고, 요청 형태별 분기는 ContentService에서 처리한다.
+        return contentService.createCaption(request, getCurrentUserId(authentication));
     }
 
     /**
