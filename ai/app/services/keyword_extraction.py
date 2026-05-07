@@ -1,8 +1,5 @@
 from __future__ import annotations
-
-import asyncio
 from dataclasses import dataclass, field
-import importlib.metadata
 import json
 import logging
 import re
@@ -12,14 +9,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Request
+import httpx
 
 from app.core.config import (
     DEFAULT_KEYWORD_MODEL_PATH,
-    DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
     settings,
 )
 from app.logging import build_log_extra, preview_text
-from app.keyword_model_download import ensure_keyword_model_available
+# Legacy local GGUF bootstrap is intentionally disabled during llama-server migration.
+# from app.keyword_model_download import ensure_keyword_model_available
 
 logger = logging.getLogger(__name__)
 # TOODO : 조사, 어미, 접미사 등 키워드 코드 외부로 빼고 모듈로 만들기 -> 모듈 가져와서 사용하는 방식으로 리팩토링하기 
@@ -200,6 +198,9 @@ class KeywordExtractionService:
         n_threads: int = 1,
         n_gpu_layers: int = 20,
         timeout_seconds: float = 10.0,
+        base_url: str | None = None,
+        chat_endpoint: str | None = None,
+        api_key: str | None = None,
     ) -> None:
         self.model_path = model_path
         self.enabled = enabled
@@ -210,13 +211,16 @@ class KeywordExtractionService:
         self.n_threads = n_threads
         self.n_gpu_layers = n_gpu_layers
         self.timeout_seconds = timeout_seconds
-        self._model: Any = None
+        self.base_url = (base_url or "").rstrip("/")
+        self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
+        self.api_key = api_key
+        self._server_checked = False
         self._morph_analyzer: Any = None
         self._morph_analyzer_initialized = False
         self._lock = threading.Lock()
 
     async def preload(self) -> None:
-        await asyncio.to_thread(self._ensure_model)
+        return None
 
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         if not self.enabled:
@@ -235,7 +239,7 @@ class KeywordExtractionService:
                 stage="inference",
                 outcome="started",
                 keyword_timeout_seconds=self.timeout_seconds,
-                keyword_model_loaded=self._model is not None,
+                keyword_model_loaded=self._server_checked,
                 utterance_length=len(utterance),
                 utterance_preview=preview_text(
                     utterance,
@@ -247,13 +251,10 @@ class KeywordExtractionService:
         )
 
         try:
-            raw_output = await asyncio.wait_for(
-                asyncio.to_thread(self._generate_keywords, prompt),
-                timeout=self.timeout_seconds,
-            )
+            raw_output = await self._generate_keywords(prompt)
         except TimeoutError as exc:
             logger.warning(
-                "Keyword extraction timed out while waiting for llama-cpp completion.",
+                "Keyword extraction timed out while waiting for llama-server completion.",
                 extra=build_log_extra(
                     "keyword_extraction.inference.completed",
                     component="keyword_extraction",
@@ -262,7 +263,7 @@ class KeywordExtractionService:
                     error_type="TimeoutError",
                     keyword_timeout_seconds=self.timeout_seconds,
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                    keyword_model_loaded=self._model is not None,
+                    keyword_model_loaded=self._server_checked,
                 ),
             )
             raise KeywordExtractionUnavailableError(
@@ -280,7 +281,7 @@ class KeywordExtractionService:
                     outcome="failed",
                     error_type=exc.__class__.__name__,
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                    keyword_model_loaded=self._model is not None,
+                    keyword_model_loaded=self._server_checked,
                 ),
                 exc_info=True,
             )
@@ -305,99 +306,8 @@ class KeywordExtractionService:
         )
         return result
 
-    def _ensure_model(self):
-        if self._model is not None:
-            return self._model
-
-        with self._lock:
-            if self._model is not None:
-                return self._model
-
-            if not self.enabled:
-                raise KeywordExtractionUnavailableError(
-                    "Keyword extraction model is disabled."
-                )
-
-            ensure_started_at = time.perf_counter()
-            try:
-                self.model_path = ensure_keyword_model_available(self.model_path)
-            except Exception as exc:
-                raise KeywordExtractionUnavailableError(str(exc)) from exc
-
-            try:
-                from llama_cpp import Llama
-            except ImportError as exc:
-                try:
-                    installed_version = importlib.metadata.version("llama-cpp-python")
-                except importlib.metadata.PackageNotFoundError:
-                    installed_version = "not installed"
-                raise KeywordExtractionUnavailableError(
-                    "The official llama-cpp-python runtime is required for "
-                    "keyword extraction. "
-                    f"Installed version: {installed_version}."
-                ) from exc
-
-            try:
-                logger.info(
-                    "Initializing keyword llama-cpp model.",
-                    extra=build_log_extra(
-                        "keyword_extraction.model_init.started",
-                        component="keyword_extraction",
-                        stage="model_init",
-                        outcome="started",
-                        keyword_model_path=str(self.model_path),
-                        keyword_model_ctx_size=self.n_ctx,
-                        keyword_model_threads=self.n_threads,
-                        keyword_model_gpu_layers=self.n_gpu_layers,
-                    ),
-                )
-                self._model = Llama(
-                    model_path=str(self.model_path),
-                    n_ctx=self.n_ctx,
-                    n_threads=self.n_threads,
-                    n_gpu_layers=self.n_gpu_layers,
-                    verbose=False,
-                )
-                logger.info(
-                    "Keyword llama-cpp model initialized.",
-                    extra=build_log_extra(
-                        "keyword_extraction.model_init.completed",
-                        component="keyword_extraction",
-                        stage="model_init",
-                        outcome="succeeded",
-                        keyword_model_path=str(self.model_path),
-                        elapsed_ms=int(
-                            (time.perf_counter() - ensure_started_at) * 1000
-                        ),
-                    ),
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Keyword llama-cpp model initialization failed.",
-                    extra=build_log_extra(
-                        "keyword_extraction.model_init.completed",
-                        component="keyword_extraction",
-                        stage="model_init",
-                        outcome="failed",
-                        error_type=exc.__class__.__name__,
-                        keyword_model_path=str(self.model_path),
-                        elapsed_ms=int(
-                            (time.perf_counter() - ensure_started_at) * 1000
-                        ),
-                    ),
-                    exc_info=True,
-                )
-                raise KeywordExtractionUnavailableError(
-                    f"Failed to initialize keyword model from {self.model_path}."
-                ) from exc
-
-        return self._model
-
-    def _generate_keywords(self, prompt: str) -> str:
-        model = self._ensure_model()
-        generation_started_at = time.perf_counter()
-
-        response_kwargs = {
+    def _build_request_payload(self, prompt: str, include_response_format: bool) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "messages": [
                 {
                     "role": "system",
@@ -412,63 +322,120 @@ class KeywordExtractionService:
             "top_p": self.top_p,
             "max_tokens": self.max_tokens,
         }
+        if include_response_format:
+            payload["response_format"] = {
+                "type": "json_object",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "draft_keywords": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "items": {"type": "string"},
+                        },
+                        "weather_signals": {
+                            "type": "array",
+                            "maxItems": 3,
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["draft_keywords"],
+                },
+            }
+        return payload
+
+    def _build_request_headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    @property
+    def _chat_url(self) -> str:
+        return f"{self.base_url}{self.chat_endpoint}"
+
+    async def _post_chat_completion(
+        self,
+        prompt: str,
+        *,
+        include_response_format: bool,
+    ) -> httpx.Response:
+        payload = self._build_request_payload(prompt, include_response_format)
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            return await client.post(
+                self._chat_url,
+                headers=self._build_request_headers(),
+                json=payload,
+            )
+
+    @staticmethod
+    def _is_response_format_unsupported(response: httpx.Response) -> bool:
+        if response.status_code < 400:
+            return False
+        body = response.text.lower()
+        return "response_format" in body or "json_object" in body or "schema" in body
+
+    async def _generate_keywords(self, prompt: str) -> str:
+        if not self.base_url:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server base URL is not configured."
+            )
+
+        generation_started_at = time.perf_counter()
+        logger.info(
+            "Calling llama-server chat completion for keyword extraction.",
+            extra=build_log_extra(
+                "keyword_extraction.generate.started",
+                component="keyword_extraction",
+                stage="generate",
+                outcome="started",
+                keyword_max_tokens=self.max_tokens,
+                keyword_temperature=self.temperature,
+                keyword_top_p=self.top_p,
+            ),
+        )
 
         try:
-            logger.info(
-                "Calling llama-cpp create_chat_completion for keyword extraction.",
-                extra=build_log_extra(
-                    "keyword_extraction.generate.started",
-                    component="keyword_extraction",
-                    stage="generate",
-                    outcome="started",
-                    keyword_max_tokens=self.max_tokens,
-                    keyword_temperature=self.temperature,
-                    keyword_top_p=self.top_p,
-                ),
+            response = await self._post_chat_completion(
+                prompt,
+                include_response_format=True,
             )
-            response = model.create_chat_completion(
-                **response_kwargs,
-                response_format={
-                    "type": "json_object",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "draft_keywords": {
-                                "type": "array",
-                                "minItems": 1,
-                                "maxItems": 3,
-                                "items": {"type": "string"},
-                            },
-                            "weather_signals": {
-                                "type": "array",
-                                "maxItems": 3,
-                                "items": {"type": "string"},
-                            },
-                        },
-                        "required": ["draft_keywords"],
-                    },
-                },
-            )
-        except TypeError:
-            logger.info(
-                "llama-cpp response_format is unsupported; retrying without schema enforcement."
-                ,
-                extra=build_log_extra(
-                    "keyword_extraction.generate.response_format_retry",
-                    component="keyword_extraction",
-                    stage="generate",
-                    outcome="retrying",
-                ),
-            )
-            response = model.create_chat_completion(**response_kwargs)
+            if self._is_response_format_unsupported(response):
+                logger.info(
+                    "llama-server response_format is unsupported; retrying without schema enforcement.",
+                    extra=build_log_extra(
+                        "keyword_extraction.generate.response_format_retry",
+                        component="keyword_extraction",
+                        stage="generate",
+                        outcome="retrying",
+                    ),
+                )
+                response = await self._post_chat_completion(
+                    prompt,
+                    include_response_format=False,
+                )
+            response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            raise TimeoutError from exc
+        except httpx.HTTPStatusError as exc:
+            raise KeywordExtractionUnavailableError(
+                f"Keyword extraction server returned HTTP {exc.response.status_code}."
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server request failed."
+            ) from exc
 
+        self._server_checked = True
+        response_payload = response.json()
         raw_output = (
-            response.get("choices", [{}])[0]
+            response_payload.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
         )
         logger.info(
-            "llama-cpp keyword completion returned.",
+            "llama-server keyword completion returned.",
             extra=build_log_extra(
                 "keyword_extraction.generate.completed",
                 component="keyword_extraction",
@@ -482,6 +449,19 @@ class KeywordExtractionService:
             ),
         )
         return raw_output
+
+    # Legacy local llama-cpp flow is preserved as comments for rollback reference.
+    # def _ensure_model(self):
+    #     self.model_path = ensure_keyword_model_available(self.model_path)
+    #     from llama_cpp import Llama
+    #     self._model = Llama(
+    #         model_path=str(self.model_path),
+    #         n_ctx=self.n_ctx,
+    #         n_threads=self.n_threads,
+    #         n_gpu_layers=self.n_gpu_layers,
+    #         verbose=False,
+    #     )
+    #     return self._model
 
     def _parse_extraction_result(self, raw_output: str) -> KeywordExtractionResult:
         parsed = self._load_extraction_payload(raw_output)
@@ -804,7 +784,10 @@ def build_keyword_extraction_service() -> KeywordExtractionService:
         top_p=settings.KEYWORD_MODEL_TOP_P,
         n_threads=settings.KEYWORD_MODEL_THREADS,
         n_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
-        timeout_seconds=DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
+        timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
+        base_url=settings.KEYWORD_MODEL_BASE_URL,
+        chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+        api_key=settings.KEYWORD_MODEL_API_KEY,
     )
 
 
