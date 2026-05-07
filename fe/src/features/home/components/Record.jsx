@@ -1,9 +1,8 @@
+// 녹음 기능 컴포넌트, 현재 사용 안함(추후 개발을 위해 남겨둠)
 import { useRef, useState } from "react"
 import { TiMicrophone } from "react-icons/ti"
 
-/**
- * 일단 파일로 저장하지만, 추후 서버 업로드 기능 추가 예정
- */
+
 function Record({ onToggle }) {
   const [isRecording, setIsRecording] = useState(false)
   const mediaRecorderRef = useRef(null)

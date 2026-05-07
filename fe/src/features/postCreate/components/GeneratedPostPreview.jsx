@@ -88,11 +88,6 @@ function GeneratedPostPreview({ post, photos = [] }) {
         <p className="mt-2 whitespace-pre-wrap break-words text-[18px] leading-tight text-accent-100">
           <span className="font-semibold">insta_id </span>
           {post?.content ?? ""}
-          {post?.hashtags?.length > 0 && (
-            <span className="text-[#405987]">
-              {post.hashtags.map((tag) => `#${tag}`).join(" ")}{" "}
-            </span>
-          )}
         </p>
       </div>
     </div>
