@@ -68,6 +68,25 @@ FastAPI persists the normalized keyword state in Redis as before and also saves
 the classified purpose under `debug:purpose` for internal tracing. The API
 response still returns only the generated caption and guide text.
 
+## Weather tag flow
+
+During the first `process-utterance` call, FastAPI also evaluates reusable
+weather tags from the request body's `weather` payload and stores them in the
+session for later text-generation steps.
+
+- Stored Redis fields: `weather_tag:1`, `weather_tag:2`, ...
+- Current tag groups:
+  - precipitation: `PRECIP_CLEAR`, `PRECIP_CLOUDY`, `PRECIP_RAIN`, `PRECIP_HEAVY_RAIN`
+  - temperature: `TEMP_FREEZING`, `TEMP_COLD`, `TEMP_MILD`, `TEMP_HOT`, `TEMP_SCORCHING`
+  - humidity: `HUMID_LOW`, `HUMID_HIGH`
+  - special conditions: `SPECIAL_FINE_DUST`, `SPECIAL_TYPHOON`, `SPECIAL_SEASONAL_CHANGE`
+
+Current implementation notes:
+
+- `cloud_cover` is interpreted by string mapping such as `맑음/clear/sunny` and `흐림/cloudy/overcast/구름많음`.
+- `PRECIP_SNOW` is intentionally excluded for now because the current request schema does not provide a reliable snowfall signal.
+- Weather tags are internal session state only; they are not exposed in the public API response yet.
+
 ## Legacy local GGUF settings
 
 The previous local GGUF configuration is kept in code as a legacy fallback
