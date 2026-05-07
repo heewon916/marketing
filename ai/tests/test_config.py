@@ -1,6 +1,9 @@
 import pytest
 
 from app.core.config import (
+    DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM,
+    DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR,
+    DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
     DEFAULT_KEYWORD_MODEL_HF_FILENAME,
     DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
     DEFAULT_KEYWORD_MODEL_PATH,
@@ -31,6 +34,12 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEYWORD_MODEL_THREADS", "6")
     monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "12")
     monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "true")
+    monkeypatch.setenv("CANONICAL_KEYWORD_RESOLVER_ENABLED", "true")
+    monkeypatch.setenv(
+        "CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME",
+        "intfloat/multilingual-e5-small",
+    )
+    monkeypatch.setenv("CANONICAL_KEYWORD_EMBEDDING_DIM", "384")
 
 
 def test_settings_parses_infra_fields(env_setup: None) -> None:
@@ -52,6 +61,9 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.KEYWORD_MODEL_THREADS == 6
     assert settings.KEYWORD_MODEL_GPU_LAYERS == 12
     assert settings.KEYWORD_MODEL_ENABLED is True
+    assert settings.CANONICAL_KEYWORD_RESOLVER_ENABLED is True
+    assert settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME == "intfloat/multilingual-e5-small"
+    assert settings.CANONICAL_KEYWORD_EMBEDDING_DIM == 384
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -167,6 +179,9 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
     assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
     assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 30.0
+    assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME == "intfloat/multilingual-e5-small"
+    assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR.name == "canonical-keywords"
+    assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM == 384
 
 
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12,6 +12,10 @@ from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
+from app.services.canonical_keyword_resolver import (
+    CanonicalKeywordMatch,
+    CanonicalKeywordResolution,
+)
 from app.services.keyword_extraction import (
     KeywordExtractionResult,
     KeywordExtractionService,
@@ -105,9 +109,7 @@ class FakeKeywordExtractionService:
             if draft_keywords is not None
             else ["signature menu", "cozy table"]
         )
-        self.final_keywords = (
-            final_keywords if final_keywords is not None else list(self.draft_keywords)
-        )
+        self.final_keywords = final_keywords if final_keywords is not None else []
         self.error = error
         self.calls: list[str] = []
 
@@ -119,6 +121,59 @@ class FakeKeywordExtractionService:
             purpose=self.purpose,
             draft_keywords=self.draft_keywords,
             final_keywords=self.final_keywords,
+        )
+
+
+class FakeCanonicalKeywordResolverService:
+    def __init__(
+        self,
+        final_keywords: list[str] | None = None,
+        display_names: list[str] | None = None,
+        matched_indexes: set[int] | None = None,
+    ) -> None:
+        self.final_keywords = final_keywords
+        self.display_names = display_names
+        self.matched_indexes = matched_indexes
+        self.calls: list[list[str]] = []
+
+    async def resolve_keywords(
+        self,
+        draft_keywords: list[str],
+    ) -> CanonicalKeywordResolution:
+        self.calls.append(list(draft_keywords))
+        final_keywords = (
+            list(self.final_keywords)
+            if self.final_keywords is not None
+            else [f"CODE_{keyword.replace(' ', '_').upper()}" for keyword in draft_keywords]
+        )
+        display_names = (
+            list(self.display_names)
+            if self.display_names is not None
+            else list(draft_keywords)
+        )
+        matched_indexes = (
+            set(self.matched_indexes)
+            if self.matched_indexes is not None
+            else set(range(len(draft_keywords)))
+        )
+        matches = []
+        for index, draft_keyword in enumerate(draft_keywords):
+            matched = index in matched_indexes
+            final_keyword = (
+                final_keywords[index] if matched else draft_keyword
+            )
+            matches.append(
+                CanonicalKeywordMatch(
+                    draft_keyword=draft_keyword,
+                    final_keyword=final_keyword,
+                    display_name=display_names[index] if matched else None,
+                    score=0.99 if matched else None,
+                    matched=matched,
+                )
+            )
+        return CanonicalKeywordResolution(
+            final_keywords=[match.final_keyword for match in matches],
+            matches=matches,
         )
 
 
@@ -332,7 +387,8 @@ def test_redis_payload_persisted(
     assert 1 <= len(draft_keyword_fields) <= 3
     assert len(draft_keyword_fields) == len(final_keyword_fields)
     assert saved["draft_keyword:1"] == "signature menu"
-    assert saved["final_keyword:1"] == "signature menu"
+    assert saved["final_keyword:1"] == "CANONICAL_SIGNATURE_MENU"
+    assert saved["final_keyword:2"] == "CANONICAL_COZY_TABLE"
     weather_tag_fields = [
         field for field in saved if field.startswith("weather_tag:")
     ]
@@ -377,6 +433,8 @@ def test_purpose_persisted_in_debug_fields(
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == "영업 공지"
+    assert saved["debug:canonical_match_count"] == "2"
+    assert saved["debug:canonical_fallback_count"] == "0"
 
 
 def test_process_utterance_uses_default_guide_when_no_keywords(
@@ -402,8 +460,42 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
     assert body["guide_text"] == "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == "일상 공유"
+    assert saved["debug:canonical_match_count"] == "0"
+    assert saved["debug:canonical_fallback_count"] == "0"
     assert "draft_keyword:1" not in saved
     assert "final_keyword:1" not in saved
+
+
+def test_process_utterance_falls_back_to_draft_keywords_when_canonical_lookup_misses(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-canonical-fallback-1"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_canonical_service = app.state.canonical_keyword_resolver_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        draft_keywords=["seasonal soup", "evening notice"],
+    )
+    app.state.canonical_keyword_resolver_service = (
+        FakeCanonicalKeywordResolverService(matched_indexes=set())
+    )
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.canonical_keyword_resolver_service = original_canonical_service
+
+    assert response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["draft_keyword:1"] == "seasonal soup"
+    assert saved["final_keyword:1"] == "seasonal soup"
+    assert saved["final_keyword:2"] == "evening notice"
+    assert saved["debug:canonical_match_count"] == "0"
+    assert saved["debug:canonical_fallback_count"] == "2"
 
 
 def test_redis_ttl_set(
@@ -643,6 +735,7 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.final_edit_service is not None
     assert app.state.final_edit_service.predictor.weights_path is not None
     assert app.state.keyword_extraction_service is not None
+    assert app.state.canonical_keyword_resolver_service is not None
 
 
 def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() -> None:
@@ -729,7 +822,7 @@ def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
 
     assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"]
-    assert result.final_keywords == ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"]
+    assert result.final_keywords == []
 
 
 def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
@@ -778,7 +871,7 @@ def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
 
     assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
-    assert result.final_keywords == ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]
+    assert result.final_keywords == []
 
 
 def test_keyword_extraction_service_rejects_non_json_output() -> None:
