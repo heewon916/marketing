@@ -19,8 +19,9 @@ if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"
 class DefaultKeywordExtractionService:
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         return KeywordExtractionResult(
-            keywords=["signature menu", "cozy table"],
+            draft_keywords=["signature menu", "cozy table"],
             weather_signals=[],
+            final_keywords=["signature menu", "cozy table"],
         )
 
 
