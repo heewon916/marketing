@@ -15,6 +15,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.matketing.be.domain.user.repository.UserRepository;
+import com.matketing.be.domain.user.entity.User;
+import com.matketing.be.domain.onboarding.dto.StoreUpdateRequest;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,6 +30,21 @@ import java.util.UUID;
 public class OnboardingController {
 
     private final OnboardingService onboardingService;
+    private final UserRepository userRepository;
+
+    private UUID getUserIdFromOAuth(OAuth2User oauth2User) {
+        if (oauth2User == null) {
+            throw new IllegalArgumentException("User not authenticated");
+        }
+        String instagramUserId = oauth2User.getName();
+        if (oauth2User.getAttributes().containsKey("id")) {
+            instagramUserId = oauth2User.getAttributes().get("id").toString();
+        }
+        
+        User user = userRepository.findByInstagramUserId(instagramUserId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found in DB"));
+        return user.getId();
+    }
 
     // [API 1] POS 플러그인에서 난수와 가맹점 식별자
     @PostMapping("/pin/register")
@@ -53,7 +74,7 @@ public class OnboardingController {
     }
 
     // [API 3] Toss POS 연동 후 데이터 파이프라인(크롤링 및 DB 저장) 실행
-    @PostMapping("/sync")
+    @PostMapping("/toss/sync")
     public ResponseEntity<SyncResponse> syncStoreData(
             @RequestBody SyncRequest request,
             @AuthenticationPrincipal OAuth2User oauth2User) { // 인증된 사용자 정보 가져오기
@@ -62,24 +83,39 @@ public class OnboardingController {
             return ResponseEntity.badRequest().body(new SyncResponse(false, "Merchant ID is required", null));
         }
 
-        // 향후 JWT 인증 방식에 맞게 User ID 추출 로직 변경 가능
-        // 현재는 OAuth2User에서 인스타그램 ID나, 커스텀 구현된 User 엔티티의 UUID를 추출해야 합니다.
-        // 임시로 하드코딩된 UUID를 넘기거나, 실제 인증 토큰 구조에 맞춰 파싱합니다.
-        UUID userId = UUID.randomUUID(); // TODO: 실제 인증된 유저의 UUID 추출 로직으로 교체 필요
-
         try {
+            UUID userId = getUserIdFromOAuth(oauth2User);
             SyncResponse response = onboardingService.syncStoreData(userId, request.merchantId());
             return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+             return ResponseEntity.status(401).body(new SyncResponse(false, "인증 오류: " + e.getMessage(), null));
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(new SyncResponse(false, "동기화 실패: " + e.getMessage(), null));
+        }
+    }
+
+    // [API 3-1] 온보딩 과정에서 유저가 수정한 가게 정보를 업데이트
+    @PutMapping("/store/{storeId}")
+    public ResponseEntity<SyncResponse> updateStoreData(
+            @PathVariable UUID storeId,
+            @RequestBody StoreUpdateRequest request,
+            @AuthenticationPrincipal OAuth2User oauth2User) {
+
+        try {
+            UUID userId = getUserIdFromOAuth(oauth2User);
+            SyncResponse response = onboardingService.updateStoreData(storeId, userId, request);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(new SyncResponse(false, "업데이트 실패: " + e.getMessage(), null));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(new SyncResponse(false, "업데이트 서버 오류: " + e.getMessage(), null));
         }
     }
 
     // [API 4] 프론트엔드 장소 검색 요청을 크롤러로 프록시 전달
     @org.springframework.web.bind.annotation.GetMapping("/search")
     public ResponseEntity<?> searchPlaces(
-            @org.springframework.web.bind.annotation.RequestParam String keyword,
-            @AuthenticationPrincipal OAuth2User oauth2User) {
+            @org.springframework.web.bind.annotation.RequestParam String keyword) {
 
         try {
             Object result = onboardingService.searchPlacesViaCrawler(keyword);
