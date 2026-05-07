@@ -90,7 +90,10 @@ function OnboardingPage() {
 
   const prevStep = () => {
     setStepHistory((prev) => {
-      if (prev.length === 0) return prev;
+      if (prev.length === 0) {
+        navigate('/', { replace: true });
+        return prev;
+      }
 
       const previousStep = prev[prev.length - 1];
 
