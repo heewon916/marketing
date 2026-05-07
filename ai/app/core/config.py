@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     ORIENTATION_MODEL_DOWNLOAD_URL: str = (
         "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
     )
-    KEYWORD_MODEL_BASE_URL: str = "http://llama-server:8000"
+    KEYWORD_MODEL_BASE_URL: str = "http://keyword-server:8001"
     KEYWORD_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
     KEYWORD_MODEL_API_KEY: str | None = None
     # Legacy local inference settings kept for rollback while FastAPI moves to llama-server.
