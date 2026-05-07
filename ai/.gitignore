@@ -13,3 +13,4 @@ weights/
 *.h5
 *.gguf
 Agents.md
+PLAN.md
