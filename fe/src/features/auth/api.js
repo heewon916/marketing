@@ -1,6 +1,6 @@
 import { api } from '@/lib/Axios.js';
 
-const BACKEND_URL = import.meta.env.VITE_API_BACKEND_URL;
+const BACKEND_URL = import.meta.env.VITE_API_BACKEND_URL || '';
 
 export const INSTAGRAM_AUTH_PURPOSE = {
   LOGIN: 'login',
@@ -21,7 +21,7 @@ export const authApi = {
   },
 
   syncPosStore(merchantId) {
-    return api.post('/api/v1/onboarding/sync', {
+    return api.post('/api/v1/onboarding/toss/sync', {
       merchantId,
     });
   },
