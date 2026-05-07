@@ -9,7 +9,6 @@ from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
-from app.services.menu_fallback import MenuKeywordFallbackService
 
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
@@ -314,7 +313,6 @@ async def process_utterance(
     payload: ProcessUtteranceRequest,
     redis: Redis,
     keyword_service: KeywordExtractionService,
-    menu_fallback_service: MenuKeywordFallbackService | None = None,
 ) -> ProcessUtteranceResult:
     await _persist_process_utterance_started(redis, session_id, payload.utterance)
     logger.info(
