@@ -44,6 +44,30 @@ At startup, FastAPI only checks connectivity to the remote keyword server.
 If the server is unavailable, the app still starts and `process-utterance`
 can return `503` until the server becomes reachable.
 
+## Keyword extraction flow
+
+When `process-utterance` receives the first shop-owner utterance, the keyword
+extraction flow now works in three steps:
+
+1. `llama-server` classifies the utterance purpose as one of
+   `메뉴 홍보`, `영업 공지`, or `일상 공유`.
+2. `llama-server` extracts 1 to 3 raw keyword candidates as `keywords`.
+3. FastAPI normalizes each keyword with the morphology-based nounization path
+   and stores the normalized values as `draft_keywords`.
+
+The remote model contract is therefore:
+
+```json
+{
+  "purpose": "메뉴 홍보",
+  "keywords": ["막걸리", "파전"]
+}
+```
+
+FastAPI persists the normalized keyword state in Redis as before and also saves
+the classified purpose under `debug:purpose` for internal tracing. The API
+response still returns only the generated caption and guide text.
+
 ## Legacy local GGUF settings
 
 The previous local GGUF configuration is kept in code as a legacy fallback
