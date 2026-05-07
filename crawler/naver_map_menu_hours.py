@@ -13,7 +13,6 @@ Run:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import random
 import re
@@ -21,12 +20,10 @@ import urllib.parse
 from collections import defaultdict, deque
 from contextlib import suppress
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Annotated
 from fastapi import FastAPI, HTTPException, Query
 
 import sys
-import asyncio
 
 # 윈도우 환경에서 Playwright (Subprocess) 실행 시 발생하는 NotImplementedError 방지
 if sys.platform == 'win32':
@@ -34,7 +31,7 @@ if sys.platform == 'win32':
 
 
 if TYPE_CHECKING:
-    from playwright.async_api import Browser, BrowserContext, Page, Playwright
+    from playwright.async_api import Page
 
 
 logger = logging.getLogger("naver_map_menu_hours")
@@ -90,7 +87,7 @@ _LABEL_TOKEN_CASEFOLDS = frozenset(token.casefold() for token in LABEL_TOKENS)
 MENU_STOP_PHRASES = ("메뉴 음식명과 가격", "메뉴판 이미지로 보기", "이용안내")
 PRICE_RE = re.compile(r"^[\d,]+(?:원)?$")
 PLACE_URL_RE = re.compile(r"(https://pcmap\.place\.naver\.com/[a-z]+/\d+)")
-PLACE_CATEGORY_SPLIT_RE = re.compile(r"\s*(?:,|/|\||\u00b7)\s*")
+PLACE_CATEGORY_SPLIT_RE = re.compile(r"\s*[,/|\u00b7]\s*")
 DAY_FIELD_MAP = {
     "월": "mon_hours",
     "화": "tues_hours",
@@ -115,6 +112,10 @@ SEARCH_RESPONSE_TIMEOUT_SECONDS = 8
 SEARCH_FRAME_TIMEOUT_SECONDS = 10
 SEARCH_URL_EXTRACTION_POLL_SECONDS = 0.5
 MAX_STALE_SCROLL_ROUNDS = 2
+
+# Constants for refactoring
+TIME_REGEX_STR = r"\d{1,2}:\d{2}"
+EVALUATE_INNER_TEXT = "() => document.body.innerText"
 
 
 class CrawlerSetupError(RuntimeError):
@@ -172,6 +173,27 @@ def empty_business_hours() -> dict[str, str | None]:
     return {field: None for field in DAY_FIELDS}
 
 
+def _process_menu_line(line: str, body: list[str], index: int, pending_name: str | None, pending_desc: str | None) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    if PRICE_RE.fullmatch(line):
+        price = int(line.replace("원", "").replace(",", ""))
+        if pending_name:
+            return {"menu_name": pending_name, "price": price, "menu_description": pending_desc}, None, None
+        return None, pending_name, pending_desc
+
+    if len(line) <= 30:
+        next_line = body[index + 1] if index + 1 < len(body) else ""
+        if pending_name and pending_desc is None and PRICE_RE.fullmatch(next_line):
+            return None, pending_name, line
+        
+        menu_to_add = None
+        if pending_name:
+            menu_to_add = {"menu_name": pending_name, "price": None, "menu_description": pending_desc}
+        
+        return menu_to_add, line, None
+
+    return None, pending_name, line
+
+
 def parse_menu_text(menu_text: str) -> list[dict[str, Any]]:
     lines = read_lines(menu_text)
     body = lines[skip_nav_header(lines) :]
@@ -184,36 +206,10 @@ def parse_menu_text(menu_text: str) -> list[dict[str, Any]]:
             break
         if line.lower() in _LABEL_TOKEN_CASEFOLDS:
             continue
-        if PRICE_RE.fullmatch(line):
-            price = int(line.replace("원", "").replace(",", ""))
-            if pending_name:
-                menus.append(
-                    {
-                        "menu_name": pending_name,
-                        "price": price,
-                        "menu_description": pending_desc,
-                    }
-                )
-                pending_name = None
-                pending_desc = None
-            continue
-        if len(line) <= 30:
-            next_line = body[index + 1] if index + 1 < len(body) else ""
-            if pending_name and pending_desc is None and PRICE_RE.fullmatch(next_line):
-                pending_desc = line
-                continue
-            if pending_name:
-                menus.append(
-                    {
-                        "menu_name": pending_name,
-                        "price": None,
-                        "menu_description": pending_desc,
-                    }
-                )
-            pending_name = line
-            pending_desc = None
-            continue
-        pending_desc = line
+            
+        menu_to_add, pending_name, pending_desc = _process_menu_line(line, body, index, pending_name, pending_desc)
+        if menu_to_add:
+            menus.append(menu_to_add)
 
     if pending_name:
         menus.append(
@@ -253,6 +249,29 @@ def expand_day_expression(expr: str) -> list[str]:
     return [DAY_FIELD_MAP[expr]] if expr in DAY_FIELD_MAP else []
 
 
+def normalize_time_to_36h(time_str: str | None) -> str | None:
+    if not time_str:
+        return None
+        
+    if "24시간" in time_str or "00:00 - 24:00" in time_str:
+        return "00:00 - 24:00"
+        
+    match = re.search(rf"({TIME_REGEX_STR})\s*[-~]\s*(?:다음\s*날|익일)?\s*({TIME_REGEX_STR})", time_str)
+    if not match:
+        return time_str
+
+    start_str, end_str = match.groups()
+    start_h, start_m = map(int, start_str.split(':'))
+    end_h, end_m = map(int, end_str.split(':'))
+    
+    is_next_day = "다음 날" in time_str or "익일" in time_str or (end_h < start_h) or (end_h == start_h and end_m < start_m)
+    
+    if is_next_day and end_h < 24:
+        end_h += 24
+        
+    return f"{start_h:02d}:{start_m:02d} - {end_h:02d}:{end_m:02d}"
+
+
 def split_hour_segments(lines: list[str]) -> list[str]:
     segments: list[str] = []
     current_day_prefix = None
@@ -268,7 +287,7 @@ def split_hour_segments(lines: list[str]) -> list[str]:
                 segment = segment.replace("영업시간", "", 1).strip()
             if segment.startswith("오늘") or segment.startswith("접기") or segment.startswith("더보기"):
                 continue
-            
+                
             if re.fullmatch(r"매일|평일|주말|[월화수목금토일](요일)?", segment):
                 current_day_prefix = segment
                 continue
@@ -279,6 +298,7 @@ def split_hour_segments(lines: list[str]) -> list[str]:
 
             if segment.startswith("라스트오더") or segment.startswith("브레이크타임") or segment.startswith("휴게시간"):
                 continue
+                
             if re.match(r"^(매일|평일|주말)\b", segment) and (
                 re.search(r"\d{1,2}:\d{2}", segment) or "휴무" in segment
             ):
@@ -304,23 +324,25 @@ def parse_business_hours_from_segments(segments: list[str]) -> dict[str, str | N
         general_match = re.match(r"^(매일|평일|주말)\s+(.+)$", clean)
         if general_match:
             head, value = general_match.groups()
+            normalized_val = normalize_time_to_36h(value) or value
             if head == "매일":
-                general_all = value
+                general_all = normalized_val
             elif head == "평일":
-                weekdays = value
+                weekdays = normalized_val
             else:
-                weekends = value
+                weekends = normalized_val
             continue
 
         specific_match = re.match(
-            r"^([월화수목금토일](?:요일)?(?:\s*[~,/-]\s*[월화수목금토일](?:요일)?)?(?:\s*,\s*[월화수목금토일](?:요일)?)*)\s+(.+)$",
+            r"^([월화수목금토일](?:요일)?(?:(?:[~,-])\s*[월화수목금토일](?:요일)?)*)\s+(.+)$",
             clean,
         )
         if not specific_match:
             continue
         expr, value = specific_match.groups()
+        normalized_val = normalize_time_to_36h(value) or value
         for field in expand_day_expression(expr):
-            specifics[field] = value
+            specifics[field] = normalized_val
 
     if general_all:
         for field in DAY_FIELDS:
@@ -366,15 +388,25 @@ def build_structured_business_hours(raw_rows: Any) -> dict[str, str | None]:
             continue
         fields = normalize_business_hours_day_labels(raw_row.get("day"))
         value = normalize_optional_text(raw_row.get("time"))
+            
         if not fields or value is None:
             continue
+            
+        normalized_time = normalize_time_to_36h(value) or value
+        
+        # 라스트오더나 브레이크타임 단독 행이면 정규화가 안되므로 제외
+        if ("라스트오더" in str(normalized_time) or "브레이크타임" in str(normalized_time) or "휴게시간" in str(normalized_time)) and " - " not in str(normalized_time):
+            continue
+
         for field in fields:
-            business_hours[field] = value
+            business_hours[field] = normalized_time
     return business_hours
 
 
 def has_any_business_hours_value(business_hours: dict[str, str | None] | None) -> bool:
-    return bool(business_hours) and any(value is not None for value in business_hours.values())
+    if not business_hours:
+        return False
+    return any(value is not None for value in business_hours.values())
 
 
 def normalize_menu_name_key(value: Any) -> str:
@@ -467,19 +499,20 @@ def build_menus_with_candidates(menu_text: str, menu_cards: list[MenuCardPayload
     for parsed_menu in parsed_menus:
         name_key = normalize_menu_name_key(parsed_menu["menu_name"])
         matched_card = menu_card_queues[name_key].popleft() if name_key and menu_card_queues[name_key] else None
+        
+        final_price = parsed_menu["price"]
+        if final_price is None and matched_card:
+            final_price = matched_card.price
+            
+        final_desc = parsed_menu["menu_description"]
+        if final_desc is None and matched_card:
+            final_desc = matched_card.menu_description
+            
         menus.append(
             {
                 "menu_name": parsed_menu["menu_name"],
-                "price": (
-                    parsed_menu["price"]
-                    if parsed_menu["price"] is not None
-                    else matched_card.price if matched_card else None
-                ),
-                "menu_description": (
-                    parsed_menu["menu_description"]
-                    if parsed_menu["menu_description"] is not None
-                    else matched_card.menu_description if matched_card else None
-                ),
+                "price": final_price,
+                "menu_description": final_desc,
             }
         )
 
@@ -542,7 +575,7 @@ async def fetch_tab_text(
     await page.goto(tab_url, wait_until="domcontentloaded", timeout=timeout_ms)
     await wait_for_page_ready(page, ready_selectors=ready_selectors)
     await scroll_page(page, max_rounds=scroll_steps)
-    return (await page.evaluate("() => document.body.innerText")).strip()
+    return (await page.evaluate(EVALUATE_INNER_TEXT)).strip()
 
 
 async def extract_structured_business_hours(page: Page) -> dict[str, str | None]:
@@ -766,78 +799,80 @@ async def fetch_menu_tab_data(page: Page, tab_url: str, *, timeout_ms: int) -> t
     return menu_text, menu_cards
 
 
-@app.get("/api/search")
-async def search_places(keyword: str = Query(..., min_length=1)):
+async def _execute_search_query(keyword: str) -> list[dict[str, str]]:
     from playwright.async_api import async_playwright
     import asyncio
-    try:
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-            )
-            context = await browser.new_context(
-                viewport=random.choice(_VIEWPORT_POOL),
-                user_agent=random_ua(),
-                locale="ko-KR",
-            )
-            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            
-            page = await context.new_page()
-            await configure_page(page, search_mode=True)
-            
-            search_data = None
-            async def handle_response(response):
-                nonlocal search_data
-                if "api/search/allSearch" in response.url:
-                    try:
-                        search_data = await response.json()
-                    except Exception:
-                        pass
-
-            page.on("response", handle_response)
-            
-            search_url = NAVER_MAP_BASE_URL + urllib.parse.quote(keyword)
-            
-            try:
-                await page.goto(search_url, wait_until="networkidle", timeout=15000)
-            except Exception:
-                pass # Timeout is fine if we already got the data
-                
-            for _ in range(10):
-                if search_data:
-                    break
-                await asyncio.sleep(0.5)
-                
-            results = []
-            if search_data:
+    async with async_playwright() as playwright:
+        browser = await playwright.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        context = await browser.new_context(
+            viewport=random.choice(_VIEWPORT_POOL),  # type: ignore
+            user_agent=random_ua(),
+            locale="ko-KR",
+        )
+        await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
+        page = await context.new_page()
+        await configure_page(page, search_mode=True)
+        
+        search_data = None
+        async def handle_response(response):
+            nonlocal search_data
+            if "api/search/allSearch" in response.url:
                 try:
-                    places = search_data.get("result", {}).get("place", {}).get("list", [])
-                    if not places:
-                        # Fallback for some searches that might return empty list but have data elsewhere
-                        pass
+                    search_data = await response.json()
+                except Exception:
+                    pass
+
+        page.on("response", handle_response)
+        
+        search_url = NAVER_MAP_BASE_URL + urllib.parse.quote(keyword)
+        
+        try:
+            await page.goto(search_url, wait_until="networkidle", timeout=15000)
+        except Exception:
+            pass # Timeout is fine if we already got the data
+            
+        for _ in range(10):
+            if search_data:
+                break
+            await asyncio.sleep(0.5)
+            
+        results = []
+        if search_data:
+            try:
+                places = search_data.get("result", {}).get("place", {}).get("list", [])
+                if places:
                     for p in places[:10]:
                         if not isinstance(p, dict):
                             continue
                         place_id = p.get("id")
                         name = p.get("name")
-                        address = p.get("address")
+                        address = p.get("roadAddress") or p.get("address")
                         if place_id and name:
                             results.append({
                                 "name": name,
                                 "address": address or "",
                                 "place_id": str(place_id)
                             })
-                except Exception as e:
-                    logger.warning(f"Error parsing JSON data: {e}")
-            
-            await browser.close()
-            return {"status": "success", "data": results}
+            except Exception as e:
+                logger.warning(f"Error parsing JSON data: {e}")
+        
+        await browser.close()
+        return results
+
+@app.get("/api/search", responses={500: {"description": "Internal Server Error"}})
+async def search_places(keyword: Annotated[str, Query(..., min_length=1)]):
+    try:
+        results = await _execute_search_query(keyword)
+        return {"status": "success", "data": results}
     except Exception as e:
         logger.exception("Search API error")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/place/{place_id}")
+@app.get("/api/place/{place_id}", responses={500: {"description": "Internal Server Error"}})
 async def get_place_detail(place_id: str):
     from playwright.async_api import async_playwright
     import asyncio
@@ -848,7 +883,7 @@ async def get_place_detail(place_id: str):
                 args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
             )
             context = await browser.new_context(
-                viewport=random.choice(_VIEWPORT_POOL),
+                viewport=random.choice(_VIEWPORT_POOL),  # type: ignore
                 user_agent=random_ua(),
                 locale="ko-KR",
             )
@@ -904,4 +939,4 @@ async def get_place_detail(place_id: str):
 if __name__ == "__main__":
     import uvicorn
     configure_logging("INFO")
-    uvicorn.run("naver_map_menu_hours:app", host="0.0.0.0", port=8000)
+    uvicorn.run("naver_map_menu_hours:app", host="127.0.0.1", port=8000)
