@@ -230,6 +230,8 @@ pipeline {
                     require_env INSTAGRAM_CLIENT_ID
                     require_env INSTAGRAM_CLIENT_SECRET
                     require_env FIREBASE_ENABLED
+                    require_env KEYWORD_MODEL_HOST_DIR
+                    require_env KEYWORD_MODEL_FILE
 
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
@@ -277,6 +279,34 @@ pipeline {
                     test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
+                '''
+            }
+        }
+
+        stage('Check Keyword Model Provisioning') {
+            steps {
+                sh '''
+                    set +x
+                    set -eu
+
+                    echo "===== Check keyword model provisioning ====="
+
+                    ENV_PATH="${DEPLOY_DIR}/.env"
+
+                    get_env() {
+                      key="$1"
+                      grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2-
+                    }
+
+                    KEYWORD_MODEL_HOST_DIR_VALUE="$(get_env KEYWORD_MODEL_HOST_DIR)"
+                    KEYWORD_MODEL_FILE_VALUE="$(get_env KEYWORD_MODEL_FILE)"
+                    KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILE_VALUE}"
+
+                    test -d "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    test -f "$KEYWORD_MODEL_PATH"
+
+                    echo "Keyword model directory exists: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                    echo "Keyword model file exists: $KEYWORD_MODEL_PATH"
                 '''
             }
         }
@@ -335,6 +365,9 @@ pipeline {
                         docker image inspect marketing-fastapi:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" fastapi)"
                         docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
 
+                        # Start shared dependencies before application container recreation.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
+
                         echo "Build commit: $BUILD_COMMIT"
                         echo "Build services: ${BUILD_SERVICES:-none}"
 
@@ -362,6 +395,7 @@ pipeline {
                         docker inspect project-frontend --format 'frontend={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-keyword-server --format 'keyword-server={{ .Config.Image }}' || true
                     '''
                 }
             }
