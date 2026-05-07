@@ -168,19 +168,17 @@ class ProcessUtteranceResult:
     caption: str
 
 
-async def process_utterance(
-    session_id: str,
-    payload: ProcessUtteranceRequest,
+async def _persist_process_utterance_started(
     redis: Redis,
-    keyword_service: KeywordExtractionService,
-    menu_fallback_service: MenuKeywordFallbackService,
-) -> ProcessUtteranceResult:
+    session_id: str,
+    utterance: str,
+) -> None:
     await upsert_content_session(
         redis,
         session_id,
         scalar_fields={
             "caption": "",
-            "utterance": payload.utterance,
+            "utterance": utterance,
         },
     )
     logger.info(
@@ -191,35 +189,23 @@ async def process_utterance(
             stage="persist_redis",
             session_id=session_id,
             outcome="succeeded",
-            utterance_length=len(payload.utterance),
+            utterance_length=len(utterance),
             initialized_field_count=2,
         ),
     )
-    logger.info(
-        "Starting keyword extraction for process-utterance.",
-        extra=build_log_extra(
-            "session.process_utterance.keyword_extraction.started",
-            component="session",
-            stage="keyword_extraction",
-            session_id=session_id,
-            outcome="started",
-            owner_persona=payload.owner_persona,
-            weather_cloud_cover=payload.weather.cloud_cover,
-            utterance_length=len(payload.utterance),
-            utterance_preview=preview_text(
-                payload.utterance,
-                settings.LOG_EVENT_PREVIEW_MAX_LEN,
-            )
-            if settings.LOG_INCLUDE_RAW_IDENTIFIERS
-            else None,
-        ),
-    )
-    extraction_result = await keyword_service.extract_keywords(payload.utterance)
+
+
+async def _select_keyword_state(
+    extraction_result,
+    payload: ProcessUtteranceRequest,
+    menu_fallback_service: MenuKeywordFallbackService,
+    session_id: str,
+) -> tuple[list[str], list[str], list[str], str | None]:
     draft_keywords = list(extraction_result.draft_keywords)
     final_keywords = list(extraction_result.final_keywords or draft_keywords)
     weather_signals = extraction_result.weather_signals
-    caption_keywords = final_keywords or draft_keywords
     fallback_source: str | None = None
+
     logger.info(
         "Keyword extraction finished.",
         extra=build_log_extra(
@@ -245,7 +231,6 @@ async def process_utterance(
         if fallback_keyword:
             draft_keywords = [fallback_keyword]
             final_keywords = [fallback_keyword]
-            caption_keywords = final_keywords
             logger.info(
                 "Menu keyword fallback selected a menu.",
                 extra=build_log_extra(
@@ -260,24 +245,30 @@ async def process_utterance(
                 ),
             )
 
-    draft_caption, draft_hashtags = build_draft_caption(
-        caption_keywords,
-        owner_persona=payload.owner_persona,
-        cloud_cover=payload.weather.cloud_cover,
-    )
-    guide_text = (
-        build_guide_text(caption_keywords)
-        if caption_keywords
-        else DEFAULT_FALLBACK_GUIDE_TEXT
-    )
-    if not caption_keywords and fallback_source is None:
-        fallback_source = "default_guide"
-    stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
+    return draft_keywords, final_keywords, weather_signals, fallback_source
 
-    redis_payload = {
-        "status": STATUS_TEXT_GENERATED,
-        "caption": stored_caption,
+
+def _build_process_utterance_debug_fields(
+    weather_signals: list[str],
+    fallback_source: str | None,
+) -> dict[str, str]:
+    debug_fields = {
+        f"debug:weather_signal:{index}": value
+        for index, value in enumerate(weather_signals, start=1)
     }
+    if fallback_source is not None:
+        debug_fields["debug:fallback_source"] = fallback_source
+    return debug_fields
+
+
+async def _persist_process_utterance_result(
+    redis: Redis,
+    session_id: str,
+    caption: str,
+    draft_keywords: list[str],
+    final_keywords: list[str],
+    debug_fields: dict[str, str],
+) -> None:
     await _delete_fields(
         redis,
         session_key(session_id),
@@ -291,18 +282,13 @@ async def process_utterance(
             "expires_at",
         ],
     )
-
-    debug_fields = {
-        f"debug:weather_signal:{index}": value
-        for index, value in enumerate(weather_signals, start=1)
-    }
-    if fallback_source is not None:
-        debug_fields["debug:fallback_source"] = fallback_source
-
     await upsert_content_session(
         redis,
         session_id,
-        scalar_fields=redis_payload,
+        scalar_fields={
+            "status": STATUS_TEXT_GENERATED,
+            "caption": caption,
+        },
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         debug_fields=debug_fields,
@@ -315,9 +301,76 @@ async def process_utterance(
             stage="persist_redis",
             session_id=session_id,
             outcome="succeeded",
-            caption_length=len(stored_caption),
-            hashtag_count=len(draft_hashtags),
+            caption_length=len(caption),
         ),
+    )
+
+
+async def process_utterance(
+    session_id: str,
+    payload: ProcessUtteranceRequest,
+    redis: Redis,
+    keyword_service: KeywordExtractionService,
+    menu_fallback_service: MenuKeywordFallbackService,
+) -> ProcessUtteranceResult:
+    await _persist_process_utterance_started(redis, session_id, payload.utterance)
+    logger.info(
+        "Starting keyword extraction for process-utterance.",
+        extra=build_log_extra(
+            "session.process_utterance.keyword_extraction.started",
+            component="session",
+            stage="keyword_extraction",
+            session_id=session_id,
+            outcome="started",
+            owner_persona=payload.owner_persona,
+            weather_cloud_cover=payload.weather.cloud_cover,
+            utterance_length=len(payload.utterance),
+            utterance_preview=preview_text(
+                payload.utterance,
+                settings.LOG_EVENT_PREVIEW_MAX_LEN,
+            )
+            if settings.LOG_INCLUDE_RAW_IDENTIFIERS
+            else None,
+        ),
+    )
+    extraction_result = await keyword_service.extract_keywords(payload.utterance)
+    (
+        draft_keywords,
+        final_keywords,
+        weather_signals,
+        fallback_source,
+    ) = await _select_keyword_state(
+        extraction_result=extraction_result,
+        payload=payload,
+        menu_fallback_service=menu_fallback_service,
+        session_id=session_id,
+    )
+    caption_keywords = final_keywords or draft_keywords
+
+    draft_caption, draft_hashtags = build_draft_caption(
+        caption_keywords,
+        owner_persona=payload.owner_persona,
+        cloud_cover=payload.weather.cloud_cover,
+    )
+    guide_text = (
+        build_guide_text(caption_keywords)
+        if caption_keywords
+        else DEFAULT_FALLBACK_GUIDE_TEXT
+    )
+    if not caption_keywords and fallback_source is None:
+        fallback_source = "default_guide"
+    stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
+    debug_fields = _build_process_utterance_debug_fields(
+        weather_signals=weather_signals,
+        fallback_source=fallback_source,
+    )
+    await _persist_process_utterance_result(
+        redis=redis,
+        session_id=session_id,
+        caption=stored_caption,
+        draft_keywords=draft_keywords,
+        final_keywords=final_keywords,
+        debug_fields=debug_fields,
     )
 
     return ProcessUtteranceResult(
