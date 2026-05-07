@@ -9,6 +9,10 @@ from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
+from app.services.canonical_keyword_resolver import (
+    CanonicalKeywordResolverService,
+    CanonicalKeywordResolution,
+)
 from app.services.weather_tags import evaluate_weather_tags
 
 CONTENTS_KEY_PREFIX = "contents"
@@ -244,10 +248,9 @@ async def _persist_process_utterance_started(
 def _build_keyword_state(
     extraction_result,
     session_id: str,
-) -> tuple[str, list[str], list[str]]:
+) -> tuple[str, list[str]]:
     purpose = extraction_result.purpose
     draft_keywords = list(extraction_result.draft_keywords)
-    final_keywords = list(extraction_result.final_keywords or draft_keywords)
 
     logger.info(
         "Keyword extraction finished.",
@@ -260,18 +263,46 @@ def _build_keyword_state(
             purpose=purpose,
             draft_keyword_count=len(draft_keywords),
             draft_keywords_preview=", ".join(draft_keywords[:3]),
-            final_keyword_count=len(final_keywords),
-            final_keywords_preview=", ".join(final_keywords[:3]),
         ),
     )
 
-    return purpose, draft_keywords, final_keywords
+    return purpose, draft_keywords
+
+
+def _build_final_keyword_state(
+    draft_keywords: list[str],
+    resolution: CanonicalKeywordResolution,
+    session_id: str,
+) -> list[str]:
+    final_keywords = list(resolution.final_keywords or draft_keywords)
+    logger.info(
+        "Canonical keyword resolution finished.",
+        extra=build_log_extra(
+            "session.process_utterance.canonical_resolution.completed",
+            component="session",
+            stage="canonical_resolution",
+            session_id=session_id,
+            outcome="succeeded",
+            draft_keyword_count=len(draft_keywords),
+            draft_keywords_preview=", ".join(draft_keywords[:3]),
+            final_keyword_count=len(final_keywords),
+            final_keywords_preview=", ".join(final_keywords[:3]),
+            canonical_match_count=resolution.match_count,
+            canonical_fallback_count=resolution.fallback_count,
+        ),
+    )
+    return final_keywords
 
 
 def _build_process_utterance_debug_fields(
     purpose: str,
+    canonical_resolution: CanonicalKeywordResolution,
 ) -> dict[str, str]:
-    return {"debug:purpose": purpose}
+    return {
+        "debug:purpose": purpose,
+        "debug:canonical_match_count": str(canonical_resolution.match_count),
+        "debug:canonical_fallback_count": str(canonical_resolution.fallback_count),
+    }
 
 
 async def _persist_process_utterance_result(
@@ -326,6 +357,7 @@ async def process_utterance(
     payload: ProcessUtteranceRequest,
     redis: Redis,
     keyword_service: KeywordExtractionService,
+    canonical_keyword_resolver: CanonicalKeywordResolverService,
 ) -> ProcessUtteranceResult:
     weather_tags = evaluate_weather_tags(
         payload.weather,
@@ -359,11 +391,19 @@ async def process_utterance(
         ),
     )
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
-    purpose, draft_keywords, final_keywords = _build_keyword_state(
+    purpose, draft_keywords = _build_keyword_state(
         extraction_result=extraction_result,
         session_id=session_id,
     )
-    caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    canonical_resolution = await canonical_keyword_resolver.resolve_keywords(
+        draft_keywords
+    )
+    final_keywords = _build_final_keyword_state(
+        draft_keywords=draft_keywords,
+        resolution=canonical_resolution,
+        session_id=session_id,
+    )
+    caption_keywords = draft_keywords
     (
         draft_caption,
         draft_hashtags,
@@ -393,6 +433,7 @@ async def process_utterance(
     )
     debug_fields = _build_process_utterance_debug_fields(
         purpose=purpose,
+        canonical_resolution=canonical_resolution,
     )
     await _persist_process_utterance_result(
         redis=redis,

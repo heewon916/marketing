@@ -570,7 +570,7 @@ class KeywordExtractionService:
         return KeywordExtractionResult(
             purpose=purpose,
             draft_keywords=draft_keywords,
-            final_keywords=list(draft_keywords),
+            final_keywords=[],
         )
 
     def _parse_keywords(self, raw_output: str) -> list[str]:

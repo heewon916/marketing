@@ -21,6 +21,9 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     get_keyword_extraction_service,
 )
+from app.services.canonical_keyword_resolver import (
+    get_canonical_keyword_resolver_service,
+)
 from app.services.sessions import process_utterance
 
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
@@ -40,6 +43,7 @@ async def process_utterance_endpoint(
     redis: Redis = Depends(get_redis),
 ) -> ProcessUtteranceResponse:
     keyword_service = get_keyword_extraction_service(request)
+    canonical_keyword_resolver = get_canonical_keyword_resolver_service(request)
     logger.info(
         "process-utterance request received.",
         extra={
@@ -57,6 +61,7 @@ async def process_utterance_endpoint(
             payload,
             redis,
             keyword_service,
+            canonical_keyword_resolver,
         )
     except KeywordExtractionUnavailableError as exc:
         cause = exc.__cause__
