@@ -8,7 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR.parent / ".env"
 DEFAULT_ORIENTATION_MODEL_NAME = "vit"
-DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
+DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = (
+    ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
+)
 DEFAULT_KEYWORD_MODEL_PATH = ROOT_DIR / "models" / "qwen-gguf" / "model.gguf"
 DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
 DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
@@ -86,36 +88,5 @@ class Settings(BaseSettings):
                 self.S3_REGION,
             ]
         )
-
-    @computed_field
-    @property
-    def ORIENTATION_MODEL_NAME(self) -> str:
-        return DEFAULT_ORIENTATION_MODEL_NAME
-
-    @computed_field
-    @property
-    def KEYWORD_MODEL_HF_REPO_ID(self) -> str:
-        return DEFAULT_KEYWORD_MODEL_HF_REPO_ID
-
-    @computed_field
-    @property
-    def KEYWORD_MODEL_HF_FILENAME(self) -> str:
-        return DEFAULT_KEYWORD_MODEL_HF_FILENAME
-
-    @computed_field
-    @property
-    def KEYWORD_MODEL_TIMEOUT_SECONDS(self) -> float:
-        return DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
-
-    @computed_field
-    @property
-    def orientation_model_weights_path(self) -> Path:
-        return DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-
-    @computed_field
-    @property
-    def keyword_model_path(self) -> Path:
-        return DEFAULT_KEYWORD_MODEL_PATH
-
 
 settings = Settings()

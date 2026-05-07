@@ -13,7 +13,11 @@ from typing import Any
 
 from fastapi import Request
 
-from app.core.config import settings
+from app.core.config import (
+    DEFAULT_KEYWORD_MODEL_PATH,
+    DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
+    settings,
+)
 from app.logging import build_log_extra, preview_text
 from app.keyword_model_download import ensure_keyword_model_available
 
@@ -792,7 +796,7 @@ class KeywordExtractionService:
 
 def build_keyword_extraction_service() -> KeywordExtractionService:
     return KeywordExtractionService(
-        model_path=settings.keyword_model_path,
+        model_path=DEFAULT_KEYWORD_MODEL_PATH,
         enabled=settings.KEYWORD_MODEL_ENABLED,
         n_ctx=settings.KEYWORD_MODEL_CTX_SIZE,
         max_tokens=settings.KEYWORD_MODEL_MAX_TOKENS,
@@ -800,7 +804,7 @@ def build_keyword_extraction_service() -> KeywordExtractionService:
         top_p=settings.KEYWORD_MODEL_TOP_P,
         n_threads=settings.KEYWORD_MODEL_THREADS,
         n_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
-        timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
+        timeout_seconds=DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
     )
 
 

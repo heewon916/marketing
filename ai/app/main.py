@@ -17,7 +17,14 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app.api.main import api_router
-from app.core.config import settings
+from app.core.config import (
+    DEFAULT_KEYWORD_MODEL_HF_FILENAME,
+    DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+    DEFAULT_KEYWORD_MODEL_PATH,
+    DEFAULT_ORIENTATION_MODEL_NAME,
+    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
+    settings,
+)
 from app.db.postgres import dispose_engine
 from app.db.redis import close_redis, get_redis_client
 from app.logging import (
@@ -142,7 +149,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             temp_root=str(temp_root),
         ),
     )
-    orientation_weights_path = settings.orientation_model_weights_path
+    orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
     extractor_config = ExtractorConfig(
         input_directory=temp_root,
         output_directory=temp_root,
@@ -189,7 +196,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ),
         )
     except Exception:
-        orientation_weights_path = settings.orientation_model_weights_path
+        orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
         logger.warning(
             "Orientation weights are unavailable at startup. "
             "The app will continue, but final-edit may fail until weights are present.",
@@ -206,7 +213,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.final_edit_service = FinalEditService(
         predictor=OrientationPredictor(
-            model_name=settings.ORIENTATION_MODEL_NAME,
+            model_name=DEFAULT_ORIENTATION_MODEL_NAME,
             weights_path=str(orientation_weights_path),
         ),
         downloader=S3DraftImageDownloader(),
@@ -220,9 +227,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         extra=build_log_extra(
             "app.startup.keyword_extraction_configured",
             component="startup",
-            keyword_model_repo_id=settings.KEYWORD_MODEL_HF_REPO_ID,
-            keyword_model_filename=settings.KEYWORD_MODEL_HF_FILENAME,
-            keyword_model_path=str(settings.keyword_model_path),
+            keyword_model_repo_id=DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+            keyword_model_filename=DEFAULT_KEYWORD_MODEL_HF_FILENAME,
+            keyword_model_path=str(DEFAULT_KEYWORD_MODEL_PATH),
             keyword_model_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
         ),
     )
