@@ -9,7 +9,11 @@ from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
-from app.services.menu_fallback import MenuKeywordFallbackService
+from app.services.canonical_keyword_resolver import (
+    CanonicalKeywordResolverService,
+    CanonicalKeywordResolution,
+)
+from app.services.weather_tags import evaluate_weather_tags
 
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
@@ -22,6 +26,7 @@ def build_draft_caption(
     keywords: list[str],
     owner_persona: str,
     cloud_cover: str,
+    weather_tags: list[str],
 ) -> tuple[str, list[str]]:
     keyword_phrase = ", ".join(keywords) if keywords else "today's highlights"
     caption = (
@@ -33,8 +38,7 @@ def build_draft_caption(
         hashtags.append(f"#{cloud_cover.replace(' ', '')}")
     return caption, hashtags
 
-
-def build_guide_text(keywords: list[str]) -> str:
+def build_guide_text(keywords: list[str], weather_tags: list[str]) -> str:
     if not keywords:
         return "Capture the store atmosphere clearly so the main subject stands out."
     keyword_phrase = ", ".join(keywords)
@@ -55,15 +59,17 @@ def build_text_generation_result(
     keywords: list[str],
     owner_persona: str,
     cloud_cover: str,
+    weather_tags: list[str],
     fallback_source: str | None,
 ) -> tuple[str, list[str], str, str, str | None]:
     draft_caption, draft_hashtags = build_draft_caption(
         keywords,
         owner_persona=owner_persona,
         cloud_cover=cloud_cover,
+        weather_tags=weather_tags,
     )
     guide_text = (
-        build_guide_text(keywords)
+        build_guide_text(keywords, weather_tags)
         if keywords
         else DEFAULT_FALLBACK_GUIDE_TEXT
     )
@@ -132,6 +138,7 @@ async def upsert_content_session(
     scalar_fields: dict[str, str],
     draft_keywords: list[str] | None = None,
     final_keywords: list[str] | None = None,
+    weather_tags: list[str] | None = None,
     drafts: list[str] | None = None,
     photos: list[str] | None = None,
     debug_fields: dict[str, str] | None = None,
@@ -150,6 +157,7 @@ async def upsert_content_session(
             scalar_field_count=len(scalar_fields),
             draft_keyword_count=len(draft_keywords or []),
             final_keyword_count=len(final_keywords or []),
+            weather_tag_count=len(weather_tags or []),
             draft_count=len(drafts or []),
             photo_count=len(photos or []),
             debug_field_count=len(debug_fields or {}),
@@ -165,6 +173,8 @@ async def upsert_content_session(
         await _replace_prefixed_fields(redis, key, "final_keyword:", final_keywords)
     if draft_keywords is not None or final_keywords is not None:
         await _delete_prefixed_fields(redis, key, ["keyword:"])
+    if weather_tags is not None:
+        await _replace_prefixed_fields(redis, key, "weather_tag:", weather_tags)
     if drafts is not None:
         await _replace_prefixed_fields(redis, key, "draft:", drafts)
     if photos is not None:
@@ -195,8 +205,9 @@ async def upsert_content_session(
 @dataclass
 class ProcessUtteranceResult:
     status: str
+    purpose: str
+    weather_tags: list[str]
     draft_keywords: list[str]
-    weather_signals: list[str]
     final_keywords: list[str]
     draft_caption: str
     draft_hashtags: list[str]
@@ -208,6 +219,7 @@ async def _persist_process_utterance_started(
     redis: Redis,
     session_id: str,
     utterance: str,
+    weather_tags: list[str],
 ) -> None:
     await upsert_content_session(
         redis,
@@ -216,6 +228,7 @@ async def _persist_process_utterance_started(
             "caption": "",
             "utterance": utterance,
         },
+        weather_tags=weather_tags,
     )
     logger.info(
         "Stored initial process-utterance request fields in redis.",
@@ -226,21 +239,18 @@ async def _persist_process_utterance_started(
             session_id=session_id,
             outcome="succeeded",
             utterance_length=len(utterance),
+            weather_tag_count=len(weather_tags),
             initialized_field_count=2,
         ),
     )
 
 
-async def _select_keyword_state(
+def _build_keyword_state(
     extraction_result,
-    payload: ProcessUtteranceRequest,
-    menu_fallback_service: MenuKeywordFallbackService,
     session_id: str,
-) -> tuple[list[str], list[str], list[str], str | None]:
+) -> tuple[str, list[str]]:
+    purpose = extraction_result.purpose
     draft_keywords = list(extraction_result.draft_keywords)
-    final_keywords = list(extraction_result.final_keywords or draft_keywords)
-    weather_signals = extraction_result.weather_signals
-    fallback_source: str | None = None
 
     logger.info(
         "Keyword extraction finished.",
@@ -250,57 +260,56 @@ async def _select_keyword_state(
             stage="keyword_extraction",
             session_id=session_id,
             outcome="succeeded",
+            purpose=purpose,
+            draft_keyword_count=len(draft_keywords),
+            draft_keywords_preview=", ".join(draft_keywords[:3]),
+        ),
+    )
+
+    return purpose, draft_keywords
+
+
+def _build_final_keyword_state(
+    draft_keywords: list[str],
+    resolution: CanonicalKeywordResolution,
+    session_id: str,
+) -> list[str]:
+    final_keywords = list(resolution.final_keywords or draft_keywords)
+    logger.info(
+        "Canonical keyword resolution finished.",
+        extra=build_log_extra(
+            "session.process_utterance.canonical_resolution.completed",
+            component="session",
+            stage="canonical_resolution",
+            session_id=session_id,
+            outcome="succeeded",
             draft_keyword_count=len(draft_keywords),
             draft_keywords_preview=", ".join(draft_keywords[:3]),
             final_keyword_count=len(final_keywords),
             final_keywords_preview=", ".join(final_keywords[:3]),
-            weather_signal_count=len(weather_signals),
-            weather_signals_preview=", ".join(weather_signals[:3]),
+            canonical_match_count=resolution.match_count,
+            canonical_fallback_count=resolution.fallback_count,
         ),
     )
-
-    if not draft_keywords and weather_signals:
-        fallback_keyword, fallback_source = await menu_fallback_service.choose_menu_keyword(
-            payload.store_id,
-            weather_signals,
-        )
-        if fallback_keyword:
-            draft_keywords = [fallback_keyword]
-            final_keywords = [fallback_keyword]
-            logger.info(
-                "Menu keyword fallback selected a menu.",
-                extra=build_log_extra(
-                    "session.process_utterance.menu_fallback.completed",
-                    component="session",
-                    stage="menu_fallback",
-                    session_id=session_id,
-                    outcome="succeeded",
-                    fallback_source=fallback_source,
-                    fallback_keyword=fallback_keyword,
-                    weather_signals_preview=", ".join(weather_signals[:3]),
-                ),
-            )
-
-    return draft_keywords, final_keywords, weather_signals, fallback_source
+    return final_keywords
 
 
 def _build_process_utterance_debug_fields(
-    weather_signals: list[str],
-    fallback_source: str | None,
+    purpose: str,
+    canonical_resolution: CanonicalKeywordResolution,
 ) -> dict[str, str]:
-    debug_fields = {
-        f"debug:weather_signal:{index}": value
-        for index, value in enumerate(weather_signals, start=1)
+    return {
+        "debug:purpose": purpose,
+        "debug:canonical_match_count": str(canonical_resolution.match_count),
+        "debug:canonical_fallback_count": str(canonical_resolution.fallback_count),
     }
-    if fallback_source is not None:
-        debug_fields["debug:fallback_source"] = fallback_source
-    return debug_fields
 
 
 async def _persist_process_utterance_result(
     redis: Redis,
     session_id: str,
     caption: str,
+    weather_tags: list[str],
     draft_keywords: list[str],
     final_keywords: list[str],
     debug_fields: dict[str, str],
@@ -325,6 +334,7 @@ async def _persist_process_utterance_result(
             "status": STATUS_TEXT_GENERATED,
             "caption": caption,
         },
+        weather_tags=weather_tags,
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         debug_fields=debug_fields,
@@ -347,9 +357,18 @@ async def process_utterance(
     payload: ProcessUtteranceRequest,
     redis: Redis,
     keyword_service: KeywordExtractionService,
-    menu_fallback_service: MenuKeywordFallbackService,
+    canonical_keyword_resolver: CanonicalKeywordResolverService,
 ) -> ProcessUtteranceResult:
-    await _persist_process_utterance_started(redis, session_id, payload.utterance)
+    weather_tags = evaluate_weather_tags(
+        payload.weather,
+        target_date=payload.date,
+    )
+    await _persist_process_utterance_started(
+        redis,
+        session_id,
+        payload.utterance,
+        weather_tags,
+    )
     logger.info(
         "Starting keyword extraction for process-utterance.",
         extra=build_log_extra(
@@ -360,6 +379,8 @@ async def process_utterance(
             outcome="started",
             owner_persona=payload.owner_persona,
             weather_cloud_cover=payload.weather.cloud_cover,
+            weather_tag_count=len(weather_tags),
+            weather_tags_preview=", ".join(weather_tags[:3]),
             utterance_length=len(payload.utterance),
             utterance_preview=preview_text(
                 payload.utterance,
@@ -370,38 +391,55 @@ async def process_utterance(
         ),
     )
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
-    (
-        draft_keywords,
-        final_keywords,
-        weather_signals,
-        fallback_source,
-    ) = await _select_keyword_state(
+    purpose, draft_keywords = _build_keyword_state(
         extraction_result=extraction_result,
-        payload=payload,
-        menu_fallback_service=menu_fallback_service,
         session_id=session_id,
     )
-    caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    canonical_resolution = await canonical_keyword_resolver.resolve_keywords(
+        draft_keywords
+    )
+    final_keywords = _build_final_keyword_state(
+        draft_keywords=draft_keywords,
+        resolution=canonical_resolution,
+        session_id=session_id,
+    )
+    caption_keywords = draft_keywords
     (
         draft_caption,
         draft_hashtags,
         guide_text,
         stored_caption,
-        fallback_source,
+        _fallback_source,
     ) = build_text_generation_result(
         keywords=caption_keywords,
         owner_persona=payload.owner_persona,
         cloud_cover=payload.weather.cloud_cover,
-        fallback_source=fallback_source,
+        weather_tags=weather_tags,
+        fallback_source=None,
+    )
+    logger.info(
+        "Built text generation result for process-utterance.",
+        extra=build_log_extra(
+            "session.process_utterance.text_generation.completed",
+            component="session",
+            stage="text_generation",
+            session_id=session_id,
+            outcome="succeeded",
+            weather_tag_count=len(weather_tags),
+            weather_tags_preview=", ".join(weather_tags[:3]),
+            draft_caption_length=len(draft_caption),
+            guide_text_length=len(guide_text),
+        ),
     )
     debug_fields = _build_process_utterance_debug_fields(
-        weather_signals=weather_signals,
-        fallback_source=fallback_source,
+        purpose=purpose,
+        canonical_resolution=canonical_resolution,
     )
     await _persist_process_utterance_result(
         redis=redis,
         session_id=session_id,
         caption=stored_caption,
+        weather_tags=weather_tags,
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         debug_fields=debug_fields,
@@ -409,8 +447,9 @@ async def process_utterance(
 
     return ProcessUtteranceResult(
         status=STATUS_TEXT_GENERATED,
+        purpose=purpose,
+        weather_tags=weather_tags,
         draft_keywords=draft_keywords,
-        weather_signals=weather_signals,
         final_keywords=final_keywords,
         draft_caption=draft_caption,
         draft_hashtags=draft_hashtags,

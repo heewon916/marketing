@@ -8,11 +8,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR.parent / ".env"
 DEFAULT_ORIENTATION_MODEL_NAME = "vit"
-DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
+DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = (
+    ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
+)
+# Legacy local GGUF settings are kept for reference during the llama-server migration.
 DEFAULT_KEYWORD_MODEL_PATH = ROOT_DIR / "models" / "qwen-gguf" / "model.gguf"
 DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
 DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
 DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 30.0
+DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
+DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR = (
+    ROOT_DIR / "models" / "canonical-keywords"
+)
+DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM = 384
 
 
 class Settings(BaseSettings):
@@ -29,9 +37,6 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "DEBUG"
     LOG_INCLUDE_RAW_IDENTIFIERS: bool = True
     LOG_EVENT_PREVIEW_MAX_LEN: int = 200
-    PROVIDER: str = "openai"
-    DEFAULT_MODEL: str = "gpt-4o-mini"
-    OPENAI_API_KEY: str | None = None
 
     DEBUG: bool = True
 
@@ -56,6 +61,10 @@ class Settings(BaseSettings):
     ORIENTATION_MODEL_DOWNLOAD_URL: str = (
         "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
     )
+    KEYWORD_MODEL_BASE_URL: str = "http://keyword-server:8001"
+    KEYWORD_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
+    KEYWORD_MODEL_API_KEY: str | None = None
+    # Legacy local inference settings kept for rollback while FastAPI moves to llama-server.
     KEYWORD_MODEL_CTX_SIZE: int = 2048
     KEYWORD_MODEL_MAX_TOKENS: int = 64
     KEYWORD_MODEL_TEMPERATURE: float = 0.1
@@ -63,6 +72,17 @@ class Settings(BaseSettings):
     KEYWORD_MODEL_THREADS: int = max((os.cpu_count() or 1) - 2, 1)
     KEYWORD_MODEL_GPU_LAYERS: int = 20
     KEYWORD_MODEL_ENABLED: bool = True
+    KEYWORD_MODEL_TIMEOUT_SECONDS: float = DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+    CANONICAL_KEYWORD_RESOLVER_ENABLED: bool = True
+    CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME: str = (
+        DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME
+    )
+    CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR: Path = (
+        DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR
+    )
+    CANONICAL_KEYWORD_EMBEDDING_DIM: int = (
+        DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM
+    )
 
     @computed_field
     @property
@@ -89,36 +109,5 @@ class Settings(BaseSettings):
                 self.S3_REGION,
             ]
         )
-
-    @computed_field
-    @property
-    def ORIENTATION_MODEL_NAME(self) -> str:
-        return DEFAULT_ORIENTATION_MODEL_NAME
-
-    @computed_field
-    @property
-    def KEYWORD_MODEL_HF_REPO_ID(self) -> str:
-        return DEFAULT_KEYWORD_MODEL_HF_REPO_ID
-
-    @computed_field
-    @property
-    def KEYWORD_MODEL_HF_FILENAME(self) -> str:
-        return DEFAULT_KEYWORD_MODEL_HF_FILENAME
-
-    @computed_field
-    @property
-    def KEYWORD_MODEL_TIMEOUT_SECONDS(self) -> float:
-        return DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
-
-    @computed_field
-    @property
-    def orientation_model_weights_path(self) -> Path:
-        return DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-
-    @computed_field
-    @property
-    def keyword_model_path(self) -> Path:
-        return DEFAULT_KEYWORD_MODEL_PATH
-
 
 settings = Settings()

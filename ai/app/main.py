@@ -17,7 +17,11 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app.api.main import api_router
-from app.core.config import settings
+from app.core.config import (
+    DEFAULT_ORIENTATION_MODEL_NAME,
+    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
+    settings,
+)
 from app.db.postgres import dispose_engine
 from app.db.redis import close_redis, get_redis_client
 from app.logging import (
@@ -47,7 +51,9 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     build_keyword_extraction_service,
 )
-from app.services.menu_fallback import build_menu_keyword_fallback_service
+from app.services.canonical_keyword_resolver import (
+    build_canonical_keyword_resolver_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +148,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             temp_root=str(temp_root),
         ),
     )
-    orientation_weights_path = settings.orientation_model_weights_path
+    orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
     extractor_config = ExtractorConfig(
         input_directory=temp_root,
         output_directory=temp_root,
@@ -189,7 +195,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ),
         )
     except Exception:
-        orientation_weights_path = settings.orientation_model_weights_path
+        orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
         logger.warning(
             "Orientation weights are unavailable at startup. "
             "The app will continue, but final-edit may fail until weights are present.",
@@ -206,7 +212,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.final_edit_service = FinalEditService(
         predictor=OrientationPredictor(
-            model_name=settings.ORIENTATION_MODEL_NAME,
+            model_name=DEFAULT_ORIENTATION_MODEL_NAME,
             weights_path=str(orientation_weights_path),
         ),
         downloader=S3DraftImageDownloader(),
@@ -214,34 +220,49 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root / "final-edit",
     )
     app.state.keyword_extraction_service = build_keyword_extraction_service()
-    app.state.menu_keyword_fallback_service = build_menu_keyword_fallback_service()
+    app.state.canonical_keyword_resolver_service = (
+        build_canonical_keyword_resolver_service()
+    )
     logger.info(
         "Keyword extraction configured.",
         extra=build_log_extra(
             "app.startup.keyword_extraction_configured",
             component="startup",
-            keyword_model_repo_id=settings.KEYWORD_MODEL_HF_REPO_ID,
-            keyword_model_filename=settings.KEYWORD_MODEL_HF_FILENAME,
-            keyword_model_path=str(settings.keyword_model_path),
-            keyword_model_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
+            keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+            keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+            keyword_timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
+        ),
+    )
+    logger.info(
+        "Canonical keyword resolver configured.",
+        extra=build_log_extra(
+            "app.startup.canonical_keyword_resolver_configured",
+            component="startup",
+            canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+            canonical_embedding_dim=settings.CANONICAL_KEYWORD_EMBEDDING_DIM,
+            canonical_embedding_cache_dir=str(
+                settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR
+            ),
         ),
     )
 
     try:
         await app.state.keyword_extraction_service.preload()
         logger.info(
-            "Keyword extraction model preload completed.",
+            "Keyword extraction server connectivity check completed.",
             extra=build_log_extra(
                 "app.startup.keyword_preload",
                 component="startup",
                 stage="keyword_preload",
                 outcome="succeeded",
+                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
             ),
         )
     except KeywordExtractionUnavailableError as exc:
         logger.warning(
-            "Keyword extraction model is unavailable at startup: %s. "
-            "The app will continue, but process-utterance may return 503 until the model is ready.",
+            "Keyword extraction server is unavailable at startup: %s. "
+            "The app will continue, but process-utterance may return 503 until the server is reachable.",
             exc,
             exc_info=True,
             extra=build_log_extra(
@@ -250,12 +271,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type=exc.__class__.__name__,
+                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
             ),
         )
     except Exception:
         logger.warning(
-            "Keyword extraction model is unavailable at startup. "
-            "The app will continue, but process-utterance may return 503 until the model is ready.",
+            "Keyword extraction server is unavailable at startup. "
+            "The app will continue, but process-utterance may return 503 until the server is reachable.",
             exc_info=True,
             extra=build_log_extra(
                 "app.startup.keyword_preload",
@@ -263,6 +286,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type="unexpected_startup_error",
+                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
+                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+            ),
+        )
+
+    try:
+        await app.state.canonical_keyword_resolver_service.preload()
+        logger.info(
+            "Canonical keyword resolver preload completed.",
+            extra=build_log_extra(
+                "app.startup.canonical_keyword_resolver_preload",
+                component="startup",
+                stage="canonical_keyword_preload",
+                outcome="succeeded",
+                canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Canonical keyword resolver is unavailable at startup: %s. "
+            "The app will continue and fall back to draft keywords for final keyword storage.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.canonical_keyword_resolver_preload",
+                component="startup",
+                stage="canonical_keyword_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
+                canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
             ),
         )
 
