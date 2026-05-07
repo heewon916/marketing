@@ -1,20 +1,28 @@
 package com.matketing.be.domain.content.controller;
 
+import com.matketing.be.domain.content.dto.ChatRequest;
+import com.matketing.be.domain.content.dto.ChatResponse;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
 import com.matketing.be.domain.content.dto.ContentResponseDto;
+import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -23,22 +31,68 @@ public class ContentController {
 
     private final ContentService contentService;
 
-    // 게시물에 연결된 이미지 s3Key 목록을 조회한다.
+    /**
+     * Clova STT API
+     * 역할: multipart 파라미터 service, client로 전달
+     * 응답: 최종 utterance, status=TEXT_RECOGNIZED
+     * @param audioFile
+     * @return
+     */
+    @PostMapping("/stt")
+    public SttResponse recognizeSpeech(@RequestPart(value = "audio_file", required = false) MultipartFile audioFile) {
+        return contentService.recognizeSpeech(audioFile);
+    }
+
+    /**
+     * 게시물 캡션 생성 API
+     * - 같은 사용자 -> 동일 request_id로 구분 -> Redis 멱등성 Key로 중복 제거
+     * - 최초 요청: FAST API 트리거
+     * - 중복 요청: Redis에 존재하는 결과 반환
+     * @param request request_id, 최종 utterance
+     * @param authentication TODO SecurityContext에서 인증된 사용자로 변경
+     * @return
+     */
+    @PostMapping("/caption")
+    public ChatResponse createTextContent(
+            @Valid @RequestBody ChatRequest request,
+            Authentication authentication
+    ) {
+        // TODO users.id, users.instagram_user_id, users.instagram_username 중 무엇인지 명확히 해야 한다
+        return contentService.createTextContent(request, getCurrentUserId(authentication));
+    }
+
+    /**
+     * 게시물 이미지 조회 API
+     * @param contentId TODO sessionId가 아니어도 되는가
+     * @return ContentImageUrlsResponseDto 해당 게시물의 이미지 s3 url을 리턴한다
+     */
     @GetMapping("/{contentId}/images")
     public ContentImageUrlsResponseDto getContentImages(@PathVariable Long contentId) {
         return contentService.getContentImages(contentId);
     }
 
-    // 현재 엔티티 구조에는 soft delete가 없어 실제 삭제로 동작한다.
+
+    /**
+     * 게시물 이미지 삭제 API
+     * TODO 이미지 정보 삭제는 redis에서 이루어진다. 이 로직으로 수정이 필요해보인다.
+     * @param contentId
+     * @param imageId
+     * @return
+     */
     @DeleteMapping("/{contentId}/images/{imageId}")
     public ContentImageDeleteResponseDto deleteContentImage(
             @PathVariable Long contentId,
-            @PathVariable UUID imageId
+            @PathVariable UUID imageId  // TODO UUID..?
     ) {
         return contentService.deleteContentImage(contentId, imageId);
     }
 
-    // 현재 Content 엔티티와 연관된 이미지/영상 정보를 함께 반환한다.
+    /**
+     * 게시물 내용 조회 API
+     * - 캡션, 이미지 조회
+     * @param contentId
+     * @return
+     */
     @GetMapping("/{contentId}")
     public ContentResponseDto getContent(@PathVariable Long contentId) {
         return contentService.getContent(contentId);
@@ -51,5 +105,13 @@ public class ContentController {
             @RequestBody ContentEditRequestDto requestDto
     ) {
         return contentService.updateContent(contentId, requestDto);
+    }
+
+    // TODO JWT 인증 필터가 적용되면 이 함수는 삭제하고 SecurityContext의 실제 user_name을 주도록 바꿔야 한다.
+    private String getCurrentUserId(Authentication authentication) {
+        if (authentication != null && authentication.getName() != null && !authentication.getName().isBlank()) {
+            return authentication.getName();
+        }
+        return "00000000-0000-0000-0000-000000000000";
     }
 }
