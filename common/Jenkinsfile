@@ -258,8 +258,12 @@ pipeline {
                     require_env INSTAGRAM_CLIENT_ID
                     require_env INSTAGRAM_CLIENT_SECRET
                     require_env FIREBASE_ENABLED
+                    require_optional_positive_integer KEYWORD_MODEL_SERVER_PORT
                     require_optional_positive_integer KEYWORD_MODEL_CTX_SIZE
                     require_optional_integer KEYWORD_MODEL_GPU_LAYERS
+                    require_optional_positive_integer CAPTION_MODEL_SERVER_PORT
+                    require_optional_positive_integer CAPTION_MODEL_CTX_SIZE
+                    require_optional_integer CAPTION_MODEL_GPU_LAYERS
 
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
@@ -311,143 +315,171 @@ pipeline {
             }
         }
 
-        stage('Provision Keyword Model') {
+        stage('Provision Llama Models') {
             steps {
                 sh '''
                     set +x
                     set -eu
 
-                    echo "===== Provision keyword model ====="
+                    echo "===== Provision llama models ====="
 
                     ENV_PATH="${DEPLOY_DIR}/.env"
-                    DEFAULT_KEYWORD_MODEL_HOST_DIR="./.models/keyword/qwen2.5-7b-instruct/q3_k_m"
-                    DEFAULT_KEYWORD_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
-                    DEFAULT_KEYWORD_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
-                    KEYWORD_MODEL_FILENAME="model.gguf"
-                    KEYWORD_MODEL_CONTAINER_DIR="/models/qwen2.5-7b-instruct/q3_k_m"
-                    KEYWORD_MODEL_CONTAINER_PATH="${KEYWORD_MODEL_CONTAINER_DIR}/${KEYWORD_MODEL_FILENAME}"
 
                     get_env() {
                       key="$1"
                       grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
                     }
 
-                    KEYWORD_MODEL_HOST_DIR_RAW="$(get_env KEYWORD_MODEL_HOST_DIR)"
-                    KEYWORD_MODEL_HF_REPO_ID_VALUE="$(get_env KEYWORD_MODEL_HF_REPO_ID)"
-                    KEYWORD_MODEL_HF_FILENAME_VALUE="$(get_env KEYWORD_MODEL_HF_FILENAME)"
+                    provision_model() {
+                      model_role="$1"
 
-                    if [ -z "$KEYWORD_MODEL_HOST_DIR_RAW" ]; then
-                      KEYWORD_MODEL_HOST_DIR_RAW="$DEFAULT_KEYWORD_MODEL_HOST_DIR"
-                    fi
+                      case "$model_role" in
+                        KEYWORD)
+                          MODEL_LABEL="keyword-model"
+                          DEFAULT_MODEL_HOST_DIR="./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2-1.5B-Instruct-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="qwen2-1_5b-instruct-q3_k_m.gguf"
+                          LEGACY_MODEL_HF_FILENAME="qwen2-1.5b-instruct-q3_k_m.gguf"
+                          MODEL_CONTAINER_DIR="/models/qwen2-1.5b-instruct/q3_k_m"
+                          ;;
+                        CAPTION)
+                          MODEL_LABEL="caption-model"
+                          DEFAULT_MODEL_HOST_DIR="./.models/caption/qwen2.5-7b-instruct/q3_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
+                          LEGACY_MODEL_HF_FILENAME=""
+                          MODEL_CONTAINER_DIR="/models/qwen2.5-7b-instruct/q3_k_m"
+                          ;;
+                        *)
+                          echo "ERROR: unsupported model role: $model_role"
+                          exit 1
+                          ;;
+                      esac
 
-                    if [ -z "$KEYWORD_MODEL_HF_REPO_ID_VALUE" ]; then
-                      KEYWORD_MODEL_HF_REPO_ID_VALUE="$DEFAULT_KEYWORD_MODEL_HF_REPO_ID"
-                    fi
+                      MODEL_FILENAME="model.gguf"
+                      MODEL_CONTAINER_PATH="${MODEL_CONTAINER_DIR}/${MODEL_FILENAME}"
+                      MODEL_HOST_DIR_RAW="$(get_env ${model_role}_MODEL_HOST_DIR)"
+                      MODEL_HF_REPO_ID_VALUE="$(get_env ${model_role}_MODEL_HF_REPO_ID)"
+                      MODEL_HF_FILENAME_VALUE="$(get_env ${model_role}_MODEL_HF_FILENAME)"
 
-                    if [ -z "$KEYWORD_MODEL_HF_FILENAME_VALUE" ]; then
-                      KEYWORD_MODEL_HF_FILENAME_VALUE="$DEFAULT_KEYWORD_MODEL_HF_FILENAME"
-                    fi
-
-                    case "$KEYWORD_MODEL_HOST_DIR_RAW" in
-                      /*)
-                        KEYWORD_MODEL_HOST_DIR_VALUE="$KEYWORD_MODEL_HOST_DIR_RAW"
-                        ;;
-                      *)
-                        KEYWORD_MODEL_HOST_DIR_VALUE="${DEPLOY_DIR}/${KEYWORD_MODEL_HOST_DIR_RAW#./}"
-                        ;;
-                    esac
-
-                    mkdir -p "$KEYWORD_MODEL_HOST_DIR_VALUE"
-                    KEYWORD_MODEL_HOST_DIR_VALUE="$(cd "$KEYWORD_MODEL_HOST_DIR_VALUE" && pwd -P)"
-                    KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILENAME}"
-
-                    print_step_status() {
-                      label="$1"
-                      status="$2"
-                      echo "[keyword-model] ${label}: ${status}"
-                    }
-
-                    run_observation() {
-                      label="$1"
-                      shift
-                      echo "[keyword-model] observe: ${label}"
-                      "$@"
-                      rc=$?
-                      echo "[keyword-model] observe exit=${rc}: ${label}"
-                      return 0
-                    }
-
-                    collect_keyword_model_diagnostics() {
-                      set +e
-                      echo "===== Keyword model diagnostics ====="
-                      echo "Current user: $(id -un)"
-                      echo "Current uid/gid: $(id -u):$(id -g)"
-                      echo "Current working directory: $(pwd)"
-                      echo "Resolved host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
-                      echo "Resolved model path: $KEYWORD_MODEL_PATH"
-                      echo "Resolved container dir: $KEYWORD_MODEL_CONTAINER_DIR"
-                      echo "Resolved container path: $KEYWORD_MODEL_CONTAINER_PATH"
-                      run_observation "host dir listing" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
-                      run_observation "host model stat" stat "$KEYWORD_MODEL_PATH"
-                      run_observation "host model type" file "$KEYWORD_MODEL_PATH"
-                      run_observation "host model size" du -h "$KEYWORD_MODEL_PATH"
-                      run_observation "path permissions" namei -l "$KEYWORD_MODEL_PATH"
-                      run_observation "jenkins user readability" test -r "$KEYWORD_MODEL_PATH"
-                      run_observation "jenkins user file existence" test -f "$KEYWORD_MODEL_PATH"
-                      run_observation "container mount listing" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim ls -lah "$KEYWORD_MODEL_CONTAINER_DIR"
-                      run_observation "container mount model existence" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$KEYWORD_MODEL_CONTAINER_PATH'); print(p.exists(), p.stat().st_size if p.exists() else 'missing')"
-                      if command -v sudo >/dev/null 2>&1 && id jenkins >/dev/null 2>&1; then
-                        run_observation "sudo -u jenkins file existence" sudo -n -u jenkins test -f "$KEYWORD_MODEL_PATH"
+                      if [ -z "$MODEL_HOST_DIR_RAW" ]; then
+                        MODEL_HOST_DIR_RAW="$DEFAULT_MODEL_HOST_DIR"
                       fi
-                      set -e
-                    }
 
-                    require_check() {
-                      label="$1"
-                      shift
-                      if "$@"; then
-                        print_step_status "$label" "ok"
+                      if [ -z "$MODEL_HF_REPO_ID_VALUE" ]; then
+                        MODEL_HF_REPO_ID_VALUE="$DEFAULT_MODEL_HF_REPO_ID"
+                      fi
+
+                      if [ -z "$MODEL_HF_FILENAME_VALUE" ]; then
+                        MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
+                      fi
+
+                      if [ -n "$LEGACY_MODEL_HF_FILENAME" ] && [ "$MODEL_HF_FILENAME_VALUE" = "$LEGACY_MODEL_HF_FILENAME" ]; then
+                        echo "[${MODEL_LABEL}] WARN: legacy MODEL_HF_FILENAME detected in .env: ${MODEL_HF_FILENAME_VALUE}"
+                        echo "[${MODEL_LABEL}] WARN: rewriting to current filename: ${DEFAULT_MODEL_HF_FILENAME}"
+                        MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
+                      fi
+
+                      case "$MODEL_HOST_DIR_RAW" in
+                        /*)
+                          MODEL_HOST_DIR_VALUE="$MODEL_HOST_DIR_RAW"
+                          ;;
+                        *)
+                          MODEL_HOST_DIR_VALUE="${DEPLOY_DIR}/${MODEL_HOST_DIR_RAW#./}"
+                          ;;
+                      esac
+
+                      mkdir -p "$MODEL_HOST_DIR_VALUE"
+                      MODEL_HOST_DIR_VALUE="$(cd "$MODEL_HOST_DIR_VALUE" && pwd -P)"
+                      MODEL_PATH="${MODEL_HOST_DIR_VALUE}/${MODEL_FILENAME}"
+
+                      print_step_status() {
+                        label="$1"
+                        status="$2"
+                        echo "[${MODEL_LABEL}] ${label}: ${status}"
+                      }
+
+                      run_observation() {
+                        label="$1"
+                        shift
+                        echo "[${MODEL_LABEL}] observe: ${label}"
+                        "$@"
+                        rc=$?
+                        echo "[${MODEL_LABEL}] observe exit=${rc}: ${label}"
                         return 0
-                      fi
+                      }
 
-                      rc=$?
-                      print_step_status "$label" "failed (exit=${rc})"
-                      collect_keyword_model_diagnostics
-                      exit "$rc"
-                    }
+                      collect_model_diagnostics() {
+                        set +e
+                        echo "===== ${MODEL_LABEL} diagnostics ====="
+                        echo "Current user: $(id -un)"
+                        echo "Current uid/gid: $(id -u):$(id -g)"
+                        echo "Current working directory: $(pwd)"
+                        echo "Resolved host dir: $MODEL_HOST_DIR_VALUE"
+                        echo "Resolved model path: $MODEL_PATH"
+                        echo "Resolved container dir: $MODEL_CONTAINER_DIR"
+                        echo "Resolved container path: $MODEL_CONTAINER_PATH"
+                        run_observation "host dir listing" ls -lah "$MODEL_HOST_DIR_VALUE"
+                        run_observation "host model stat" stat "$MODEL_PATH"
+                        run_observation "host model type" file "$MODEL_PATH"
+                        run_observation "host model size" du -h "$MODEL_PATH"
+                        run_observation "path permissions" namei -l "$MODEL_PATH"
+                        run_observation "jenkins user readability" test -r "$MODEL_PATH"
+                        run_observation "jenkins user file existence" test -f "$MODEL_PATH"
+                        run_observation "container mount listing" docker run --rm -v "$MODEL_HOST_DIR_VALUE:$MODEL_CONTAINER_DIR" python:3.12-slim ls -lah "$MODEL_CONTAINER_DIR"
+                        run_observation "container mount model existence" docker run --rm -v "$MODEL_HOST_DIR_VALUE:$MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$MODEL_CONTAINER_PATH'); print(p.exists(), p.stat().st_size if p.exists() else 'missing')"
+                        if command -v sudo >/dev/null 2>&1 && id jenkins >/dev/null 2>&1; then
+                          run_observation "sudo -u jenkins file existence" sudo -n -u jenkins test -f "$MODEL_PATH"
+                        fi
+                        set -e
+                      }
 
-                    note_observation_limitations() {
-                      echo "[keyword-model] note: Jenkins host-side file checks may differ from the Docker daemon view."
-                      echo "[keyword-model] note: Docker mount revalidation is the deployment gate for this stage."
-                    }
+                      require_check() {
+                        label="$1"
+                        shift
+                        if "$@"; then
+                          print_step_status "$label" "ok"
+                          return 0
+                        fi
 
-                    echo "Keyword model host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
-                    echo "Keyword model container dir: $KEYWORD_MODEL_CONTAINER_DIR"
-                    echo "Keyword model source: ${KEYWORD_MODEL_HF_REPO_ID_VALUE}/${KEYWORD_MODEL_HF_FILENAME_VALUE}"
-                    echo "Keyword model file path: $KEYWORD_MODEL_PATH"
-                    note_observation_limitations
+                        rc=$?
+                        print_step_status "$label" "failed (exit=${rc})"
+                        collect_model_diagnostics
+                        exit "$rc"
+                      }
 
-                    if [ ! -f "$KEYWORD_MODEL_PATH" ]; then
-                      echo "Keyword model is missing. Downloading the GGUF artifact..."
+                      note_observation_limitations() {
+                        echo "[${MODEL_LABEL}] note: Jenkins host-side file checks may differ from the Docker daemon view."
+                        echo "[${MODEL_LABEL}] note: Docker mount revalidation is the deployment gate for this stage."
+                      }
 
-                      docker_run_rc=0
-                      docker run --rm \
-                        -e HF_HOME=/tmp/hf-home \
-                        -e KEYWORD_MODEL_HF_REPO_ID="$KEYWORD_MODEL_HF_REPO_ID_VALUE" \
-                        -e KEYWORD_MODEL_HF_FILENAME="$KEYWORD_MODEL_HF_FILENAME_VALUE" \
-                        -e TARGET_PATH="$KEYWORD_MODEL_CONTAINER_PATH" \
-                        -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" \
-                        python:3.12-slim sh -ceu '
-                          python -m pip install --disable-pip-version-check --no-cache-dir huggingface_hub >/tmp/pip-install.log
-                          python - <<'"'"'PY'"'"'
+                      echo "${MODEL_LABEL} host dir: $MODEL_HOST_DIR_VALUE"
+                      echo "${MODEL_LABEL} container dir: $MODEL_CONTAINER_DIR"
+                      echo "${MODEL_LABEL} source: ${MODEL_HF_REPO_ID_VALUE}/${MODEL_HF_FILENAME_VALUE}"
+                      echo "${MODEL_LABEL} file path: $MODEL_PATH"
+                      note_observation_limitations
+
+                      if [ ! -f "$MODEL_PATH" ]; then
+                        echo "${MODEL_LABEL} is missing. Downloading the GGUF artifact..."
+
+                        docker_run_rc=0
+                        docker run --rm \
+                          -e HF_HOME=/tmp/hf-home \
+                          -e MODEL_HF_REPO_ID="$MODEL_HF_REPO_ID_VALUE" \
+                          -e MODEL_HF_FILENAME="$MODEL_HF_FILENAME_VALUE" \
+                          -e TARGET_PATH="$MODEL_CONTAINER_PATH" \
+                          -v "$MODEL_HOST_DIR_VALUE:$MODEL_CONTAINER_DIR" \
+                          python:3.12-slim sh -ceu '
+                            python -m pip install --disable-pip-version-check --no-cache-dir huggingface_hub >/tmp/pip-install.log
+                            python - <<'"'"'PY'"'"'
 import os
 import shutil
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
 
-repo_id = os.environ["KEYWORD_MODEL_HF_REPO_ID"]
-filename = os.environ["KEYWORD_MODEL_HF_FILENAME"]
+repo_id = os.environ["MODEL_HF_REPO_ID"]
+filename = os.environ["MODEL_HF_FILENAME"]
 target_path = Path(os.environ["TARGET_PATH"])
 temp_path = target_path.with_suffix(".download")
 
@@ -466,34 +498,31 @@ try:
 except Exception as exc:
     temp_path.unlink(missing_ok=True)
     raise SystemExit(
-        f"Failed to download keyword model {repo_id}/{filename} to {target_path}: {exc}"
+        f"Failed to download model {repo_id}/{filename} to {target_path}: {exc}"
     ) from exc
 PY
-                          ls -lah '"$KEYWORD_MODEL_CONTAINER_DIR"'
-                        ' || docker_run_rc=$?
+                            ls -lah '"$MODEL_CONTAINER_DIR"'
+                          ' || docker_run_rc=$?
 
-                      echo "docker_run_exit=${docker_run_rc}"
-                      if [ "$docker_run_rc" -ne 0 ]; then
-                        print_step_status "docker download container" "failed"
-                        collect_keyword_model_diagnostics
-                        exit "$docker_run_rc"
+                        echo "docker_run_exit=${docker_run_rc}"
+                        if [ "$docker_run_rc" -ne 0 ]; then
+                          print_step_status "docker download container" "failed"
+                          collect_model_diagnostics
+                          exit "$docker_run_rc"
+                        fi
+
+                        print_step_status "docker download container" "ok"
+                      else
+                        echo "${MODEL_LABEL} already exists. Skip download."
                       fi
 
-                      print_step_status "docker download container" "ok"
-                    else
-                      echo "Keyword model already exists. Skip download."
-                    fi
+                      require_check "docker mount directory exists" docker run --rm -v "$MODEL_HOST_DIR_VALUE:$MODEL_CONTAINER_DIR" python:3.12-slim test -d "$MODEL_CONTAINER_DIR"
+                      require_check "docker mount model file exists" docker run --rm -v "$MODEL_HOST_DIR_VALUE:$MODEL_CONTAINER_DIR" python:3.12-slim test -f "$MODEL_CONTAINER_PATH"
+                      require_check "docker mount model file is readable" docker run --rm -v "$MODEL_HOST_DIR_VALUE:$MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$MODEL_CONTAINER_PATH'); print(p.stat().st_size); assert p.stat().st_size > 0"
+                    }
 
-                    echo "after download"
-                    # run_observation "host dir listing after download" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
-                    # run_observation "host model stat after download" stat "$KEYWORD_MODEL_PATH"
-                    # run_observation "host model type after download" file "$KEYWORD_MODEL_PATH"
-                    # run_observation "host model size after download" du -h "$KEYWORD_MODEL_PATH"
-                    # run_observation "jenkins user file existence after download" test -f "$KEYWORD_MODEL_PATH"
-
-                    require_check "docker mount directory exists" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim test -d "$KEYWORD_MODEL_CONTAINER_DIR"
-                    require_check "docker mount model file exists" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim test -f "$KEYWORD_MODEL_CONTAINER_PATH"
-                    require_check "docker mount model file is readable" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$KEYWORD_MODEL_CONTAINER_PATH'); print(p.stat().st_size); assert p.stat().st_size > 0"
+                    provision_model KEYWORD
+                    provision_model CAPTION
                 '''
             }
         }
@@ -553,7 +582,7 @@ PY
                         docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
 
                         # Start shared dependencies before application container recreation.
-                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server caption-server
 
                         echo "Build commit: $BUILD_COMMIT"
                         echo "Build services: ${BUILD_SERVICES:-none}"
@@ -563,7 +592,7 @@ PY
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build $BUILD_SERVICES
 
                           # 애플리케이션 컨테이너 교체 전에 공용 인프라 컨테이너를 먼저 보장한다.
-                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server caption-server
 
                           # 변경된 서비스만 새 이미지로 교체한다. DB/Redis 같은 의존 서비스는 불필요하게 재시작하지 않는다.
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --no-deps --force-recreate $BUILD_SERVICES
@@ -583,6 +612,7 @@ PY
                         docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-keyword-server --format 'keyword-server={{ .Config.Image }}' || true
+                        docker inspect project-caption-server --format 'caption-server={{ .Config.Image }}' || true
                     '''
                 }
             }
@@ -617,6 +647,23 @@ PY
                 dir("${DEPLOY_DIR}") {
                     sh '''
                         NETWORK="${PROJECT_NAME}_project-network"
+                        ENV_PATH=".env"
+
+                        get_env() {
+                            key="$1"
+                            grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
+                        }
+
+                        KEYWORD_SERVER_PORT="$(get_env KEYWORD_MODEL_SERVER_PORT)"
+                        CAPTION_SERVER_PORT="$(get_env CAPTION_MODEL_SERVER_PORT)"
+
+                        if [ -z "$KEYWORD_SERVER_PORT" ]; then
+                            KEYWORD_SERVER_PORT="8001"
+                        fi
+
+                        if [ -z "$CAPTION_SERVER_PORT" ]; then
+                            CAPTION_SERVER_PORT="8002"
+                        fi
 
                         echo "Using network: $NETWORK"
 
@@ -675,7 +722,7 @@ PY
 
                         echo "===== Checking Keyword Server Health ====="
                         for i in $(seq 1 30); do
-                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://keyword-server:8001/health; then
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS "http://keyword-server:${KEYWORD_SERVER_PORT}/health"; then
                                 echo "keyword-server is ready"
                                 break
                             fi
@@ -686,6 +733,23 @@ PY
                             if [ "$i" -eq 30 ]; then
                                 echo "keyword-server health check failed"
                                 docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs keyword-server --tail=100
+                                exit 1
+                            fi
+                        done
+
+                        echo "===== Checking Caption Server Health ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS "http://caption-server:${CAPTION_SERVER_PORT}/health"; then
+                                echo "caption-server is ready"
+                                break
+                            fi
+
+                            echo "caption-server health not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "caption-server health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs caption-server --tail=100
                                 exit 1
                             fi
                         done

@@ -38,4 +38,9 @@ public class AuthService {
 
         return new TokenResponse(newAccessToken, tokenExpiresAt);
     }
+
+    @Transactional
+    public void logout(String instagramUserId) {
+        refreshTokenRepository.deleteById(instagramUserId);
+    }
 }

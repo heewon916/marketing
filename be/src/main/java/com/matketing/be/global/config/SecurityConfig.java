@@ -4,6 +4,7 @@ import com.matketing.be.global.auth.oauth2.OAuthUserService;
 import com.matketing.be.global.auth.oauth2.InstaTokenConverter;
 import com.matketing.be.global.auth.oauth2.OAuthSuccessHandler;
 import lombok.RequiredArgsConstructor;
+import com.matketing.be.global.auth.jwt.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.converter.FormHttpMessageConverter;
@@ -30,6 +31,7 @@ public class SecurityConfig {
 
     private final OAuthUserService oauthUserService;
     private final OAuthSuccessHandler successHandler;
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -37,10 +39,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/users/instagram", "/api/v1/users/instagram/callback", "/api/v1/users/token/refresh", "/api/v1/onboarding/pin/**").permitAll()
+                .requestMatchers("/api/v1/oauth2/authorization/**", "/api/v1/oauth2/callback/**", "/api/v1/users/token/refresh", "/api/v1/onboarding/pin/**").permitAll()
                 .requestMatchers(
-                        "/api/v1/users/instagram",
-                        "/api/v1/users/instagram/callback",
+                        "/api/v1/oauth2/authorization/**",
+                        "/api/v1/oauth2/callback/**",
                         "/api/v1/users/token/refresh",
                         "/api/v3/api-docs",
                         "/api/v3/api-docs/**",
@@ -48,17 +50,18 @@ public class SecurityConfig {
                         "/api/swagger-ui.html",
                         "/swagger-resources/**",
                         "/api/v1/internal/notifications/**",
-                        "/api/v1/users/me/fcm-token",
+                        //"/api/v1/users/me/fcm-token",
                         "/webjars/**"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(jwtAuthenticationFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
             .oauth2Login(oauth2 -> oauth2
                 .authorizationEndpoint(authEndpoint -> authEndpoint
-                    .baseUri("/api/v1/users")
+                    .baseUri("/api/v1/oauth2/authorization")
                 )
                 .redirectionEndpoint(redirectionEndpoint -> redirectionEndpoint
-                    .baseUri("/api/v1/users/*/callback")
+                    .baseUri("/api/v1/oauth2/callback/*")
                 )
                 .tokenEndpoint(tokenEndpoint -> tokenEndpoint
                     .accessTokenResponseClient(accessTokenResponseClient())

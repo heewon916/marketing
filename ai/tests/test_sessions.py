@@ -1,15 +1,23 @@
+import asyncio
 from uuid import uuid4
+from collections.abc import Awaitable
 
 import fakeredis
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from pathlib import Path
 from pydantic import ValidationError
 
 from app.main import app
 from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
+from app.services.caption_generation import (
+    CaptionFallbackResult,
+    CaptionGenerationRequest,
+    CaptionGenerationResult,
+    CaptionGenerationUnavailableError,
+    DEFAULT_FALLBACK_GUIDE_TEXT,
+)
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
 from app.services.canonical_keyword_resolver import (
@@ -22,11 +30,34 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
 )
 from app.services.sessions import (
-    DEFAULT_FALLBACK_GUIDE_TEXT,
-    build_text_generation_result,
     resolve_caption_keywords,
     session_key,
 )
+from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
+
+
+def _weather_context_for_tests(weather_tags: list[str]) -> str:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return "폭우가 오는 날"
+    if PRECIP_RAIN in weather_tags:
+        return "비 오는 날"
+    if PRECIP_CLEAR in weather_tags:
+        return "맑은 날"
+    if PRECIP_CLOUDY in weather_tags:
+        return "흐린 날"
+    return ""
+
+
+def _weather_hashtags_for_tests(weather_tags: list[str]) -> list[str]:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return ["#폭우"]
+    if PRECIP_RAIN in weather_tags:
+        return ["#비오는날"]
+    if PRECIP_CLEAR in weather_tags:
+        return ["#맑은날"]
+    if PRECIP_CLOUDY in weather_tags:
+        return ["#흐린날"]
+    return []
 
 
 def _make_chat_response(
@@ -65,6 +96,21 @@ VALID_EXTRACT_PAYLOAD = {
     "session_id": str(uuid4()),
     "video": "/inputs/test-session/test-video.mp4",
 }
+def _run_immediate(awaitable: Awaitable[object]) -> object:
+    iterator = awaitable.__await__()
+    try:
+        yielded = next(iterator)
+    except StopIteration as exc:
+        return exc.value
+
+    while True:
+        try:
+            if hasattr(yielded, "__await__"):
+                yielded = iterator.send(_run_immediate(yielded))
+            else:
+                yielded = iterator.send(None)
+        except StopIteration as exc:
+            return exc.value
 
 
 class FakeFrameExtractionService:
@@ -177,6 +223,87 @@ class FakeCanonicalKeywordResolverService:
         )
 
 
+class FakeCaptionGenerationService:
+    def __init__(
+        self,
+        result: CaptionGenerationResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result or CaptionGenerationResult(
+            guide_text="키워드가 잘 보이도록 구도를 잡아보세요.",
+            draft_caption="오늘의 메뉴를 자연스럽게 소개해보세요.",
+            draft_hashtags=["#signaturemenu"],
+        )
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+        self.fallback_calls: list[dict[str, object]] = []
+
+    async def generate_text(
+        self,
+        request: CaptionGenerationRequest,
+    ) -> CaptionGenerationResult:
+        self.calls.append(
+            {
+                "purpose": request.purpose,
+                "keywords": list(request.keywords),
+                "owner_persona": request.owner_persona,
+                "weather_tags": list(request.weather_tags),
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+    def build_fallback_result(
+        self,
+        request: CaptionGenerationRequest,
+        fallback_source: str | None,
+    ) -> CaptionFallbackResult:
+        self.fallback_calls.append(
+            {
+                "purpose": request.purpose,
+                "keywords": list(request.keywords),
+                "owner_persona": request.owner_persona,
+                "weather_tags": list(request.weather_tags),
+                "fallback_source": fallback_source,
+            }
+        )
+        keyword_phrase = (
+            ", ".join(request.keywords) if request.keywords else "today's highlights"
+        )
+        weather_context = _weather_context_for_tests(request.weather_tags)
+        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
+        hashtags.extend(
+            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
+            if hashtag not in hashtags
+        )
+        caption = (
+            f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
+            f"{keyword_phrase}를 소개해보세요."
+        )
+        guide_text = (
+            DEFAULT_FALLBACK_GUIDE_TEXT
+            if not request.keywords
+            else (
+                f"Make sure {', '.join(request.keywords)} is clearly visible in the shot. "
+                "Check the framing and subject emphasis before shooting."
+            )
+        )
+        if not hashtags:
+            hashtags.append("#오늘기록")
+        effective_fallback_source = fallback_source
+        if not request.keywords and effective_fallback_source is None:
+            effective_fallback_source = "default_guide"
+        return CaptionFallbackResult(
+            result=CaptionGenerationResult(
+                guide_text=guide_text,
+                draft_caption=caption,
+                draft_hashtags=hashtags,
+            ),
+            fallback_source=effective_fallback_source,
+        )
+
+
 class StubDraftDownloader:
     is_configured = True
 
@@ -263,26 +390,24 @@ def test_resolve_caption_keywords_prefers_final_keywords() -> None:
     assert resolve_caption_keywords(["draft menu"], []) == ["draft menu"]
 
 
-def test_build_text_generation_result_uses_default_guide_without_keywords() -> None:
-    (
-        draft_caption,
-        draft_hashtags,
-        guide_text,
-        stored_caption,
-        fallback_source,
-    ) = build_text_generation_result(
-        keywords=[],
-        owner_persona="calm",
-        cloud_cover="clear",
-        weather_tags=[],
+def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
+    service = FakeCaptionGenerationService()
+
+    fallback_result = service.build_fallback_result(
+        CaptionGenerationRequest(
+            purpose="일상 공유",
+            keywords=[],
+            owner_persona="calm",
+            weather_tags=[],
+        ),
         fallback_source=None,
     )
 
-    assert draft_caption
-    assert draft_hashtags == ["#clear"]
-    assert guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
-    assert stored_caption.endswith("#clear")
-    assert fallback_source == "default_guide"
+    assert fallback_result.result.draft_caption
+    assert fallback_result.result.draft_hashtags == ["#오늘기록"]
+    assert fallback_result.result.guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
+    assert fallback_result.result.stored_caption.endswith("#오늘기록")
+    assert fallback_result.fallback_source == "default_guide"
 
 
 def test_process_utterance_returns_503_when_keyword_extraction_fails(
@@ -309,6 +434,64 @@ def test_process_utterance_returns_503_when_keyword_extraction_fails(
     assert saved["status"] == "STARTED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"] == ""
+
+
+def test_process_utterance_falls_back_when_caption_generation_fails(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-caption-fallback"
+    original_service = app.state.caption_generation_service
+    fake_service = FakeCaptionGenerationService(
+        error=CaptionGenerationUnavailableError("caption unavailable")
+    )
+    app.state.caption_generation_service = fake_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["guide_text"], str)
+    assert isinstance(body["caption"], str)
+    assert fake_service.fallback_calls[0]["purpose"] == "메뉴 홍보"
+    assert fake_service.fallback_calls[0]["fallback_source"] == "caption_model_fallback"
+    assert "cloud_cover" not in fake_service.fallback_calls[0]
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:text_generation_fallback_source"] == "caption_model_fallback"
+    assert saved["caption"]
+
+
+def test_process_utterance_passes_purpose_to_caption_request(
+    client: TestClient,
+) -> None:
+    session_id = "sess-purpose-forward-1"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="영업 공지",
+        draft_keywords=["임시 휴무"],
+    )
+    fake_service = FakeCaptionGenerationService()
+    app.state.caption_generation_service = fake_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    assert fake_service.calls[0]["purpose"] == "영업 공지"
+    assert "cloud_cover" not in fake_service.calls[0]
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -377,7 +560,7 @@ def test_redis_payload_persisted(
     assert saved["status"] == "TEXT_GENERATED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"]
-    assert "#맑음" in saved["caption"]
+    assert "#맑은날" in saved["caption"]
     draft_keyword_fields = [
         field for field in saved if field.startswith("draft_keyword:")
     ]
@@ -433,8 +616,8 @@ def test_purpose_persisted_in_debug_fields(
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == "영업 공지"
-    assert saved["debug:canonical_match_count"] == "2"
-    assert saved["debug:canonical_fallback_count"] == "0"
+    assert saved["debug:canonical_match_count"] == "0"
+    assert saved["debug:canonical_fallback_count"] == "2"
 
 
 def test_process_utterance_uses_default_guide_when_no_keywords(
@@ -442,10 +625,13 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
 ) -> None:
     session_id = "sess-default-guide-1"
     original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
         purpose="일상 공유",
         draft_keywords=[],
     )
+    fake_service = FakeCaptionGenerationService()
+    app.state.caption_generation_service = fake_service
 
     try:
         response = client.post(
@@ -454,16 +640,20 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
         )
     finally:
         app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
 
     assert response.status_code == 200
     body = response.json()
-    assert body["guide_text"] == "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
+    assert body["guide_text"] == DEFAULT_FALLBACK_GUIDE_TEXT
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == "일상 공유"
     assert saved["debug:canonical_match_count"] == "0"
     assert saved["debug:canonical_fallback_count"] == "0"
     assert "draft_keyword:1" not in saved
     assert "final_keyword:1" not in saved
+    assert fake_service.fallback_calls[0]["purpose"] == "일상 공유"
+    assert fake_service.fallback_calls[0]["fallback_source"] is None
+    assert "cloud_cover" not in fake_service.fallback_calls[0]
 
 
 def test_process_utterance_falls_back_to_draft_keywords_when_canonical_lookup_misses(
@@ -699,8 +889,7 @@ def test_final_edit_response_limits_results_to_three() -> None:
         )
 
 
-@pytest.mark.asyncio
-async def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
+def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     uploader = FailingUploader()
     service = FinalEditService(
         predictor=StubPredictor(),
@@ -710,12 +899,14 @@ async def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     )
     session_id = "session-rollback-1"
 
-    result = await service.edit_and_upload(
-        session_id=session_id,
-        drafts=[
-            "/ai-drafts/session-rollback-1/draft-001.jpg",
-            "/ai-drafts/session-rollback-1/draft-002.jpg",
-        ],
+    result = asyncio.run(
+        service.edit_and_upload(
+            session_id=session_id,
+            drafts=[
+                "/ai-drafts/session-rollback-1/draft-001.jpg",
+                "/ai-drafts/session-rollback-1/draft-002.jpg",
+            ],
+        )
     )
 
     assert result.status == "FRAME_EXTRACTED"
@@ -735,6 +926,7 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.final_edit_service is not None
     assert app.state.final_edit_service.predictor.weights_path is not None
     assert app.state.keyword_extraction_service is not None
+    assert app.state.caption_generation_service is not None
     assert app.state.canonical_keyword_resolver_service is not None
 
 
@@ -760,7 +952,7 @@ def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() 
 
 
 def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     keywords = service._parse_keywords(
         "["
@@ -777,7 +969,7 @@ def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
 
 
 def test_keyword_extraction_service_strips_particles_from_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
     assert (
@@ -791,7 +983,7 @@ def test_keyword_extraction_service_strips_particles_from_keywords() -> None:
 
 
 def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     assert service._normalize_keyword("\uba39\uace0 \uc0b4\uc544\uc57c\uc9c0") == ""
     assert service._normalize_keyword("\uc81c\ucca0\uc774\uc57c") == ""
@@ -800,14 +992,14 @@ def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
 def test_keyword_extraction_service_falls_back_without_morph_analyzer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
     monkeypatch.setattr(service, "_get_morph_analyzer", lambda: None)
 
     assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
 
 
 def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     result = service._parse_extraction_result(
         "{"
@@ -826,7 +1018,7 @@ def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
 
 
 def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     with pytest.raises(
         KeywordExtractionUnavailableError,
@@ -841,7 +1033,7 @@ def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
 
 
 def test_keyword_extraction_service_rejects_empty_normalized_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     with pytest.raises(
         KeywordExtractionUnavailableError,
@@ -856,7 +1048,7 @@ def test_keyword_extraction_service_rejects_empty_normalized_keywords() -> None:
 
 
 def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     result = service._parse_extraction_result(
         '{'
@@ -875,28 +1067,27 @@ def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
 
 
 def test_keyword_extraction_service_rejects_non_json_output() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     with pytest.raises(KeywordExtractionUnavailableError):
         service._parse_keywords("\ub9c9\uac78\ub9ac, \ud30c\uc804")
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_raises_when_disabled() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"), enabled=False)
+def test_keyword_extraction_service_raises_when_disabled() -> None:
+    service = KeywordExtractionService(enabled=False)
 
     with pytest.raises(KeywordExtractionUnavailableError):
-        await service.extract_keywords(
-            "\uc624\ub298 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\ub2e4"
+        _run_immediate(
+            service.extract_keywords(
+                "\uc624\ub298 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\ub2e4"
+            )
         )
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_calls_remote_server_successfully(
+def test_keyword_extraction_service_calls_remote_server_successfully(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
     calls: list[bool] = []
@@ -910,8 +1101,10 @@ async def test_keyword_extraction_service_calls_remote_server_successfully(
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
-    result = await service.extract_keywords(
-        "\uc624\ub298 \ube44\uc640\uc11c \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+    result = _run_immediate(
+        service.extract_keywords(
+            "\uc624\ub298 \ube44\uc640\uc11c \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+        )
     )
 
     assert calls == [True]
@@ -919,12 +1112,10 @@ async def test_keyword_extraction_service_calls_remote_server_successfully(
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_retries_without_response_format(
+def test_keyword_extraction_service_retries_without_response_format(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
     calls: list[bool] = []
@@ -947,8 +1138,10 @@ async def test_keyword_extraction_service_retries_without_response_format(
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
-    result = await service.extract_keywords(
-        "\uc624\ub298\uc740 \ud30c\uc804\uc774 \uc798 \ub098\uac08 \uac83 \uac19\ub2e4"
+    result = _run_immediate(
+        service.extract_keywords(
+            "\uc624\ub298\uc740 \ud30c\uc804\uc774 \uc798 \ub098\uac08 \uac83 \uac19\ub2e4"
+        )
     )
 
     assert calls == [True, False]
@@ -956,12 +1149,10 @@ async def test_keyword_extraction_service_retries_without_response_format(
     assert result.draft_keywords == ["\ud30c\uc804"]
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_raises_on_remote_timeout(
+def test_keyword_extraction_service_raises_on_remote_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
 
@@ -971,17 +1162,17 @@ async def test_keyword_extraction_service_raises_on_remote_timeout(
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
     with pytest.raises(KeywordExtractionUnavailableError, match="timed out"):
-        await service.extract_keywords(
-            "\uc624\ub298 \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+        _run_immediate(
+            service.extract_keywords(
+                "\uc624\ub298 \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+            )
         )
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_raises_on_remote_http_error(
+def test_keyword_extraction_service_raises_on_remote_http_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
 
@@ -998,17 +1189,17 @@ async def test_keyword_extraction_service_raises_on_remote_http_error(
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
     with pytest.raises(KeywordExtractionUnavailableError, match="HTTP 503"):
-        await service.extract_keywords(
-            "\uc624\ub298 \ud30c\uc804\uc774 \ub561\uae34\ub2e4"
+        _run_immediate(
+            service.extract_keywords(
+                "\uc624\ub298 \ud30c\uc804\uc774 \ub561\uae34\ub2e4"
+            )
         )
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_preload_raises_when_server_unreachable(
+def test_keyword_extraction_service_preload_raises_when_server_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
 
@@ -1031,4 +1222,78 @@ async def test_keyword_extraction_service_preload_raises_when_server_unreachable
         KeywordExtractionUnavailableError,
         match="connectivity check failed",
     ):
-        await service.preload()
+        _run_immediate(service.preload())
+
+
+def test_keyword_extraction_service_preload_uses_health_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        base_url="http://llama-server:8000",
+        health_endpoint="/health",
+    )
+    calls: list[str] = []
+
+    class RecordingAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url: str) -> httpx.Response:
+            calls.append(url)
+            return httpx.Response(
+                200,
+                request=httpx.Request("GET", url),
+                text="ok",
+            )
+
+    monkeypatch.setattr(
+        "app.services.keyword_extraction.httpx.AsyncClient",
+        RecordingAsyncClient,
+    )
+
+    _run_immediate(service.preload())
+
+    assert calls == ["http://llama-server:8000/health"]
+
+
+def test_keyword_extraction_service_preload_raises_on_http_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        base_url="http://llama-server:8000",
+        health_endpoint="/health",
+    )
+
+    class FailingAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url: str) -> httpx.Response:
+            return httpx.Response(
+                404,
+                request=httpx.Request("GET", url),
+                text="not found",
+            )
+
+    monkeypatch.setattr(
+        "app.services.keyword_extraction.httpx.AsyncClient",
+        FailingAsyncClient,
+    )
+
+    with pytest.raises(
+        KeywordExtractionUnavailableError,
+        match="HTTP 404",
+    ):
+        _run_immediate(service.preload())

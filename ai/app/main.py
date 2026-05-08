@@ -47,6 +47,10 @@ from app.services.final_edit import (
     S3DraftImageDownloader,
     S3FinalImageUploader,
 )
+from app.services.caption_generation import (
+    CaptionGenerationUnavailableError,
+    build_caption_generation_service,
+)
 from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     build_keyword_extraction_service,
@@ -137,6 +141,8 @@ def _session_id_from_path(request: Request) -> str | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    caption_client = settings.caption_model_client
+    keyword_client = settings.keyword_model_client
     redis = get_redis_client()
     temp_root = Path(mkdtemp(prefix="ai-frame-extractor-"))
     logger.info(
@@ -220,6 +226,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root / "final-edit",
     )
     app.state.keyword_extraction_service = build_keyword_extraction_service()
+    app.state.caption_generation_service = build_caption_generation_service()
     app.state.canonical_keyword_resolver_service = (
         build_canonical_keyword_resolver_service()
     )
@@ -228,9 +235,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         extra=build_log_extra(
             "app.startup.keyword_extraction_configured",
             component="startup",
-            keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-            keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
-            keyword_timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
+            keyword_model_base_url=keyword_client.base_url,
+            keyword_chat_endpoint=keyword_client.chat_endpoint,
+            keyword_health_endpoint=keyword_client.health_endpoint,
+            keyword_timeout_seconds=keyword_client.timeout_seconds,
+        ),
+    )
+    logger.info(
+        "Caption generation configured.",
+        extra=build_log_extra(
+            "app.startup.caption_generation_configured",
+            component="startup",
+            caption_model_base_url=caption_client.base_url,
+            caption_chat_endpoint=caption_client.chat_endpoint,
+            caption_health_endpoint=caption_client.health_endpoint,
+            caption_timeout_seconds=caption_client.timeout_seconds,
         ),
     )
     logger.info(
@@ -255,8 +274,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 component="startup",
                 stage="keyword_preload",
                 outcome="succeeded",
-                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+                keyword_model_base_url=keyword_client.base_url,
+                keyword_health_endpoint=keyword_client.health_endpoint,
             ),
         )
     except KeywordExtractionUnavailableError as exc:
@@ -271,8 +290,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type=exc.__class__.__name__,
-                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+                keyword_model_base_url=keyword_client.base_url,
+                keyword_health_endpoint=keyword_client.health_endpoint,
             ),
         )
     except Exception:
@@ -286,8 +305,53 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type="unexpected_startup_error",
-                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+                keyword_model_base_url=keyword_client.base_url,
+                keyword_health_endpoint=keyword_client.health_endpoint,
+            ),
+        )
+
+    try:
+        await app.state.caption_generation_service.preload()
+        logger.info(
+            "Caption generation server connectivity check completed.",
+            extra=build_log_extra(
+                "app.startup.caption_preload",
+                component="startup",
+                stage="caption_preload",
+                outcome="succeeded",
+                caption_model_base_url=caption_client.base_url,
+                caption_health_endpoint=caption_client.health_endpoint,
+            ),
+        )
+    except CaptionGenerationUnavailableError as exc:
+        logger.warning(
+            "Caption generation server is unavailable at startup: %s. "
+            "The app will continue and fall back to rule-based caption text until the server is reachable.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.caption_preload",
+                component="startup",
+                stage="caption_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
+                caption_model_base_url=caption_client.base_url,
+                caption_health_endpoint=caption_client.health_endpoint,
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "Caption generation server is unavailable at startup. "
+            "The app will continue and fall back to rule-based caption text until the server is reachable.",
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.caption_preload",
+                component="startup",
+                stage="caption_preload",
+                outcome="failed",
+                error_type="unexpected_startup_error",
+                caption_model_base_url=caption_client.base_url,
+                caption_health_endpoint=caption_client.health_endpoint,
             ),
         )
 

@@ -5,17 +5,19 @@ import logging
 import re
 import threading
 import time
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import Request
 import httpx
 
 from app.core.config import (
-    DEFAULT_KEYWORD_MODEL_PATH,
     settings,
 )
 from app.logging import build_log_extra, preview_text
+from app.services.content_purpose import (
+    ALLOWED_CONTENT_PURPOSES,
+    ContentPurpose,
+)
 # Legacy local GGUF bootstrap is intentionally disabled during llama-server migration.
 # from app.keyword_model_download import ensure_keyword_model_available
 
@@ -174,12 +176,8 @@ Input: {utterance}
 Output:
 """
 
-_ALLOWED_PURPOSES = (
-    "메뉴 홍보",
-    "영업 공지",
-    "일상 공유",
-)
-KeywordPurpose = Literal["메뉴 홍보", "영업 공지", "일상 공유"]
+_ALLOWED_PURPOSES = ALLOWED_CONTENT_PURPOSES
+KeywordPurpose = ContentPurpose
 
 _PROMPT_TEMPLATE = """You classify the purpose of a Korean shop-owner utterance and extract 1 to 3 reusable keyword candidates.
 
@@ -217,7 +215,7 @@ class KeywordExtractionUnavailableError(RuntimeError):
 
 @dataclass
 class KeywordExtractionResult:
-    purpose: KeywordPurpose
+    purpose: ContentPurpose
     draft_keywords: list[str]
     final_keywords: list[str] = field(default_factory=list)
 
@@ -225,30 +223,24 @@ class KeywordExtractionResult:
 class KeywordExtractionService:
     def __init__(
         self,
-        model_path: Path,
         enabled: bool = True,
-        n_ctx: int = 2048,
         max_tokens: int = 64,
         temperature: float = 0.1,
         top_p: float = 0.9,
-        n_threads: int = 1,
-        n_gpu_layers: int = 20,
         timeout_seconds: float = 10.0,
         base_url: str | None = None,
         chat_endpoint: str | None = None,
+        health_endpoint: str | None = None,
         api_key: str | None = None,
     ) -> None:
-        self.model_path = model_path
         self.enabled = enabled
-        self.n_ctx = n_ctx
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.top_p = top_p
-        self.n_threads = n_threads
-        self.n_gpu_layers = n_gpu_layers
         self.timeout_seconds = timeout_seconds
         self.base_url = (base_url or "").rstrip("/")
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
+        self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
         self._server_checked = False
         self._morph_analyzer: Any = None
@@ -277,6 +269,7 @@ class KeywordExtractionService:
                 keyword_timeout_seconds=self.timeout_seconds,
                 keyword_model_base_url=self.base_url,
                 keyword_chat_endpoint=self.chat_endpoint,
+                keyword_health_endpoint=self.health_endpoint,
                 keyword_server_checked=self._server_checked,
                 utterance_length=len(utterance),
                 utterance_preview=preview_text(
@@ -303,6 +296,7 @@ class KeywordExtractionService:
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                     keyword_model_base_url=self.base_url,
                     keyword_chat_endpoint=self.chat_endpoint,
+                    keyword_health_endpoint=self.health_endpoint,
                 ),
             )
             raise KeywordExtractionUnavailableError(
@@ -322,6 +316,7 @@ class KeywordExtractionService:
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                     keyword_model_base_url=self.base_url,
                     keyword_chat_endpoint=self.chat_endpoint,
+                    keyword_health_endpoint=self.health_endpoint,
                 ),
                 exc_info=True,
             )
@@ -368,7 +363,7 @@ class KeywordExtractionService:
                     "properties": {
                         "purpose": {
                             "type": "string",
-                            "enum": list(_ALLOWED_PURPOSES),
+                            "enum": list(ALLOWED_CONTENT_PURPOSES),
                         },
                         "keywords": {
                             "type": "array",
@@ -392,6 +387,10 @@ class KeywordExtractionService:
     def _chat_url(self) -> str:
         return f"{self.base_url}{self.chat_endpoint}"
 
+    @property
+    def _health_url(self) -> str:
+        return f"{self.base_url}{self.health_endpoint}"
+
     async def _post_chat_completion(
         self,
         prompt: str,
@@ -414,10 +413,16 @@ class KeywordExtractionService:
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.get(self._chat_url)
+                response = await client.get(self._health_url)
+            response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction server connectivity check timed out."
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server connectivity check returned "
+                f"HTTP {exc.response.status_code}."
             ) from exc
         except httpx.HTTPError as exc:
             raise KeywordExtractionUnavailableError(
@@ -432,8 +437,9 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="server_check",
                 outcome="succeeded",
+                keyword_timeout_seconds=self.timeout_seconds,
                 keyword_model_base_url=self.base_url,
-                keyword_chat_endpoint=self.chat_endpoint,
+                keyword_health_endpoint=self.health_endpoint,
                 keyword_http_status=response.status_code,
             ),
         )
@@ -459,6 +465,9 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="generate",
                 outcome="started",
+                keyword_timeout_seconds=self.timeout_seconds,
+                keyword_model_base_url=self.base_url,
+                keyword_chat_endpoint=self.chat_endpoint,
                 keyword_max_tokens=self.max_tokens,
                 keyword_temperature=self.temperature,
                 keyword_top_p=self.top_p,
@@ -479,6 +488,9 @@ class KeywordExtractionService:
                         component="keyword_extraction",
                         stage="generate",
                         outcome="retrying",
+                        keyword_timeout_seconds=self.timeout_seconds,
+                        keyword_model_base_url=self.base_url,
+                        keyword_chat_endpoint=self.chat_endpoint,
                     ),
                 )
                 response = await self._post_chat_completion(
@@ -574,7 +586,19 @@ class KeywordExtractionService:
         )
 
     def _parse_keywords(self, raw_output: str) -> list[str]:
-        return self._parse_extraction_result(raw_output).draft_keywords
+        payload = self._load_extraction_payload(raw_output)
+        if isinstance(payload, dict):
+            return self._parse_extraction_result(raw_output).draft_keywords
+        if not isinstance(payload, list):
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned a non-list payload."
+            )
+        draft_keywords = self._normalize_keywords_payload(payload)
+        if not draft_keywords:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned no usable draft_keywords."
+            )
+        return draft_keywords
 
     @staticmethod
     def _extract_json_payload(raw_output: str) -> str:
@@ -610,8 +634,8 @@ class KeywordExtractionService:
         return None, payload
 
     @staticmethod
-    def _validate_purpose_payload(payload: Any) -> KeywordPurpose:
-        if not isinstance(payload, str) or payload not in _ALLOWED_PURPOSES:
+    def _validate_purpose_payload(payload: Any) -> ContentPurpose:
+        if not isinstance(payload, str) or payload not in ALLOWED_CONTENT_PURPOSES:
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction returned an invalid purpose."
             )
@@ -713,6 +737,10 @@ class KeywordExtractionService:
         if morphology_normalized is None:
             return self._fallback_normalize_keyword(normalized)
         if morphology_normalized:
+            if " " not in normalized and " " in morphology_normalized:
+                return self._fallback_normalize_keyword(
+                    morphology_normalized.replace(" ", "")
+                )
             return morphology_normalized
         return ""
 
@@ -809,19 +837,17 @@ class KeywordExtractionService:
 
 
 def build_keyword_extraction_service() -> KeywordExtractionService:
+    client = settings.keyword_model_client
     return KeywordExtractionService(
-        model_path=DEFAULT_KEYWORD_MODEL_PATH,
-        enabled=settings.KEYWORD_MODEL_ENABLED,
-        n_ctx=settings.KEYWORD_MODEL_CTX_SIZE,
-        max_tokens=settings.KEYWORD_MODEL_MAX_TOKENS,
-        temperature=settings.KEYWORD_MODEL_TEMPERATURE,
-        top_p=settings.KEYWORD_MODEL_TOP_P,
-        n_threads=settings.KEYWORD_MODEL_THREADS,
-        n_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
-        timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
-        base_url=settings.KEYWORD_MODEL_BASE_URL,
-        chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
-        api_key=settings.KEYWORD_MODEL_API_KEY,
+        enabled=client.enabled,
+        max_tokens=client.max_tokens,
+        temperature=client.temperature,
+        top_p=client.top_p,
+        timeout_seconds=client.timeout_seconds,
+        base_url=client.base_url,
+        chat_endpoint=client.chat_endpoint,
+        health_endpoint=client.health_endpoint,
+        api_key=client.api_key,
     )
 
 

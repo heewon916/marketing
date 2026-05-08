@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  // authApi,
+  authApi,
   INSTAGRAM_AUTH_PURPOSE,
 } from '@/features/auth/api.js';
 import { registerFcmToken } from '@/features/notification/api/FcmApi';
@@ -80,20 +80,7 @@ function InstagramCallbackPage() {
       window.history.replaceState({}, document.title, '/auth/callback');
 
       try {
-        // TODO: 백엔드 /api/v1/users/me 구현 후 주석 해제
-        // const response = await authApi.getMe();
-
-        /*
-         * 로컬 테스트용 mock 응답입니다.
-         * 백엔드 /api/v1/users/me 구현 전 화면 흐름 테스트가 필요할 때만
-         * 위의 authApi.getMe()를 주석 처리하고 아래 코드를 임시로 사용하세요.
-          */
-          const response = {
-            data: {
-              isOnboarded: true, // 온보딩 완료 여부에 따라 true/false로 변경해서 테스트하세요.
-            },
-         };
-
+        const response = await authApi.getMe();
 
         const { isOnboarded } = response.data;
 
