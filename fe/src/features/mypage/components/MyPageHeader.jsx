@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CharacterLove from '@/assets/character/CharacterLove.png';
 import Modal from '@/components/common/Modal';
+import Button from '@/components/common/Button';
 
 export default function MyPageHeader({
   title,
@@ -133,28 +134,30 @@ export default function MyPageHeader({
               최신 정보로 불러옵니다.
             </p>
 
-            <div className="mt-7 flex gap-2">
-              <button
-                type="button"
+            <div className="mt-7 flex justify-center gap-3">
+              <Button
+                size="sm"
+                variant="white"
                 onClick={() => {
                   if (!isUpdating) {
                     setIsInstagramModalOpen(false);
                   }
                 }}
                 disabled={isUpdating}
-                className="h-11 flex-1 rounded-xl border border-gray-200 text-[16px] font-semibold text-gray-400 transition-colors active:border-gray-400 active:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="text-[18px] font-bold"
               >
                 취소
-              </button>
+              </Button>
 
-              <button
-                type="button"
+              <Button
+                size="sm"
+                variant="primary"
                 onClick={handleInstagramUpdate}
                 disabled={isUpdating}
-                className="h-11 flex-1 rounded-xl bg-primary-100 text-[16px] font-semibold text-white transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                className="text-[18px] font-bold"
               >
                 {isUpdating ? '업데이트 중' : '업데이트'}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>
