@@ -17,7 +17,8 @@ DEFAULT_KEYWORD_MODEL_PATH = (
 )
 DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
 DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
-DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 30.0
+DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 60.0
+DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT = "/health"
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR = (
     ROOT_DIR / "models" / "canonical-keywords"
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
     )
     KEYWORD_MODEL_BASE_URL: str = "http://keyword-server:8001"
     KEYWORD_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
+    KEYWORD_MODEL_HEALTH_ENDPOINT: str = DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT
     KEYWORD_MODEL_API_KEY: str | None = None
     # Legacy local inference settings kept for rollback while FastAPI moves to llama-server.
     KEYWORD_MODEL_CTX_SIZE: int = 2048

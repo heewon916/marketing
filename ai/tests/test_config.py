@@ -4,6 +4,7 @@ from app.core.config import (
     DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM,
     DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR,
     DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+    DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT,
     DEFAULT_KEYWORD_MODEL_HF_FILENAME,
     DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
     DEFAULT_KEYWORD_MODEL_PATH,
@@ -29,6 +30,7 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
     monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://keyword-server:8001")
     monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("KEYWORD_MODEL_HEALTH_ENDPOINT", "/ready")
     monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "32")
     monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.2")
@@ -56,6 +58,7 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 200
     assert settings.KEYWORD_MODEL_BASE_URL == "http://keyword-server:8001"
     assert settings.KEYWORD_MODEL_CHAT_ENDPOINT == "/v1/chat/completions"
+    assert settings.KEYWORD_MODEL_HEALTH_ENDPOINT == "/ready"
     assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == 45
     assert settings.KEYWORD_MODEL_MAX_TOKENS == 32
     assert settings.KEYWORD_MODEL_TEMPERATURE == 0.2
@@ -180,7 +183,8 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "qwen2.5-7b-instruct"
     assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
     assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
-    assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 30.0
+    assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 60.0
+    assert DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT == "/health"
     assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME == "intfloat/multilingual-e5-small"
     assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR.name == "canonical-keywords"
     assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM == 384
@@ -192,12 +196,14 @@ def test_keyword_server_defaults_apply_when_env_is_missing(
     _set_required_postgres(monkeypatch)
     monkeypatch.delenv("KEYWORD_MODEL_BASE_URL", raising=False)
     monkeypatch.delenv("KEYWORD_MODEL_CHAT_ENDPOINT", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_HEALTH_ENDPOINT", raising=False)
     monkeypatch.delenv("KEYWORD_MODEL_TIMEOUT_SECONDS", raising=False)
 
     settings = Settings(_env_file=None)
 
     assert settings.KEYWORD_MODEL_BASE_URL == "http://keyword-server:8001"
     assert settings.KEYWORD_MODEL_CHAT_ENDPOINT == "/v1/chat/completions"
+    assert settings.KEYWORD_MODEL_HEALTH_ENDPOINT == DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT
     assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
 
 
@@ -205,6 +211,7 @@ def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> 
     _set_required_postgres(monkeypatch)
     monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://host.docker.internal:8080")
     monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("KEYWORD_MODEL_HEALTH_ENDPOINT", "/healthz")
     monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "15")
     monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "16")
     monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.3")
@@ -215,6 +222,7 @@ def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert settings.KEYWORD_MODEL_BASE_URL == "http://host.docker.internal:8080"
     assert settings.KEYWORD_MODEL_CHAT_ENDPOINT == "/v1/chat/completions"
+    assert settings.KEYWORD_MODEL_HEALTH_ENDPOINT == "/healthz"
     assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == 15
     assert settings.KEYWORD_MODEL_MAX_TOKENS == 16
     assert settings.KEYWORD_MODEL_TEMPERATURE == 0.3

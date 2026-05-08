@@ -236,6 +236,7 @@ class KeywordExtractionService:
         timeout_seconds: float = 10.0,
         base_url: str | None = None,
         chat_endpoint: str | None = None,
+        health_endpoint: str | None = None,
         api_key: str | None = None,
     ) -> None:
         self.model_path = model_path
@@ -249,6 +250,7 @@ class KeywordExtractionService:
         self.timeout_seconds = timeout_seconds
         self.base_url = (base_url or "").rstrip("/")
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
+        self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
         self._server_checked = False
         self._morph_analyzer: Any = None
@@ -277,6 +279,7 @@ class KeywordExtractionService:
                 keyword_timeout_seconds=self.timeout_seconds,
                 keyword_model_base_url=self.base_url,
                 keyword_chat_endpoint=self.chat_endpoint,
+                keyword_health_endpoint=self.health_endpoint,
                 keyword_server_checked=self._server_checked,
                 utterance_length=len(utterance),
                 utterance_preview=preview_text(
@@ -303,6 +306,7 @@ class KeywordExtractionService:
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                     keyword_model_base_url=self.base_url,
                     keyword_chat_endpoint=self.chat_endpoint,
+                    keyword_health_endpoint=self.health_endpoint,
                 ),
             )
             raise KeywordExtractionUnavailableError(
@@ -322,6 +326,7 @@ class KeywordExtractionService:
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                     keyword_model_base_url=self.base_url,
                     keyword_chat_endpoint=self.chat_endpoint,
+                    keyword_health_endpoint=self.health_endpoint,
                 ),
                 exc_info=True,
             )
@@ -392,6 +397,10 @@ class KeywordExtractionService:
     def _chat_url(self) -> str:
         return f"{self.base_url}{self.chat_endpoint}"
 
+    @property
+    def _health_url(self) -> str:
+        return f"{self.base_url}{self.health_endpoint}"
+
     async def _post_chat_completion(
         self,
         prompt: str,
@@ -414,10 +423,16 @@ class KeywordExtractionService:
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.get(self._chat_url)
+                response = await client.get(self._health_url)
+            response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction server connectivity check timed out."
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server connectivity check returned "
+                f"HTTP {exc.response.status_code}."
             ) from exc
         except httpx.HTTPError as exc:
             raise KeywordExtractionUnavailableError(
@@ -432,8 +447,9 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="server_check",
                 outcome="succeeded",
+                keyword_timeout_seconds=self.timeout_seconds,
                 keyword_model_base_url=self.base_url,
-                keyword_chat_endpoint=self.chat_endpoint,
+                keyword_health_endpoint=self.health_endpoint,
                 keyword_http_status=response.status_code,
             ),
         )
@@ -459,6 +475,9 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="generate",
                 outcome="started",
+                keyword_timeout_seconds=self.timeout_seconds,
+                keyword_model_base_url=self.base_url,
+                keyword_chat_endpoint=self.chat_endpoint,
                 keyword_max_tokens=self.max_tokens,
                 keyword_temperature=self.temperature,
                 keyword_top_p=self.top_p,
@@ -479,6 +498,9 @@ class KeywordExtractionService:
                         component="keyword_extraction",
                         stage="generate",
                         outcome="retrying",
+                        keyword_timeout_seconds=self.timeout_seconds,
+                        keyword_model_base_url=self.base_url,
+                        keyword_chat_endpoint=self.chat_endpoint,
                     ),
                 )
                 response = await self._post_chat_completion(
@@ -821,6 +843,7 @@ def build_keyword_extraction_service() -> KeywordExtractionService:
         timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
         base_url=settings.KEYWORD_MODEL_BASE_URL,
         chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+        health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
         api_key=settings.KEYWORD_MODEL_API_KEY,
     )
 

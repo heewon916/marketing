@@ -1,4 +1,5 @@
 from uuid import uuid4
+from collections.abc import Awaitable
 
 import fakeredis
 import httpx
@@ -65,6 +66,21 @@ VALID_EXTRACT_PAYLOAD = {
     "session_id": str(uuid4()),
     "video": "/inputs/test-session/test-video.mp4",
 }
+def _run_immediate(awaitable: Awaitable[object]) -> object:
+    iterator = awaitable.__await__()
+    try:
+        yielded = next(iterator)
+    except StopIteration as exc:
+        return exc.value
+
+    while True:
+        try:
+            if hasattr(yielded, "__await__"):
+                yielded = iterator.send(_run_immediate(yielded))
+            else:
+                yielded = iterator.send(None)
+        except StopIteration as exc:
+            return exc.value
 
 
 class FakeFrameExtractionService:
@@ -1003,8 +1019,7 @@ async def test_keyword_extraction_service_raises_on_remote_http_error(
         )
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_preload_raises_when_server_unreachable(
+def test_keyword_extraction_service_preload_raises_when_server_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
@@ -1031,4 +1046,80 @@ async def test_keyword_extraction_service_preload_raises_when_server_unreachable
         KeywordExtractionUnavailableError,
         match="connectivity check failed",
     ):
-        await service.preload()
+        _run_immediate(service.preload())
+
+
+def test_keyword_extraction_service_preload_uses_health_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+        health_endpoint="/health",
+    )
+    calls: list[str] = []
+
+    class RecordingAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url: str) -> httpx.Response:
+            calls.append(url)
+            return httpx.Response(
+                200,
+                request=httpx.Request("GET", url),
+                text="ok",
+            )
+
+    monkeypatch.setattr(
+        "app.services.keyword_extraction.httpx.AsyncClient",
+        RecordingAsyncClient,
+    )
+
+    _run_immediate(service.preload())
+
+    assert calls == ["http://llama-server:8000/health"]
+
+
+def test_keyword_extraction_service_preload_raises_on_http_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = KeywordExtractionService(
+        model_path=Path("unused.gguf"),
+        base_url="http://llama-server:8000",
+        health_endpoint="/health",
+    )
+
+    class FailingAsyncClient:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url: str) -> httpx.Response:
+            return httpx.Response(
+                404,
+                request=httpx.Request("GET", url),
+                text="not found",
+            )
+
+    monkeypatch.setattr(
+        "app.services.keyword_extraction.httpx.AsyncClient",
+        FailingAsyncClient,
+    )
+
+    with pytest.raises(
+        KeywordExtractionUnavailableError,
+        match="HTTP 404",
+    ):
+        _run_immediate(service.preload())
