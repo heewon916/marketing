@@ -133,14 +133,14 @@ services:
       - --port
       - "8001"
       - -m
-      - /models/${KEYWORD_MODEL_FILE}
+      - /models/qwen2.5-7b-instruct/q3_k_m/model.gguf
       - -c
       - "${KEYWORD_MODEL_CTX_SIZE:-2048}"
       - --n-gpu-layers
       - "${KEYWORD_MODEL_GPU_LAYERS:-0}"
     volumes:
-      # Provision the GGUF model from the Ubuntu host without baking it into the image.
-      - ${KEYWORD_MODEL_HOST_DIR}:/models:ro
+      # Provision the GGUF model from the host without baking it into the image.
+      - ${KEYWORD_MODEL_HOST_DIR:-./.models/keyword/qwen2.5-7b-instruct/q3_k_m}:/models/qwen2.5-7b-instruct/q3_k_m:ro
     expose:
       - "8001"
     networks:

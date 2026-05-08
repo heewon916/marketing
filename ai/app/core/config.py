@@ -12,7 +12,9 @@ DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = (
     ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
 )
 # Legacy local GGUF settings are kept for reference during the llama-server migration.
-DEFAULT_KEYWORD_MODEL_PATH = ROOT_DIR / "models" / "qwen-gguf" / "model.gguf"
+DEFAULT_KEYWORD_MODEL_PATH = (
+    ROOT_DIR / "models" / "qwen2.5-7b-instruct" / "q3_k_m" / "model.gguf"
+)
 DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
 DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
 DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 30.0
