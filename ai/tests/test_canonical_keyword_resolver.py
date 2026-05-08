@@ -71,6 +71,40 @@ async def test_canonical_keyword_resolver_falls_back_when_lookup_returns_none(
 
 
 @pytest.mark.asyncio
+async def test_canonical_keyword_resolver_falls_back_when_lookup_returns_unmatched_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = CanonicalKeywordResolverService(
+        session_factory=None,  # type: ignore[arg-type]
+        model_name="test-model",
+        embedding_dim=3,
+        model_cache_dir=Path("unused"),
+    )
+    monkeypatch.setattr(
+        service,
+        "_embed_texts",
+        lambda texts, prefix: [[0.1, 0.2, 0.3] for _ in texts],
+    )
+
+    async def fake_find_best_match(embedding: list[float]) -> CanonicalKeywordMatch | None:
+        return CanonicalKeywordMatch(
+            draft_keyword="",
+            final_keyword="",
+            display_name="seasonal soup",
+            score=0.4,
+            matched=False,
+        )
+
+    monkeypatch.setattr(service, "_find_best_match", fake_find_best_match)
+
+    resolution = await service.resolve_keywords(["seasonal soup"])
+
+    assert resolution.final_keywords == ["seasonal soup"]
+    assert resolution.match_count == 0
+    assert resolution.fallback_count == 1
+
+
+@pytest.mark.asyncio
 async def test_canonical_keyword_resolver_falls_back_when_embedding_generation_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

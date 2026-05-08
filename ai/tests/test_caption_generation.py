@@ -50,8 +50,7 @@ def test_caption_generation_service_calls_remote_server_successfully(
             200,
             content=(
                 '{"guide_text":"메뉴가 잘 보이게 촬영해보세요.",'
-                '"caption":"오늘의 시그니처 메뉴를 소개합니다.",'
-                '"hashtags":["#시그니처메뉴","#매장추천"]}'
+                '"caption":"오늘의 시그니처 메뉴를 소개합니다."}'
             ),
         )
 
@@ -71,8 +70,7 @@ def test_caption_generation_service_calls_remote_server_successfully(
     assert calls == [True]
     assert result.guide_text == "메뉴가 잘 보이게 촬영해보세요."
     assert result.draft_caption == "오늘의 시그니처 메뉴를 소개합니다."
-    assert result.draft_hashtags == ["#시그니처메뉴", "#매장추천"]
-    assert "#시그니처메뉴" in result.stored_caption
+    assert result.stored_caption == result.draft_caption
 
 def test_caption_generation_service_retries_without_response_format(
     monkeypatch: pytest.MonkeyPatch,
@@ -95,8 +93,7 @@ def test_caption_generation_service_retries_without_response_format(
             200,
             content=(
                 '{"guide_text":"촬영 포인트를 강조해보세요.",'
-                '"caption":"비 오는 날 어울리는 메뉴를 소개합니다.",'
-                '"hashtags":["비오는날","막걸리"]}'
+                '"caption":"비 오는 날 어울리는 메뉴를 소개합니다."}'
             ),
         )
 
@@ -114,7 +111,82 @@ def test_caption_generation_service_retries_without_response_format(
     )
 
     assert calls == [True, False]
-    assert result.draft_hashtags == ["#비오는날", "#막걸리"]
+    assert result.draft_caption == "비 오는 날 어울리는 메뉴를 소개합니다."
+
+
+def test_caption_generation_service_does_not_retry_on_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+    calls: list[bool] = []
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        calls.append(include_response_format)
+        return httpx.Response(
+            400,
+            request=httpx.Request(
+                "POST",
+                "http://caption-server:8002/v1/chat/completions",
+            ),
+            text="schema validation failed: caption is required",
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    with pytest.raises(CaptionGenerationUnavailableError, match="HTTP 400"):
+        _run_immediate(
+            service.generate_text(
+                CaptionGenerationRequest(
+                    purpose="메뉴 홍보",
+                    keywords=["막걸리"],
+                    owner_persona="warm",
+                    weather_tags=["PRECIP_RAIN"],
+                )
+            )
+        )
+
+    assert calls == [True]
+    assert service._response_format_supported is True
+
+
+def test_caption_generation_service_caches_response_format_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+    calls: list[bool] = []
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        calls.append(include_response_format)
+        if include_response_format:
+            return httpx.Response(
+                400,
+                request=httpx.Request(
+                    "POST",
+                    "http://caption-server:8002/v1/chat/completions",
+                ),
+                text="response_format unsupported",
+            )
+        return _make_chat_response(
+            200,
+            content=(
+                '{"guide_text":"가이드.","caption":"캡션."}'
+            ),
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    request = CaptionGenerationRequest(
+        purpose="메뉴 홍보",
+        keywords=["막걸리"],
+        owner_persona="warm",
+        weather_tags=["PRECIP_RAIN"],
+    )
+
+    _run_immediate(service.generate_text(request))
+    _run_immediate(service.generate_text(request))
+
+    assert calls == [True, False, False]
+    assert service._response_format_supported is False
 
 
 def test_caption_generation_service_selects_prompt_by_purpose(
@@ -129,8 +201,7 @@ def test_caption_generation_service_selects_prompt_by_purpose(
             200,
             content=(
                 '{"guide_text":"가이드를 확인하세요.",'
-                '"caption":"캡션을 확인하세요.",'
-                '"hashtags":["#테스트"]}'
+                '"caption":"캡션을 확인하세요."}'
             ),
         )
 
@@ -148,14 +219,12 @@ def test_caption_generation_service_selects_prompt_by_purpose(
             )
         )
 
-    assert 'The post purpose is "메뉴 홍보".' in prompts[0]
-    assert "Frame the copy like a menu, product, ingredient, or store offering promotion." in prompts[0]
-    assert "weather:" not in prompts[0]
-    assert "clear" not in prompts[0]
-    assert 'The post purpose is "영업 공지".' in prompts[1]
-    assert "Frame the copy like a clear business notice about operation, schedule, or availability." in prompts[1]
-    assert 'The post purpose is "일상 공유".' in prompts[2]
-    assert "Frame the copy like a daily share about the owner's routine, store atmosphere, or behind-the-scenes moment." in prompts[2]
+    assert '게시물 목적은 "메뉴 홍보"입니다.' in prompts[0]
+    assert "메뉴, 상품, 재료, 또는 매장에서 제공하는 것을 홍보하는 톤" in prompts[0]
+    assert '게시물 목적은 "영업 공지"입니다.' in prompts[1]
+    assert "영업, 일정, 운영 가능 여부에 대한 명확한 영업 공지 톤" in prompts[1]
+    assert '게시물 목적은 "일상 공유"입니다.' in prompts[2]
+    assert "사장님의 일상, 매장 분위기, 비하인드 순간을 공유하는 톤" in prompts[2]
 
 
 def test_caption_generation_service_preload_raises_when_server_unreachable(

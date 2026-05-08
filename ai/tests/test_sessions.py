@@ -48,16 +48,6 @@ def _weather_context_for_tests(weather_tags: list[str]) -> str:
     return ""
 
 
-def _weather_hashtags_for_tests(weather_tags: list[str]) -> list[str]:
-    if PRECIP_HEAVY_RAIN in weather_tags:
-        return ["#폭우"]
-    if PRECIP_RAIN in weather_tags:
-        return ["#비오는날"]
-    if PRECIP_CLEAR in weather_tags:
-        return ["#맑은날"]
-    if PRECIP_CLOUDY in weather_tags:
-        return ["#흐린날"]
-    return []
 
 
 def _make_chat_response(
@@ -232,7 +222,6 @@ class FakeCaptionGenerationService:
         self.result = result or CaptionGenerationResult(
             guide_text="키워드가 잘 보이도록 구도를 잡아보세요.",
             draft_caption="오늘의 메뉴를 자연스럽게 소개해보세요.",
-            draft_hashtags=["#signaturemenu"],
         )
         self.error = error
         self.calls: list[dict[str, object]] = []
@@ -269,14 +258,9 @@ class FakeCaptionGenerationService:
             }
         )
         keyword_phrase = (
-            ", ".join(request.keywords) if request.keywords else "today's highlights"
+            ", ".join(request.keywords) if request.keywords else "오늘의 매장"
         )
         weather_context = _weather_context_for_tests(request.weather_tags)
-        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
-        hashtags.extend(
-            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
-            if hashtag not in hashtags
-        )
         caption = (
             f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
             f"{keyword_phrase}를 소개해보세요."
@@ -284,13 +268,8 @@ class FakeCaptionGenerationService:
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
             if not request.keywords
-            else (
-                f"Make sure {', '.join(request.keywords)} is clearly visible in the shot. "
-                "Check the framing and subject emphasis before shooting."
-            )
+            else f"사장님, {', '.join(request.keywords)}이(가) 잘 보이도록 영상을 촬영해보세요."
         )
-        if not hashtags:
-            hashtags.append("#오늘기록")
         effective_fallback_source = fallback_source
         if not request.keywords and effective_fallback_source is None:
             effective_fallback_source = "default_guide"
@@ -298,7 +277,6 @@ class FakeCaptionGenerationService:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=caption,
-                draft_hashtags=hashtags,
             ),
             fallback_source=effective_fallback_source,
         )
@@ -404,9 +382,8 @@ def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
     )
 
     assert fallback_result.result.draft_caption
-    assert fallback_result.result.draft_hashtags == ["#오늘기록"]
     assert fallback_result.result.guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
-    assert fallback_result.result.stored_caption.endswith("#오늘기록")
+    assert fallback_result.result.stored_caption == fallback_result.result.draft_caption
     assert fallback_result.fallback_source == "default_guide"
 
 
