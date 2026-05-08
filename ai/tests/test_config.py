@@ -27,12 +27,12 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_BUCKET_NAME", "bucket")
     monkeypatch.setenv("S3_REGION", "ap-northeast-2")
     monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
-    monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "4096")
+    monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://keyword-server:8001")
+    monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "32")
     monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.2")
     monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.85")
-    monkeypatch.setenv("KEYWORD_MODEL_THREADS", "6")
-    monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "12")
     monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "true")
     monkeypatch.setenv("CANONICAL_KEYWORD_RESOLVER_ENABLED", "true")
     monkeypatch.setenv(
@@ -54,12 +54,12 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.DEBUG is True
     assert settings.LOG_INCLUDE_RAW_IDENTIFIERS is True
     assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 200
-    assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
+    assert settings.KEYWORD_MODEL_BASE_URL == "http://keyword-server:8001"
+    assert settings.KEYWORD_MODEL_CHAT_ENDPOINT == "/v1/chat/completions"
+    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == 45
     assert settings.KEYWORD_MODEL_MAX_TOKENS == 32
     assert settings.KEYWORD_MODEL_TEMPERATURE == 0.2
     assert settings.KEYWORD_MODEL_TOP_P == 0.85
-    assert settings.KEYWORD_MODEL_THREADS == 6
-    assert settings.KEYWORD_MODEL_GPU_LAYERS == 12
     assert settings.KEYWORD_MODEL_ENABLED is True
     assert settings.CANONICAL_KEYWORD_RESOLVER_ENABLED is True
     assert settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME == "intfloat/multilingual-e5-small"
@@ -184,24 +184,39 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM == 384
 
 
+def test_keyword_server_defaults_apply_when_env_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.delenv("KEYWORD_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_CHAT_ENDPOINT", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_TIMEOUT_SECONDS", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.KEYWORD_MODEL_BASE_URL == "http://keyword-server:8001"
+    assert settings.KEYWORD_MODEL_CHAT_ENDPOINT == "/v1/chat/completions"
+    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+
+
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_postgres(monkeypatch)
-    monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "1024")
+    monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://host.docker.internal:8080")
+    monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "15")
     monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "16")
     monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.3")
     monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.75")
-    monkeypatch.setenv("KEYWORD_MODEL_THREADS", "3")
-    monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "8")
     monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "false")
 
     settings = Settings(_env_file=None)
 
-    assert settings.KEYWORD_MODEL_CTX_SIZE == 1024
+    assert settings.KEYWORD_MODEL_BASE_URL == "http://host.docker.internal:8080"
+    assert settings.KEYWORD_MODEL_CHAT_ENDPOINT == "/v1/chat/completions"
+    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == 15
     assert settings.KEYWORD_MODEL_MAX_TOKENS == 16
     assert settings.KEYWORD_MODEL_TEMPERATURE == 0.3
     assert settings.KEYWORD_MODEL_TOP_P == 0.75
-    assert settings.KEYWORD_MODEL_THREADS == 3
-    assert settings.KEYWORD_MODEL_GPU_LAYERS == 8
     assert settings.KEYWORD_MODEL_ENABLED is False
 
 
