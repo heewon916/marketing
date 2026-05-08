@@ -176,6 +176,8 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_ORIENTATION_MODEL_NAME == "vit"
     assert DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH.name == "model-vit-ang-loss.h5"
     assert DEFAULT_KEYWORD_MODEL_PATH.name == "model.gguf"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q3_k_m"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "qwen2.5-7b-instruct"
     assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
     assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
     assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 30.0

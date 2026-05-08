@@ -19,4 +19,6 @@ def test_bootstrap_keyword_model_uses_container_model_path(monkeypatch) -> None:
     exit_code = bootstrap_keyword_model.main()
 
     assert exit_code == 0
-    assert captured["model_path"] == Path("/models/qwen-gguf/model.gguf")
+    assert captured["model_path"] == Path(
+        "/models/qwen2.5-7b-instruct/q3_k_m/model.gguf"
+    )
