@@ -15,7 +15,7 @@
 - Container model path: `/models/qwen2-1.5b-instruct/q3_k_m/model.gguf`
 - Default host cache dir: `./.models/keyword/qwen2-1.5b-instruct/q3_k_m`
 - Default source: `Qwen/Qwen2-1.5B-Instruct-GGUF`
-- Default filename: `qwen2-1.5b-instruct-q3_k_m.gguf`
+- Default filename: `qwen2-1_5b-instruct-q3_k_m.gguf`
 
 ### Caption Server
 - Service name: `caption-server`
