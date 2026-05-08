@@ -34,8 +34,8 @@ public class AirKoreaAirQualityClient {
      * @return PM10/PM2.5 값
      */
     public AirQualityData getAirQuality(String stationName) {
-        if (properties.airKoreaServiceKey() == null || properties.airKoreaServiceKey().isBlank()) {
-            log.warn("weather.airkorea.air-skipped: AIRKOREA_SERVICE_KEY is empty");
+        if (!properties.hasAirKoreaAirServiceKey()) {
+            log.warn("weather.airkorea.air-skipped: AIRKOREA_AIR_SERVICE_KEY is empty");
             return AirQualityData.empty();
         }
         if (stationName == null || stationName.isBlank()) {
@@ -45,7 +45,7 @@ public class AirKoreaAirQualityClient {
         try {
             Map<String, Object> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder.path("/getMsrstnAcctoRltmMesureDnsty")
-                            .queryParam("serviceKey", properties.airKoreaServiceKeyForQuery())
+                            .queryParam("serviceKey", properties.airKoreaAirServiceKeyForQuery())
                             .queryParam("returnType", "json")
                             .queryParam("numOfRows", 100)
                             .queryParam("pageNo", 1)

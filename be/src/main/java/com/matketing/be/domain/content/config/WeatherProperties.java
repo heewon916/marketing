@@ -8,6 +8,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record WeatherProperties(
         String kmaServiceKey,
         String airKoreaServiceKey,
+        String airKoreaAirServiceKey,
+        String airKoreaStationServiceKey,
         String kmaForecastBaseUrl,
         String kmaWarningBaseUrl,
         String airKoreaAirBaseUrl,
@@ -47,6 +49,38 @@ public record WeatherProperties(
 
     public String airKoreaServiceKeyForQuery() {
         return decodeIfEncoded(airKoreaServiceKey);
+    }
+
+    public boolean hasAirKoreaAirServiceKey() {
+        return hasText(resolvedAirKoreaAirServiceKey());
+    }
+
+    public boolean hasAirKoreaStationServiceKey() {
+        return hasText(resolvedAirKoreaStationServiceKey());
+    }
+
+    public String airKoreaAirServiceKeyForQuery() {
+        return decodeIfEncoded(resolvedAirKoreaAirServiceKey());
+    }
+
+    public String airKoreaStationServiceKeyForQuery() {
+        return decodeIfEncoded(resolvedAirKoreaStationServiceKey());
+    }
+
+    private String resolvedAirKoreaAirServiceKey() {
+        return firstNonBlank(airKoreaAirServiceKey, airKoreaServiceKey);
+    }
+
+    private String resolvedAirKoreaStationServiceKey() {
+        return firstNonBlank(airKoreaStationServiceKey, airKoreaServiceKey);
+    }
+
+    private String firstNonBlank(String primary, String fallback) {
+        return hasText(primary) ? primary : fallback;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private String decodeIfEncoded(String value) {

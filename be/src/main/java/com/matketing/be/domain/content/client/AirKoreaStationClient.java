@@ -31,15 +31,15 @@ public class AirKoreaStationClient {
      * @return 측정소 목록
      */
     public List<Station> getStations(String sido) {
-        if (properties.airKoreaServiceKey() == null || properties.airKoreaServiceKey().isBlank()) {
-            log.warn("weather.airkorea.station-skipped: AIRKOREA_SERVICE_KEY is empty");
+        if (!properties.hasAirKoreaStationServiceKey()) {
+            log.warn("weather.airkorea.station-skipped: AIRKOREA_STATION_SERVICE_KEY is empty");
             return List.of();
         }
 
         try {
             Map<String, Object> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder.path("/getMsrstnList")
-                            .queryParam("serviceKey", properties.airKoreaServiceKeyForQuery())
+                            .queryParam("serviceKey", properties.airKoreaStationServiceKeyForQuery())
                             .queryParam("returnType", "json")
                             .queryParam("numOfRows", 1000)
                             .queryParam("pageNo", 1)
