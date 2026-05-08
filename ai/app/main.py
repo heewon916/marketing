@@ -230,6 +230,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             component="startup",
             keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
             keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+            keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
             keyword_timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
         ),
     )
@@ -256,7 +257,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="succeeded",
                 keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+                keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
             ),
         )
     except KeywordExtractionUnavailableError as exc:
@@ -272,7 +273,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 outcome="failed",
                 error_type=exc.__class__.__name__,
                 keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+                keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
             ),
         )
     except Exception:
@@ -287,7 +288,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 outcome="failed",
                 error_type="unexpected_startup_error",
                 keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+                keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
             ),
         )
 

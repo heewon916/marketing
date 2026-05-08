@@ -279,6 +279,7 @@ class KeywordExtractionService:
                 keyword_timeout_seconds=self.timeout_seconds,
                 keyword_model_base_url=self.base_url,
                 keyword_chat_endpoint=self.chat_endpoint,
+                keyword_health_endpoint=self.health_endpoint,
                 keyword_server_checked=self._server_checked,
                 utterance_length=len(utterance),
                 utterance_preview=preview_text(
@@ -305,6 +306,7 @@ class KeywordExtractionService:
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                     keyword_model_base_url=self.base_url,
                     keyword_chat_endpoint=self.chat_endpoint,
+                    keyword_health_endpoint=self.health_endpoint,
                 ),
             )
             raise KeywordExtractionUnavailableError(
@@ -324,6 +326,7 @@ class KeywordExtractionService:
                     elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                     keyword_model_base_url=self.base_url,
                     keyword_chat_endpoint=self.chat_endpoint,
+                    keyword_health_endpoint=self.health_endpoint,
                 ),
                 exc_info=True,
             )
@@ -420,10 +423,16 @@ class KeywordExtractionService:
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.get(self._chat_url)
+                response = await client.get(self._health_url)
+            response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction server connectivity check timed out."
+            ) from exc
+        except httpx.HTTPStatusError as exc:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction server connectivity check returned "
+                f"HTTP {exc.response.status_code}."
             ) from exc
         except httpx.HTTPError as exc:
             raise KeywordExtractionUnavailableError(
@@ -438,8 +447,9 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="server_check",
                 outcome="succeeded",
+                keyword_timeout_seconds=self.timeout_seconds,
                 keyword_model_base_url=self.base_url,
-                keyword_chat_endpoint=self.chat_endpoint,
+                keyword_health_endpoint=self.health_endpoint,
                 keyword_http_status=response.status_code,
             ),
         )
@@ -465,6 +475,9 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="generate",
                 outcome="started",
+                keyword_timeout_seconds=self.timeout_seconds,
+                keyword_model_base_url=self.base_url,
+                keyword_chat_endpoint=self.chat_endpoint,
                 keyword_max_tokens=self.max_tokens,
                 keyword_temperature=self.temperature,
                 keyword_top_p=self.top_p,
@@ -485,6 +498,9 @@ class KeywordExtractionService:
                         component="keyword_extraction",
                         stage="generate",
                         outcome="retrying",
+                        keyword_timeout_seconds=self.timeout_seconds,
+                        keyword_model_base_url=self.base_url,
+                        keyword_chat_endpoint=self.chat_endpoint,
                     ),
                 )
                 response = await self._post_chat_completion(
