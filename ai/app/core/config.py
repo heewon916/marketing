@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from pydantic import computed_field
+from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -148,6 +148,17 @@ class Settings(BaseSettings):
     CANONICAL_KEYWORD_EMBEDDING_DIM: int = (
         DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM
     )
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug_value(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"debug", "local", "dev", "development"}:
+                return True
+        return value
 
     @computed_field
     @property

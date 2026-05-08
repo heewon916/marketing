@@ -586,7 +586,19 @@ class KeywordExtractionService:
         )
 
     def _parse_keywords(self, raw_output: str) -> list[str]:
-        return self._parse_extraction_result(raw_output).draft_keywords
+        payload = self._load_extraction_payload(raw_output)
+        if isinstance(payload, dict):
+            return self._parse_extraction_result(raw_output).draft_keywords
+        if not isinstance(payload, list):
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned a non-list payload."
+            )
+        draft_keywords = self._normalize_keywords_payload(payload)
+        if not draft_keywords:
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned no usable draft_keywords."
+            )
+        return draft_keywords
 
     @staticmethod
     def _extract_json_payload(raw_output: str) -> str:
@@ -725,6 +737,10 @@ class KeywordExtractionService:
         if morphology_normalized is None:
             return self._fallback_normalize_keyword(normalized)
         if morphology_normalized:
+            if " " not in normalized and " " in morphology_normalized:
+                return self._fallback_normalize_keyword(
+                    morphology_normalized.replace(" ", "")
+                )
             return morphology_normalized
         return ""
 

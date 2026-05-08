@@ -1,3 +1,4 @@
+import asyncio
 from uuid import uuid4
 from collections.abc import Awaitable
 
@@ -5,12 +6,15 @@ import fakeredis
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from pathlib import Path
 from pydantic import ValidationError
 
 from app.main import app
 from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
+from app.services.caption_generation import (
+    CaptionGenerationResult,
+    CaptionGenerationUnavailableError,
+)
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
 from app.services.canonical_keyword_resolver import (
@@ -193,6 +197,41 @@ class FakeCanonicalKeywordResolverService:
         )
 
 
+class FakeCaptionGenerationService:
+    def __init__(
+        self,
+        result: CaptionGenerationResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result or CaptionGenerationResult(
+            guide_text="키워드가 잘 보이도록 구도를 잡아보세요.",
+            draft_caption="오늘의 메뉴를 자연스럽게 소개해보세요.",
+            draft_hashtags=["#signaturemenu"],
+        )
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def generate_text(
+        self,
+        *,
+        keywords: list[str],
+        owner_persona: str,
+        cloud_cover: str,
+        weather_tags: list[str],
+    ) -> CaptionGenerationResult:
+        self.calls.append(
+            {
+                "keywords": list(keywords),
+                "owner_persona": owner_persona,
+                "cloud_cover": cloud_cover,
+                "weather_tags": list(weather_tags),
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
 class StubDraftDownloader:
     is_configured = True
 
@@ -327,6 +366,33 @@ def test_process_utterance_returns_503_when_keyword_extraction_fails(
     assert saved["caption"] == ""
 
 
+def test_process_utterance_falls_back_when_caption_generation_fails(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-caption-fallback"
+    original_service = app.state.caption_generation_service
+    app.state.caption_generation_service = FakeCaptionGenerationService(
+        error=CaptionGenerationUnavailableError("caption unavailable")
+    )
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body["guide_text"], str)
+    assert isinstance(body["caption"], str)
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:text_generation_fallback_source"] == "caption_model_fallback"
+    assert saved["caption"]
+
+
 def test_empty_utterance_rejected(client: TestClient) -> None:
     payload = dict(VALID_PAYLOAD)
     payload["utterance"] = ""
@@ -449,8 +515,8 @@ def test_purpose_persisted_in_debug_fields(
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == "영업 공지"
-    assert saved["debug:canonical_match_count"] == "2"
-    assert saved["debug:canonical_fallback_count"] == "0"
+    assert saved["debug:canonical_match_count"] == "0"
+    assert saved["debug:canonical_fallback_count"] == "2"
 
 
 def test_process_utterance_uses_default_guide_when_no_keywords(
@@ -715,8 +781,7 @@ def test_final_edit_response_limits_results_to_three() -> None:
         )
 
 
-@pytest.mark.asyncio
-async def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
+def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     uploader = FailingUploader()
     service = FinalEditService(
         predictor=StubPredictor(),
@@ -726,12 +791,14 @@ async def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     )
     session_id = "session-rollback-1"
 
-    result = await service.edit_and_upload(
-        session_id=session_id,
-        drafts=[
-            "/ai-drafts/session-rollback-1/draft-001.jpg",
-            "/ai-drafts/session-rollback-1/draft-002.jpg",
-        ],
+    result = asyncio.run(
+        service.edit_and_upload(
+            session_id=session_id,
+            drafts=[
+                "/ai-drafts/session-rollback-1/draft-001.jpg",
+                "/ai-drafts/session-rollback-1/draft-002.jpg",
+            ],
+        )
     )
 
     assert result.status == "FRAME_EXTRACTED"
@@ -751,6 +818,7 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.final_edit_service is not None
     assert app.state.final_edit_service.predictor.weights_path is not None
     assert app.state.keyword_extraction_service is not None
+    assert app.state.caption_generation_service is not None
     assert app.state.canonical_keyword_resolver_service is not None
 
 
@@ -776,7 +844,7 @@ def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() 
 
 
 def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     keywords = service._parse_keywords(
         "["
@@ -793,7 +861,7 @@ def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
 
 
 def test_keyword_extraction_service_strips_particles_from_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
     assert (
@@ -807,7 +875,7 @@ def test_keyword_extraction_service_strips_particles_from_keywords() -> None:
 
 
 def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     assert service._normalize_keyword("\uba39\uace0 \uc0b4\uc544\uc57c\uc9c0") == ""
     assert service._normalize_keyword("\uc81c\ucca0\uc774\uc57c") == ""
@@ -816,14 +884,14 @@ def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
 def test_keyword_extraction_service_falls_back_without_morph_analyzer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
     monkeypatch.setattr(service, "_get_morph_analyzer", lambda: None)
 
     assert service._normalize_keyword("\ubc24\ud638\ubc15\uc774") == "\ubc24\ud638\ubc15"
 
 
 def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     result = service._parse_extraction_result(
         "{"
@@ -842,7 +910,7 @@ def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
 
 
 def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     with pytest.raises(
         KeywordExtractionUnavailableError,
@@ -857,7 +925,7 @@ def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
 
 
 def test_keyword_extraction_service_rejects_empty_normalized_keywords() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     with pytest.raises(
         KeywordExtractionUnavailableError,
@@ -872,7 +940,7 @@ def test_keyword_extraction_service_rejects_empty_normalized_keywords() -> None:
 
 
 def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     result = service._parse_extraction_result(
         '{'
@@ -891,28 +959,27 @@ def test_keyword_extraction_service_accepts_keyword_object_payload() -> None:
 
 
 def test_keyword_extraction_service_rejects_non_json_output() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"))
+    service = KeywordExtractionService()
 
     with pytest.raises(KeywordExtractionUnavailableError):
         service._parse_keywords("\ub9c9\uac78\ub9ac, \ud30c\uc804")
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_raises_when_disabled() -> None:
-    service = KeywordExtractionService(model_path=Path("unused.gguf"), enabled=False)
+def test_keyword_extraction_service_raises_when_disabled() -> None:
+    service = KeywordExtractionService(enabled=False)
 
     with pytest.raises(KeywordExtractionUnavailableError):
-        await service.extract_keywords(
-            "\uc624\ub298 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\ub2e4"
+        _run_immediate(
+            service.extract_keywords(
+                "\uc624\ub298 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\ub2e4"
+            )
         )
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_calls_remote_server_successfully(
+def test_keyword_extraction_service_calls_remote_server_successfully(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
     calls: list[bool] = []
@@ -926,8 +993,10 @@ async def test_keyword_extraction_service_calls_remote_server_successfully(
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
-    result = await service.extract_keywords(
-        "\uc624\ub298 \ube44\uc640\uc11c \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+    result = _run_immediate(
+        service.extract_keywords(
+            "\uc624\ub298 \ube44\uc640\uc11c \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+        )
     )
 
     assert calls == [True]
@@ -935,12 +1004,10 @@ async def test_keyword_extraction_service_calls_remote_server_successfully(
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_retries_without_response_format(
+def test_keyword_extraction_service_retries_without_response_format(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
     calls: list[bool] = []
@@ -963,8 +1030,10 @@ async def test_keyword_extraction_service_retries_without_response_format(
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
-    result = await service.extract_keywords(
-        "\uc624\ub298\uc740 \ud30c\uc804\uc774 \uc798 \ub098\uac08 \uac83 \uac19\ub2e4"
+    result = _run_immediate(
+        service.extract_keywords(
+            "\uc624\ub298\uc740 \ud30c\uc804\uc774 \uc798 \ub098\uac08 \uac83 \uac19\ub2e4"
+        )
     )
 
     assert calls == [True, False]
@@ -972,12 +1041,10 @@ async def test_keyword_extraction_service_retries_without_response_format(
     assert result.draft_keywords == ["\ud30c\uc804"]
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_raises_on_remote_timeout(
+def test_keyword_extraction_service_raises_on_remote_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
 
@@ -987,17 +1054,17 @@ async def test_keyword_extraction_service_raises_on_remote_timeout(
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
     with pytest.raises(KeywordExtractionUnavailableError, match="timed out"):
-        await service.extract_keywords(
-            "\uc624\ub298 \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+        _run_immediate(
+            service.extract_keywords(
+                "\uc624\ub298 \ub9c9\uac78\ub9ac\uac00 \ub561\uae34\ub2e4"
+            )
         )
 
 
-@pytest.mark.asyncio
-async def test_keyword_extraction_service_raises_on_remote_http_error(
+def test_keyword_extraction_service_raises_on_remote_http_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
 
@@ -1014,8 +1081,10 @@ async def test_keyword_extraction_service_raises_on_remote_http_error(
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
     with pytest.raises(KeywordExtractionUnavailableError, match="HTTP 503"):
-        await service.extract_keywords(
-            "\uc624\ub298 \ud30c\uc804\uc774 \ub561\uae34\ub2e4"
+        _run_immediate(
+            service.extract_keywords(
+                "\uc624\ub298 \ud30c\uc804\uc774 \ub561\uae34\ub2e4"
+            )
         )
 
 
@@ -1023,7 +1092,6 @@ def test_keyword_extraction_service_preload_raises_when_server_unreachable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
     )
 
@@ -1053,7 +1121,6 @@ def test_keyword_extraction_service_preload_uses_health_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
         health_endpoint="/health",
     )
@@ -1091,7 +1158,6 @@ def test_keyword_extraction_service_preload_raises_on_http_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = KeywordExtractionService(
-        model_path=Path("unused.gguf"),
         base_url="http://llama-server:8000",
         health_endpoint="/health",
     )
