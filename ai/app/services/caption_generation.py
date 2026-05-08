@@ -30,58 +30,86 @@ from app.services.weather_tags import (
 
 logger = logging.getLogger(__name__)
 
-_MENU_PROMOTION_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 소상공인을 위한 짧은 한국어 인스타그램 마케팅 문구를 작성합니다.
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
-- The post purpose is "메뉴 홍보".
-- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
-- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
-- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
-- Use the provided keywords naturally. Do not invent unrelated products.
-- Frame the copy like a menu, product, ingredient, or store offering promotion.
-- Keep the output suitable for an Instagram post by a local store owner.
+규칙:
+- 오직 JSON 객체 텍스트만 반환하세요.
+- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
+- 게시물 목적은 "메뉴 홍보"입니다.
+- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1~2문장의 한국어 문장이어야 합니다.
+- "caption"은 1~3개의 짧은 문장으로 구성된 따뜻한 한국어 인스타그램 캡션이어야 합니다.
+- 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
+- 메뉴, 상품, 재료, 또는 매장에서 제공하는 것을 홍보하는 톤으로 작성하세요.
+- 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
 
-Input:
+아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
+
+예시 1:
+입력:
+- owner_persona: "aesthetic" 
+- weather_context: "TEMP_HOT
+- keywords: "무화과", "여름"
+출력:
+{{"guide_text":"사장님, 손님들에게 한여름의 무화과를 영상에 담아 보여주세요.",
+"caption": "늦여름의 맛 무화과 fig!
+
+집에서도 밖에서도 먹은 무화과. 오묘한 생김새와 달큰한 맛이 매력적이다. 여름이 지나갈 때면 무화과를 꼭 챙겨 먹는다. 그냥 지나치면 아쉬운 마음. 속살은 분홍색과 상아색, 껍질은 연두색부터 짙은 자주색까지. 한입 앙 베어 물면 느껴지는 씨의 식감도 좋다!
+
+#무화과 #fig #소월길밀영 #후암동 #후암동카페 #홈카페"}}
+
+예시 2:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "PRECIP_CLEAR"
+- keywords: "봄", "레몬 타르트"
+출력:
+{{"guide_text":"사장님, 손님들에게 상큼한 레몬 타르트를 영상에 담아 보여주세요.",
+"caption": "어디든 뭐든 좋은, 봄이로소이다 #lemontart"}}
+
+이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+
+입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
 - keywords: {keywords}
 """
 
-_BUSINESS_NOTICE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 소상공인을 위한 짧은 한국어 인스타그램 마케팅 문구를 작성합니다.
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
-- The post purpose is "영업 공지".
-- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
-- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
-- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
-- Use the provided keywords naturally. Do not invent unrelated products.
-- Frame the copy like a clear business notice about operation, schedule, or availability.
-- Keep the output suitable for an Instagram post by a local store owner.
+규칙:
+- 오직 JSON 객체 텍스트만 반환하세요.
+- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
+- 게시물 목적은 "영업 공지"입니다.
+- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1~2문장의 한국어 문장이어야 합니다.
+- "caption"은 1~3개의 짧은 문장으로 구성된 따뜻한 한국어 인스타그램 캡션이어야 합니다.
+- "hashtags"는 # 기호를 포함한 간결한 해시태그 1~5개를 담아야 합니다.
+- 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
+- 영업, 일정, 운영 가능 여부에 대한 명확한 영업 공지 톤으로 작성하세요.
+- 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- 모든 출력 값(guide_text, caption, hashtags)은 반드시 한국어로 작성하세요.
 
-Input:
+입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
 - keywords: {keywords}
 """
 
-_DAILY_SHARE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_DAILY_SHARE_PROMPT_TEMPLATE = """당신은 소상공인을 위한 짧은 한국어 인스타그램 마케팅 문구를 작성합니다.
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
-- The post purpose is "일상 공유".
-- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
-- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
-- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
-- Use the provided keywords naturally. Do not invent unrelated products.
-- Frame the copy like a daily share about the owner's routine, store atmosphere, or behind-the-scenes moment.
-- Keep the output suitable for an Instagram post by a local store owner.
+규칙:
+- 오직 JSON 객체 텍스트만 반환하세요.
+- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
+- 게시물 목적은 "일상 공유"입니다.
+- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1~2문장의 한국어 문장이어야 합니다.
+- "caption"은 1~3개의 짧은 문장으로 구성된 따뜻한 한국어 인스타그램 캡션이어야 합니다.
+- "hashtags"는 # 기호를 포함한 간결한 해시태그 1~5개를 담아야 합니다.
+- 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
+- 사장님의 일상, 매장 분위기, 비하인드 순간을 공유하는 톤으로 작성하세요.
+- 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- 모든 출력 값(guide_text, caption, hashtags)은 반드시 한국어로 작성하세요.
 
-Input:
+입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
 - keywords: {keywords}
