@@ -241,7 +241,7 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "qwen2-1.5b-instruct"
     assert DEFAULT_KEYWORD_MODEL_HOST_DIR == "./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
     assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2-1.5B-Instruct-GGUF"
-    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2-1.5b-instruct-q3_k_m.gguf"
+    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2-1_5b-instruct-q3_k_m.gguf"
     assert DEFAULT_KEYWORD_MODEL_SERVER_PORT == 8001
     assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 60.0
     assert DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT == "/health"
