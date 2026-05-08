@@ -80,7 +80,7 @@ public class ContentController {
      * @param imageId
      * @return
      */
-    @DeleteMapping("/{contentId}/images/{imageId}")
+    @DeleteMapping("/{sessionId}/images/{imageId}")
     public ContentImageDeleteResponseDto deleteContentImage(
             @PathVariable Long contentId,
             @PathVariable UUID imageId  // TODO UUID..?
@@ -99,14 +99,19 @@ public class ContentController {
         return contentService.getContent(contentId);
     }
 
-    // 현재 스키마 기준으로 게시물 텍스트는 caption만 수정할 수 있다.
-    @PutMapping("/{contentId}/edit")
+    // 현재 스키마 기준으로 게시물 텍스트는 caption만 수정할 수 있다. - redis 존재
+    @PutMapping("/{sessionId}/edit")
     public ContentEditResponseDto updateContent(
             @PathVariable Long contentId,
             @RequestBody ContentEditRequestDto requestDto
     ) {
         return contentService.updateContent(contentId, requestDto);
     }
+
+    // TODO 게시물 발행 API 로직 추가
+    // return할 때 최종 캡션, 이미지를 줘야 한다. 그리고 instagram 리다이렉트 url도
+    // @PostMapping("/{sessionId}/publish")
+
 
     // TODO JWT 인증 필터가 적용되면 이 함수는 삭제하고 SecurityContext의 실제 user_name을 주도록 바꿔야 한다.
     private String getCurrentUserId(Authentication authentication) {
