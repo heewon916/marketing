@@ -29,7 +29,6 @@ export default function MyPage() {
       <MyPageHeader
         storeName={myPageMockData.storeName}
         instagramUsername={myPageMockData.instagramUsername}
-        onLogout={handleLogout}
       />
 
       <MyPageTabSwitcher activeTab={activeTab} onChange={setActiveTab} />
@@ -45,7 +44,9 @@ export default function MyPage() {
           />
         )}
 
-        {activeTab === 'info' && <AccountInfoSection />}
+        {activeTab === 'info' && (
+          <AccountInfoSection onLogout={handleLogout} />
+        )}
 
         {activeTab === 'hours' && <OperatingHoursSection />}
       </main>
