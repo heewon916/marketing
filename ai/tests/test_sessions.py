@@ -12,9 +12,11 @@ from app.main import app
 from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.caption_generation import (
+    CaptionFallbackResult,
     CaptionGenerationRequest,
     CaptionGenerationResult,
     CaptionGenerationUnavailableError,
+    DEFAULT_FALLBACK_GUIDE_TEXT,
 )
 from app.services.final_edit import FinalEditResult, FinalEditService
 from app.services.frame_extraction import ExtractFramesResult
@@ -28,8 +30,6 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
 )
 from app.services.sessions import (
-    DEFAULT_FALLBACK_GUIDE_TEXT,
-    build_text_generation_result,
     resolve_caption_keywords,
     session_key,
 )
@@ -211,6 +211,7 @@ class FakeCaptionGenerationService:
         )
         self.error = error
         self.calls: list[dict[str, object]] = []
+        self.fallback_calls: list[dict[str, object]] = []
 
     async def generate_text(
         self,
@@ -228,6 +229,51 @@ class FakeCaptionGenerationService:
         if self.error is not None:
             raise self.error
         return self.result
+
+    def build_fallback_result(
+        self,
+        request: CaptionGenerationRequest,
+        fallback_source: str | None,
+    ) -> CaptionFallbackResult:
+        self.fallback_calls.append(
+            {
+                "purpose": request.purpose,
+                "keywords": list(request.keywords),
+                "owner_persona": request.owner_persona,
+                "cloud_cover": request.cloud_cover,
+                "weather_tags": list(request.weather_tags),
+                "fallback_source": fallback_source,
+            }
+        )
+        keyword_phrase = (
+            ", ".join(request.keywords) if request.keywords else "today's highlights"
+        )
+        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
+        if request.cloud_cover:
+            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        caption = (
+            f"{request.cloud_cover} day, {request.owner_persona} mood. "
+            f"How about sharing {keyword_phrase} with your audience today?"
+        )
+        guide_text = (
+            DEFAULT_FALLBACK_GUIDE_TEXT
+            if not request.keywords
+            else (
+                f"Make sure {', '.join(request.keywords)} is clearly visible in the shot. "
+                "Check the framing and subject emphasis before shooting."
+            )
+        )
+        effective_fallback_source = fallback_source
+        if not request.keywords and effective_fallback_source is None:
+            effective_fallback_source = "default_guide"
+        return CaptionFallbackResult(
+            result=CaptionGenerationResult(
+                guide_text=guide_text,
+                draft_caption=caption,
+                draft_hashtags=hashtags,
+            ),
+            fallback_source=effective_fallback_source,
+        )
 
 
 class StubDraftDownloader:
@@ -316,26 +362,25 @@ def test_resolve_caption_keywords_prefers_final_keywords() -> None:
     assert resolve_caption_keywords(["draft menu"], []) == ["draft menu"]
 
 
-def test_build_text_generation_result_uses_default_guide_without_keywords() -> None:
-    (
-        draft_caption,
-        draft_hashtags,
-        guide_text,
-        stored_caption,
-        fallback_source,
-    ) = build_text_generation_result(
-        keywords=[],
-        owner_persona="calm",
-        cloud_cover="clear",
-        weather_tags=[],
+def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
+    service = FakeCaptionGenerationService()
+
+    fallback_result = service.build_fallback_result(
+        CaptionGenerationRequest(
+            purpose="일상 공유",
+            keywords=[],
+            owner_persona="calm",
+            cloud_cover="clear",
+            weather_tags=[],
+        ),
         fallback_source=None,
     )
 
-    assert draft_caption
-    assert draft_hashtags == ["#clear"]
-    assert guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
-    assert stored_caption.endswith("#clear")
-    assert fallback_source == "default_guide"
+    assert fallback_result.result.draft_caption
+    assert fallback_result.result.draft_hashtags == ["#clear"]
+    assert fallback_result.result.guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
+    assert fallback_result.result.stored_caption.endswith("#clear")
+    assert fallback_result.fallback_source == "default_guide"
 
 
 def test_process_utterance_returns_503_when_keyword_extraction_fails(
@@ -370,9 +415,10 @@ def test_process_utterance_falls_back_when_caption_generation_fails(
 ) -> None:
     session_id = "sess-caption-fallback"
     original_service = app.state.caption_generation_service
-    app.state.caption_generation_service = FakeCaptionGenerationService(
+    fake_service = FakeCaptionGenerationService(
         error=CaptionGenerationUnavailableError("caption unavailable")
     )
+    app.state.caption_generation_service = fake_service
 
     try:
         response = client.post(
@@ -386,9 +432,37 @@ def test_process_utterance_falls_back_when_caption_generation_fails(
     body = response.json()
     assert isinstance(body["guide_text"], str)
     assert isinstance(body["caption"], str)
+    assert fake_service.fallback_calls[0]["purpose"] == "메뉴 홍보"
+    assert fake_service.fallback_calls[0]["fallback_source"] == "caption_model_fallback"
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:text_generation_fallback_source"] == "caption_model_fallback"
     assert saved["caption"]
+
+
+def test_process_utterance_passes_purpose_to_caption_request(
+    client: TestClient,
+) -> None:
+    session_id = "sess-purpose-forward-1"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="영업 공지",
+        draft_keywords=["임시 휴무"],
+    )
+    fake_service = FakeCaptionGenerationService()
+    app.state.caption_generation_service = fake_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    assert fake_service.calls[0]["purpose"] == "영업 공지"
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -522,10 +596,13 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
 ) -> None:
     session_id = "sess-default-guide-1"
     original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
         purpose="일상 공유",
         draft_keywords=[],
     )
+    fake_service = FakeCaptionGenerationService()
+    app.state.caption_generation_service = fake_service
 
     try:
         response = client.post(
@@ -534,16 +611,19 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
         )
     finally:
         app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
 
     assert response.status_code == 200
     body = response.json()
-    assert body["guide_text"] == "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
+    assert body["guide_text"] == DEFAULT_FALLBACK_GUIDE_TEXT
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == "일상 공유"
     assert saved["debug:canonical_match_count"] == "0"
     assert saved["debug:canonical_fallback_count"] == "0"
     assert "draft_keyword:1" not in saved
     assert "final_keyword:1" not in saved
+    assert fake_service.fallback_calls[0]["purpose"] == "일상 공유"
+    assert fake_service.fallback_calls[0]["fallback_source"] is None
 
 
 def test_process_utterance_falls_back_to_draft_keywords_when_canonical_lookup_misses(

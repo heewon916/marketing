@@ -13,8 +13,10 @@ from app.services.canonical_keyword_resolver import (
     CanonicalKeywordResolution,
 )
 from app.services.caption_generation import (
+    CaptionFallbackResult,
     CaptionGenerationRequest,
     CaptionGenerationResult,
+    DEFAULT_FALLBACK_GUIDE_TEXT,
 )
 from app.services.keyword_extraction import KeywordExtractionResult
 
@@ -69,6 +71,41 @@ class DefaultCaptionGenerationService:
                 f"{', '.join(request.keywords) if request.keywords else '오늘의 매장'}를 소개해보세요."
             ),
             draft_hashtags=hashtags or ["#today"],
+        )
+
+    def build_fallback_result(
+        self,
+        request: CaptionGenerationRequest,
+        fallback_source: str | None,
+    ) -> CaptionFallbackResult:
+        keyword_phrase = (
+            ", ".join(request.keywords) if request.keywords else "today's highlights"
+        )
+        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
+        if request.cloud_cover:
+            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        caption = (
+            f"{request.cloud_cover} day, {request.owner_persona} mood. "
+            f"How about sharing {keyword_phrase} with your audience today?"
+        )
+        guide_text = (
+            DEFAULT_FALLBACK_GUIDE_TEXT
+            if not request.keywords
+            else (
+                f"Make sure {', '.join(request.keywords)} is clearly visible in the shot. "
+                "Check the framing and subject emphasis before shooting."
+            )
+        )
+        effective_fallback_source = fallback_source
+        if not request.keywords and effective_fallback_source is None:
+            effective_fallback_source = "default_guide"
+        return CaptionFallbackResult(
+            result=CaptionGenerationResult(
+                guide_text=guide_text,
+                draft_caption=caption,
+                draft_hashtags=hashtags,
+            ),
+            fallback_source=effective_fallback_source,
         )
 
 
