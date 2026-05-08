@@ -324,6 +324,8 @@ pipeline {
                     DEFAULT_KEYWORD_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
                     DEFAULT_KEYWORD_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
                     KEYWORD_MODEL_FILENAME="model.gguf"
+                    KEYWORD_MODEL_CONTAINER_DIR="/models/qwen2.5-7b-instruct/q3_k_m"
+                    KEYWORD_MODEL_CONTAINER_PATH="${KEYWORD_MODEL_CONTAINER_DIR}/${KEYWORD_MODEL_FILENAME}"
 
                     get_env() {
                       key="$1"
@@ -383,6 +385,8 @@ pipeline {
                       echo "Current working directory: $(pwd)"
                       echo "Resolved host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
                       echo "Resolved model path: $KEYWORD_MODEL_PATH"
+                      echo "Resolved container dir: $KEYWORD_MODEL_CONTAINER_DIR"
+                      echo "Resolved container path: $KEYWORD_MODEL_CONTAINER_PATH"
                       run_observation "host dir listing" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
                       run_observation "host model stat" stat "$KEYWORD_MODEL_PATH"
                       run_observation "host model type" file "$KEYWORD_MODEL_PATH"
@@ -390,8 +394,8 @@ pipeline {
                       run_observation "path permissions" namei -l "$KEYWORD_MODEL_PATH"
                       run_observation "jenkins user readability" test -r "$KEYWORD_MODEL_PATH"
                       run_observation "jenkins user file existence" test -f "$KEYWORD_MODEL_PATH"
-                      run_observation "container mount listing" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:/models" python:3.12-slim ls -lah /models
-                      run_observation "container mount model existence" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:/models" python:3.12-slim python -c "from pathlib import Path; p=Path('/models/model.gguf'); print(p.exists(), p.stat().st_size if p.exists() else 'missing')"
+                      run_observation "container mount listing" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim ls -lah "$KEYWORD_MODEL_CONTAINER_DIR"
+                      run_observation "container mount model existence" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$KEYWORD_MODEL_CONTAINER_PATH'); print(p.exists(), p.stat().st_size if p.exists() else 'missing')"
                       if command -v sudo >/dev/null 2>&1 && id jenkins >/dev/null 2>&1; then
                         run_observation "sudo -u jenkins file existence" sudo -n -u jenkins test -f "$KEYWORD_MODEL_PATH"
                       fi
@@ -413,6 +417,7 @@ pipeline {
                     }
 
                     echo "Keyword model host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                    echo "Keyword model container dir: $KEYWORD_MODEL_CONTAINER_DIR"
                     echo "Keyword model source: ${KEYWORD_MODEL_HF_REPO_ID_VALUE}/${KEYWORD_MODEL_HF_FILENAME_VALUE}"
                     echo "Keyword model file path: $KEYWORD_MODEL_PATH"
 
@@ -424,8 +429,8 @@ pipeline {
                         -e HF_HOME=/tmp/hf-home \
                         -e KEYWORD_MODEL_HF_REPO_ID="$KEYWORD_MODEL_HF_REPO_ID_VALUE" \
                         -e KEYWORD_MODEL_HF_FILENAME="$KEYWORD_MODEL_HF_FILENAME_VALUE" \
-                        -e TARGET_PATH="/models/${KEYWORD_MODEL_FILENAME}" \
-                        -v "$KEYWORD_MODEL_HOST_DIR_VALUE:/models" \
+                        -e TARGET_PATH="$KEYWORD_MODEL_CONTAINER_PATH" \
+                        -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" \
                         python:3.12-slim sh -ceu '
                           python -m pip install --disable-pip-version-check --no-cache-dir huggingface_hub >/tmp/pip-install.log
                           python - <<'"'"'PY'"'"'
@@ -458,6 +463,7 @@ except Exception as exc:
         f"Failed to download keyword model {repo_id}/{filename} to {target_path}: {exc}"
     ) from exc
 PY
+                          ls -lah '"$KEYWORD_MODEL_CONTAINER_DIR"'
                         ' || docker_run_rc=$?
 
                       echo "docker_run_exit=${docker_run_rc}"
