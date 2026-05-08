@@ -1,4 +1,5 @@
 import CardShell from './CardShell';
+import CharacterLove from '@/assets/character/CharacterLove.png';
 
 export default function ProfileCard({
   storeName,
@@ -13,6 +14,12 @@ export default function ProfileCard({
       aria-label="계정 정보로 이동"
     >
       <div className="flex min-w-0 flex-1 items-center gap-4">
+        {/* 원형 프로필 사진 */}
+        <img
+          src={CharacterLove}
+          alt="프로필 사진"
+          className="h-16 w-16 shrink-0 rounded-full object-cover ring-1 ring-gray-300"
+        />
         <div className="flex min-w-0 flex-col">
           <strong className="truncate text-[22px] font-extrabold tracking-tight text-accent-100">
             {storeName}

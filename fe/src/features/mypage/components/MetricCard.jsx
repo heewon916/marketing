@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import Modal from '@/components/common/Modal';
 import CardShell from './CardShell';
 
-export default function MetricCard({ title, value, unit, description }) {
+export default function MetricCard({
+  title,
+  modalTitle,
+  value,
+  unit,
+  description,
+}) {
   const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
   const [animatedValue, setAnimatedValue] = useState(0);
 
@@ -42,9 +48,9 @@ export default function MetricCard({ title, value, unit, description }) {
 
   return (
     <>
-      <CardShell className="relative flex min-h-[160px] flex-col justify-between p-5">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="pr-7 text-[20px] font-medium leading-snug text-accent-100">
+      <CardShell className="relative flex min-h-[160px] min-w-0 flex-col justify-between p-5">
+        <div className="flex items-start justify-between gap-1">
+          <h3 className="pr-7 text-[18px] font-bold leading-snug text-accent-100">
             {title}
           </h3>
 
@@ -53,15 +59,17 @@ export default function MetricCard({ title, value, unit, description }) {
               type="button"
               onClick={() => setIsDescriptionOpen(true)}
               className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-gray-500"
-              aria-label="지표 설명 보기"
+              aria-label={`${modalTitle || '지표'} 설명 보기`}
             >
-              <span className="material-icons" style={{ fontSize: '16px' }}>question_mark</span>
+              <span className="material-icons" style={{ fontSize: '16px' }}>
+                question_mark
+              </span>
             </button>
           )}
         </div>
 
         <div className="flex w-full items-baseline justify-end gap-1.5 text-right">
-          <strong className="text-[40px] font-semibold tracking-tight text-accent-100">
+          <strong className="text-[38px] font-semibold tracking-tight text-accent-100">
             {animatedValue.toLocaleString()}
           </strong>
 
@@ -80,12 +88,12 @@ export default function MetricCard({ title, value, unit, description }) {
         >
           <div className="text-center">
             <h3 className="text-[28px] font-extrabold leading-snug text-primary-100">
-              {title}
+              {modalTitle || title}
             </h3>
 
-            <p className="mt-5 whitespace-pre-line text-[18px] font-medium leading-relaxed text-gray-600">
+            <div className="mt-5 text-[18px] font-medium leading-relaxed text-gray-600">
               {description}
-            </p>
+            </div>
           </div>
         </Modal>
       )}
