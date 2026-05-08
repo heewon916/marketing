@@ -52,7 +52,7 @@ export default function MyPageHeader({
       )}
 
       {storeName && (
-        <div className="mx-auto flex w-full max-w-[430px] items-center justify-between px-9 pb-4 pt-10">
+        <div className="mx-auto flex w-full max-w-[430px] items-start justify-between px-9 pb-4 pt-10">
           <div className="flex flex-col">
             <strong className="text-[26px] font-extrabold tracking-tight text-black">
               {storeName}
@@ -63,7 +63,7 @@ export default function MyPageHeader({
                 href={instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 text-[15px] text-black transition-colors hover:text-primary-100"
+                className="mt-1 text-[15px] text-black transition-colors"
               >
                 {instagramUsername}
               </a>
@@ -96,7 +96,7 @@ export default function MyPageHeader({
             </div>
           </div>
 
-          <div className="h-[85px] w-[85px] shrink-0 overflow-hidden rounded-full bg-surface-100 shadow-[0_8px_18px_rgba(0,0,0,0.14)]">
+          <div className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full bg-surface-100 border border-gray-300">
             <img
               src={CharacterLove}
               alt="프로필 캐릭터"

@@ -1,10 +1,7 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import MyPageHeader from '../components/MyPageHeader';
 import AccountInfoEdit from '../components/AccountInfoEdit';
 import InfoItem from '../components/InfoItem';
 import CardShell from '../components/CardShell';
-import BottomTab from '@/components/common/BottomTab';
 import Button from '@/components/common/Button';
 
 const accountMockData = {
@@ -15,8 +12,7 @@ const accountMockData = {
   address: '서울시 강남구 역삼대로 123',
 };
 
-export default function AccountInfoSection({ isEmbedded = false }) {
-  const navigate = useNavigate();
+export default function AccountInfoSection() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState(accountMockData);
 
@@ -36,12 +32,8 @@ export default function AccountInfoSection({ isEmbedded = false }) {
     setIsEditing(false);
   };
 
-  const handleBack = () => {
-    navigate('/mypage');
-  };
-
-  const content = (
-    <>
+  return (
+    <section className="flex flex-col gap-4">
       {isEditing ? (
         <AccountInfoEdit formData={formData} onChange={setFormData} />
       ) : (
@@ -84,26 +76,6 @@ export default function AccountInfoSection({ isEmbedded = false }) {
           </Button>
         </div>
       )}
-    </>
-  );
-
-  if (isEmbedded) {
-    return <section className="flex flex-col gap-4">{content}</section>;
-  }
-
-  return (
-    <div className="min-h-screen bg-[#f4f4f6] pb-28">
-      <MyPageHeader
-        title="계정 정보"
-        showBackButton={!isEditing}
-        onBack={handleBack}
-      />
-
-      <main className="mx-auto flex w-full max-w-[430px] flex-col gap-4 px-5 pt-5">
-        {content}
-      </main>
-
-      <BottomTab />
-    </div>
+    </section>
   );
 }
