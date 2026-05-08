@@ -1,24 +1,33 @@
-import CardShell from './CardShell';
+import Button from '@/components/common/Button';
+import CardShell from '../components/CardShell';
 
-export default function OperatingHoursList({ hours }) {
+export default function OperatingHoursList({ hours, onEdit }) {
   return (
-    <CardShell className="flex flex-col gap-5 p-5">
-      {hours.map((item) => (
-        <div
-          key={item.day}
-          className="grid grid-cols-[72px_1fr] items-center border-b border-gray-100 pb-5 last:border-b-0 last:pb-0"
-        >
-          <span className="text-[18px] font-bold text-accent-100">
-            {item.day}요일
-          </span>
+    <CardShell className="flex flex-col px-7 py-8">
+      <h3 className="text-[15px] font-semibold text-gray-400">영업시간</h3>
 
-          <span className="text-right text-[18px] font-semibold text-accent-100">
-            {item.isOpen
-              ? `${item.startTime} - ${item.endTime}`
-              : '휴무'}
-          </span>
-        </div>
-      ))}
+      <ul className="mt-6 flex flex-col gap-4">
+        {hours.map(({ day, isOpen, startTime, endTime }) => (
+          <li
+            key={day}
+            className="grid grid-cols-[80px_1fr] items-center text-[18px] font-bold text-accent-100"
+          >
+            <span>{day}요일</span>
+            <span className="text-right">
+              {isOpen ? `${startTime} - ${endTime}` : '휴무'}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <Button
+        size="lg"
+        variant="primary"
+        onClick={onEdit}
+        className="mt-8 w-full text-[18px] font-bold"
+      >
+        수정하기
+      </Button>
     </CardShell>
   );
 }

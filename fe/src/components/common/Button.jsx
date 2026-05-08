@@ -16,6 +16,10 @@ const variantStyles = {
     bg-accent-100 text-white
     active:brightness-90
   `,
+    danger: `
+    bg-red-500 text-white border border-red-500
+    active:brightness-95
+  `,
 };
 
 export default function Button({
