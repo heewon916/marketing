@@ -227,22 +227,6 @@ _WEATHER_CONTEXT_BY_TAG = {
     TEMP_MILD: "선선한 날",
 }
 
-_WEATHER_HASHTAG_BY_TAG = {
-    PRECIP_HEAVY_RAIN: "#폭우",
-    PRECIP_RAIN: "#비오는날",
-    PRECIP_CLEAR: "#맑은날",
-    PRECIP_CLOUDY: "#흐린날",
-    SPECIAL_TYPHOON: "#강풍주의",
-    SPECIAL_FINE_DUST: "#미세먼지주의",
-    SPECIAL_SEASONAL_CHANGE: "#환절기",
-    TEMP_SCORCHING: "#무더위",
-    TEMP_HOT: "#더운날",
-    TEMP_COLD: "#쌀쌀한날",
-    TEMP_FREEZING: "#한파",
-    TEMP_MILD: "#선선한날",
-}
-
-
 def _select_weather_copy_tags(weather_tags: list[str]) -> list[str]:
     selected: list[str] = []
 
@@ -273,18 +257,6 @@ def _build_weather_context(weather_tags: list[str]) -> str:
     return ", ".join(_WEATHER_CONTEXT_BY_TAG[tag] for tag in selected_tags)
 
 
-def _build_weather_hashtags(weather_tags: list[str], limit: int = 2) -> list[str]:
-    hashtags: list[str] = []
-    for tag in _select_weather_copy_tags(weather_tags):
-        hashtag = _WEATHER_HASHTAG_BY_TAG.get(tag)
-        if hashtag is None or hashtag in hashtags:
-            continue
-        hashtags.append(hashtag)
-        if len(hashtags) == limit:
-            break
-    return hashtags
-
-
 class CaptionGenerationUnavailableError(RuntimeError):
     """Raised when caption generation is unavailable."""
 
@@ -293,13 +265,10 @@ class CaptionGenerationUnavailableError(RuntimeError):
 class CaptionGenerationResult:
     guide_text: str
     draft_caption: str
-    draft_hashtags: list[str] = field(default_factory=list)
 
     @property
     def stored_caption(self) -> str:
-        return " ".join(
-            part for part in [self.draft_caption, *self.draft_hashtags] if part
-        )
+        return self.draft_caption
 
 
 @dataclass
@@ -335,7 +304,7 @@ class CaptionPipeline:
         request: CaptionGenerationRequest,
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
-        draft_caption, draft_hashtags = self._build_fallback_caption(request)
+        draft_caption = self._build_fallback_caption(request)
         guide_text = (
             self._build_fallback_guide_text(request)
             if request.keywords
@@ -348,36 +317,21 @@ class CaptionPipeline:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=draft_caption,
-                draft_hashtags=draft_hashtags,
             ),
             fallback_source=effective_fallback_source,
         )
 
-    def _build_fallback_caption(
-        self,
-        request: CaptionGenerationRequest,
-    ) -> tuple[str, list[str]]:
+    def _build_fallback_caption(self, request: CaptionGenerationRequest) -> str:
         keyword_phrase = (
-            ", ".join(request.keywords) if request.keywords else "today's highlights"
+            ", ".join(request.keywords) if request.keywords else "오늘의 매장"
         )
         weather_context = _build_weather_context(request.weather_tags)
         if weather_context != "특별한 날씨 포인트 없음":
-            caption = (
+            return (
                 f"{weather_context} 분위기와 {request.owner_persona} 무드로 "
                 f"{keyword_phrase}를 소개해보세요."
             )
-        else:
-            caption = (
-                f"{request.owner_persona} 무드로 {keyword_phrase}를 소개해보세요."
-            )
-        hashtags = [f"#{kw.replace(' ', '')}" for kw in request.keywords[:5]]
-        hashtags.extend(
-            hashtag for hashtag in _build_weather_hashtags(request.weather_tags)
-            if hashtag not in hashtags
-        )
-        if not hashtags:
-            hashtags.append("#오늘기록")
-        return caption, hashtags
+        return f"{request.owner_persona} 무드로 {keyword_phrase}를 소개해보세요."
 
     def _build_fallback_guide_text(self, request: CaptionGenerationRequest) -> str:
         keyword_phrase = ", ".join(request.keywords)
@@ -418,6 +372,7 @@ class CaptionGenerationService:
         self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
         self._server_checked = False
+        self._response_format_supported: bool = True
         self._pipelines = _build_caption_pipeline_registry()
 
     async def preload(self) -> None:
@@ -477,7 +432,6 @@ class CaptionGenerationService:
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                 guide_text_length=len(result.guide_text),
                 draft_caption_length=len(result.draft_caption),
-                hashtag_count=len(result.draft_hashtags),
                 purpose=request.purpose,
             ),
         )
@@ -503,7 +457,7 @@ class CaptionGenerationService:
                 {
                     "role": "system",
                     "content": (
-                        "Return only a JSON object with guide_text, caption, and hashtags."
+                        "guide_text와 caption만 담은 JSON 객체 한 개만 한국어로 반환하세요."
                     ),
                 },
                 {"role": "user", "content": prompt},
@@ -520,14 +474,8 @@ class CaptionGenerationService:
                     "properties": {
                         "guide_text": {"type": "string"},
                         "caption": {"type": "string"},
-                        "hashtags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 1,
-                            "maxItems": 5,
-                        },
                     },
-                    "required": ["guide_text", "caption", "hashtags"],
+                    "required": ["guide_text", "caption"],
                 },
             }
         return payload
@@ -600,10 +548,18 @@ class CaptionGenerationService:
 
     @staticmethod
     def _is_response_format_unsupported(response: httpx.Response) -> bool:
-        if response.status_code < 400:
+        if response.status_code != 400:
             return False
         body = response.text.lower()
-        return "response_format" in body or "json_object" in body or "schema" in body
+        if "response_format" not in body:
+            return False
+        unsupported_markers = (
+            "unsupported",
+            "not supported",
+            "unknown",
+            "invalid",
+        )
+        return any(marker in body for marker in unsupported_markers)
 
     def _get_pipeline(self, purpose: ContentPurpose) -> CaptionPipeline:
         pipeline = self._pipelines.get(purpose)
@@ -620,12 +576,30 @@ class CaptionGenerationService:
             )
 
         response: httpx.Response | None = None
+        first_unsupported_status: int | None = None
         try:
             response = await self._post_chat_completion(
                 prompt,
-                include_response_format=True,
+                include_response_format=self._response_format_supported,
             )
-            if self._is_response_format_unsupported(response):
+            if (
+                self._response_format_supported
+                and self._is_response_format_unsupported(response)
+            ):
+                first_unsupported_status = response.status_code
+                self._response_format_supported = False
+                logger.warning(
+                    "Caption server reports response_format unsupported; "
+                    "disabling for subsequent requests.",
+                    extra=build_log_extra(
+                        "caption_generation.response_format.disabled",
+                        component="caption_generation",
+                        stage="generate",
+                        outcome="degraded",
+                        purpose=purpose,
+                        caption_http_status=first_unsupported_status,
+                    ),
+                )
                 response = await self._post_chat_completion(
                     prompt,
                     include_response_format=False,
@@ -634,9 +608,15 @@ class CaptionGenerationService:
         except httpx.TimeoutException as exc:
             raise TimeoutError from exc
         except httpx.HTTPStatusError as exc:
-            raise CaptionGenerationUnavailableError(
+            detail = (
                 f"Caption generation server returned HTTP {exc.response.status_code}."
-            ) from exc
+            )
+            if first_unsupported_status is not None:
+                detail += (
+                    f" Initial response_format request returned HTTP "
+                    f"{first_unsupported_status}."
+                )
+            raise CaptionGenerationUnavailableError(detail) from exc
         except httpx.HTTPError as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation server request failed."
@@ -692,9 +672,8 @@ class CaptionGenerationService:
 
         guide_text = self._normalize_text(payload.get("guide_text"))
         draft_caption = self._normalize_text(payload.get("caption"))
-        draft_hashtags = self._normalize_hashtags(payload.get("hashtags"))
 
-        if not guide_text or not draft_caption or not draft_hashtags:
+        if not guide_text or not draft_caption:
             raise CaptionGenerationUnavailableError(
                 "Caption generation returned incomplete text fields."
             )
@@ -702,37 +681,13 @@ class CaptionGenerationService:
         return CaptionGenerationResult(
             guide_text=guide_text,
             draft_caption=draft_caption,
-            draft_hashtags=draft_hashtags,
         )
 
     @staticmethod
     def _normalize_text(value: Any) -> str:
         if not isinstance(value, str):
             return ""
-        return re.sub(r"\s+", " ", value.strip())
-
-    @staticmethod
-    def _normalize_hashtags(value: Any) -> list[str]:
-        if not isinstance(value, list):
-            return []
-
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            if not isinstance(item, str):
-                continue
-            hashtag = re.sub(r"\s+", "", item.strip())
-            if not hashtag:
-                continue
-            if not hashtag.startswith("#"):
-                hashtag = f"#{hashtag.lstrip('#')}"
-            if len(hashtag) < 2 or hashtag in seen:
-                continue
-            seen.add(hashtag)
-            normalized.append(hashtag)
-            if len(normalized) == 5:
-                break
-        return normalized
+        return value.strip()
 
 
 def build_caption_generation_service() -> CaptionGenerationService:
