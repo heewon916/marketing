@@ -258,8 +258,6 @@ pipeline {
                     require_env INSTAGRAM_CLIENT_ID
                     require_env INSTAGRAM_CLIENT_SECRET
                     require_env FIREBASE_ENABLED
-                    require_env KEYWORD_MODEL_HOST_DIR
-                    require_env KEYWORD_MODEL_FILE
                     require_optional_positive_integer KEYWORD_MODEL_CTX_SIZE
                     require_optional_integer KEYWORD_MODEL_GPU_LAYERS
 
@@ -313,30 +311,106 @@ pipeline {
             }
         }
 
-        stage('Check Keyword Model Provisioning') {
+        stage('Provision Keyword Model') {
             steps {
                 sh '''
                     set +x
                     set -eu
 
-                    echo "===== Check keyword model provisioning ====="
+                    echo "===== Provision keyword model ====="
 
                     ENV_PATH="${DEPLOY_DIR}/.env"
+                    DEFAULT_KEYWORD_MODEL_HOST_DIR="./.models/keyword/qwen2.5-7b-instruct/q3_k_m"
+                    DEFAULT_KEYWORD_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
+                    DEFAULT_KEYWORD_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
+                    KEYWORD_MODEL_FILENAME="model.gguf"
 
                     get_env() {
                       key="$1"
-                      grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2-
+                      grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
                     }
 
-                    KEYWORD_MODEL_HOST_DIR_VALUE="$(get_env KEYWORD_MODEL_HOST_DIR)"
-                    KEYWORD_MODEL_FILE_VALUE="$(get_env KEYWORD_MODEL_FILE)"
-                    KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILE_VALUE}"
+                    KEYWORD_MODEL_HOST_DIR_RAW="$(get_env KEYWORD_MODEL_HOST_DIR)"
+                    KEYWORD_MODEL_HF_REPO_ID_VALUE="$(get_env KEYWORD_MODEL_HF_REPO_ID)"
+                    KEYWORD_MODEL_HF_FILENAME_VALUE="$(get_env KEYWORD_MODEL_HF_FILENAME)"
+
+                    if [ -z "$KEYWORD_MODEL_HOST_DIR_RAW" ]; then
+                      KEYWORD_MODEL_HOST_DIR_RAW="$DEFAULT_KEYWORD_MODEL_HOST_DIR"
+                    fi
+
+                    if [ -z "$KEYWORD_MODEL_HF_REPO_ID_VALUE" ]; then
+                      KEYWORD_MODEL_HF_REPO_ID_VALUE="$DEFAULT_KEYWORD_MODEL_HF_REPO_ID"
+                    fi
+
+                    if [ -z "$KEYWORD_MODEL_HF_FILENAME_VALUE" ]; then
+                      KEYWORD_MODEL_HF_FILENAME_VALUE="$DEFAULT_KEYWORD_MODEL_HF_FILENAME"
+                    fi
+
+                    case "$KEYWORD_MODEL_HOST_DIR_RAW" in
+                      /*)
+                        KEYWORD_MODEL_HOST_DIR_VALUE="$KEYWORD_MODEL_HOST_DIR_RAW"
+                        ;;
+                      *)
+                        KEYWORD_MODEL_HOST_DIR_VALUE="${DEPLOY_DIR}/${KEYWORD_MODEL_HOST_DIR_RAW#./}"
+                        ;;
+                    esac
+
+                    mkdir -p "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    KEYWORD_MODEL_HOST_DIR_VALUE="$(cd "$KEYWORD_MODEL_HOST_DIR_VALUE" && pwd -P)"
+                    KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILENAME}"
+
+                    echo "Keyword model host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                    echo "Keyword model source: ${KEYWORD_MODEL_HF_REPO_ID_VALUE}/${KEYWORD_MODEL_HF_FILENAME_VALUE}"
+                    echo "Keyword model file exists: $KEYWORD_MODEL_PATH"
+
+                    if [ ! -f "$KEYWORD_MODEL_PATH" ]; then
+                      echo "Keyword model is missing. Downloading the GGUF artifact..."
+
+                      docker run --rm \
+                        -e HF_HOME=/tmp/hf-home \
+                        -e KEYWORD_MODEL_HF_REPO_ID="$KEYWORD_MODEL_HF_REPO_ID_VALUE" \
+                        -e KEYWORD_MODEL_HF_FILENAME="$KEYWORD_MODEL_HF_FILENAME_VALUE" \
+                        -e TARGET_PATH="/models/${KEYWORD_MODEL_FILENAME}" \
+                        -v "$KEYWORD_MODEL_HOST_DIR_VALUE:/models" \
+                        python:3.12-slim sh -ceu '
+                          python -m pip install --disable-pip-version-check --no-cache-dir huggingface_hub >/tmp/pip-install.log
+                          python - <<'"'"'PY'"'"'
+import os
+import shutil
+from pathlib import Path
+
+from huggingface_hub import hf_hub_download
+
+repo_id = os.environ["KEYWORD_MODEL_HF_REPO_ID"]
+filename = os.environ["KEYWORD_MODEL_HF_FILENAME"]
+target_path = Path(os.environ["TARGET_PATH"])
+temp_path = target_path.with_suffix(".download")
+
+try:
+    downloaded_path = Path(
+        hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            repo_type="model",
+        )
+    )
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(downloaded_path, temp_path)
+    temp_path.replace(target_path)
+    print(f"Downloaded {repo_id}/{filename} -> {target_path}")
+except Exception as exc:
+    temp_path.unlink(missing_ok=True)
+    raise SystemExit(
+        f"Failed to download keyword model {repo_id}/{filename} to {target_path}: {exc}"
+    ) from exc
+PY
+                        '
+                    else
+                      echo "Keyword model already exists. Skip download."
+                    fi
 
                     test -d "$KEYWORD_MODEL_HOST_DIR_VALUE"
                     test -f "$KEYWORD_MODEL_PATH"
-
-                    echo "Keyword model directory exists: $KEYWORD_MODEL_HOST_DIR_VALUE"
-                    echo "Keyword model file exists: $KEYWORD_MODEL_PATH"
                 '''
             }
         }

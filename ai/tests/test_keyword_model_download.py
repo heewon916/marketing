@@ -53,7 +53,9 @@ def test_ensure_keyword_model_available_uses_default_path_when_not_provided(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     downloaded = tmp_path / "cache" / "qwen2.5-7b-instruct-q3_k_m.gguf"
-    default_model_path = tmp_path / "models" / "qwen-gguf" / "model.gguf"
+    default_model_path = (
+        tmp_path / "models" / "qwen2.5-7b-instruct" / "q3_k_m" / "model.gguf"
+    )
     downloaded.parent.mkdir(parents=True, exist_ok=True)
     downloaded.write_bytes(b"default")
 
@@ -65,6 +67,11 @@ def test_ensure_keyword_model_available_uses_default_path_when_not_provided(
 
     monkeypatch.setattr(keyword_model_download, "_hf_hub_download", fake_hf_hub_download)
     monkeypatch.setattr(config, "DEFAULT_KEYWORD_MODEL_PATH", default_model_path)
+    monkeypatch.setattr(
+        keyword_model_download,
+        "DEFAULT_KEYWORD_MODEL_PATH",
+        default_model_path,
+    )
 
     resolved = ensure_keyword_model_available()
 
