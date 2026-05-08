@@ -4,6 +4,7 @@ import BottomTab from "@/components/common/BottomTab"
 import InputBar from "@/components/common/InputBar"
 import Character from "@/components/common/Character"
 import TitleText from "@/components/common/TitleText"
+import { registerFcmToken } from "@/features/notification/api/FcmApi"
 
 function HomePage() {
   const [isTyping, setIsTyping] = useState(false)
@@ -11,13 +12,23 @@ function HomePage() {
   const navigate = useNavigate()
 
   const isActive = isTyping || isRecording
+  const handleFcmRegisterClick = () => {
+    console.log("FCM 권한 요청 및 토큰 등록 시도")
+    void registerFcmToken()
+  }
 
   return (
     <main className="relative flex h-dvh justify-center bg-surface-50">
       <div className="h-full w-full max-w-md px-5 py-6 pb-60">
         {/* 상단 여백 */}
         <section className="flex justify-center pt-2">
-          <div className="h-7 w-80" />
+          <button
+            type="button"
+            onClick={handleFcmRegisterClick}
+            className="h-7 rounded-full border border-slate-300 px-3 text-xs font-medium text-slate-700"
+          >
+            임시 FCM 권한/토큰 요청
+          </button>
         </section>
 
         {/* 상단 글 영역 */}

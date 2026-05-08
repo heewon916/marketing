@@ -12,3 +12,4 @@
 
 ## Convention
 - Git Convention: docs/git-convention.md
+- AI Keyword Server: docs/ai-keyword-server.md

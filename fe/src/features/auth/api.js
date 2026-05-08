@@ -14,6 +14,10 @@ export const authApi = {
     window.location.href = `${BACKEND_URL}/api/v1/users/instagram`;
   },
 
+  getMe() {
+    return api.get('/api/v1/users/me');
+  },
+
   verifyPosPin(pin) {
     return api.post('/api/v1/onboarding/pin/verify', {
       pin,

@@ -202,6 +202,34 @@ pipeline {
                       esac
                     }
 
+                    require_optional_integer() {
+                      key="$1"
+                      value="$(get_env "$key" || true)"
+
+                      if [ -z "$value" ]; then
+                        return
+                      fi
+
+                      echo "$value" | grep -Eq '^-?[0-9]+$' || {
+                        echo "ERROR: ${key} should be an integer"
+                        exit 1
+                      }
+                    }
+
+                    require_optional_positive_integer() {
+                      key="$1"
+                      value="$(get_env "$key" || true)"
+
+                      if [ -z "$value" ]; then
+                        return
+                      fi
+
+                      echo "$value" | grep -Eq '^[1-9][0-9]*$' || {
+                        echo "ERROR: ${key} should be a positive integer"
+                        exit 1
+                      }
+                    }
+
                     require_env POSTGRES_DB
                     require_env POSTGRES_USER
                     require_env POSTGRES_PASSWORD
@@ -230,6 +258,8 @@ pipeline {
                     require_env INSTAGRAM_CLIENT_ID
                     require_env INSTAGRAM_CLIENT_SECRET
                     require_env FIREBASE_ENABLED
+                    require_optional_positive_integer KEYWORD_MODEL_CTX_SIZE
+                    require_optional_integer KEYWORD_MODEL_GPU_LAYERS
 
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
@@ -277,6 +307,193 @@ pipeline {
                     test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
+                '''
+            }
+        }
+
+        stage('Provision Keyword Model') {
+            steps {
+                sh '''
+                    set +x
+                    set -eu
+
+                    echo "===== Provision keyword model ====="
+
+                    ENV_PATH="${DEPLOY_DIR}/.env"
+                    DEFAULT_KEYWORD_MODEL_HOST_DIR="./.models/keyword/qwen2.5-7b-instruct/q3_k_m"
+                    DEFAULT_KEYWORD_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
+                    DEFAULT_KEYWORD_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
+                    KEYWORD_MODEL_FILENAME="model.gguf"
+                    KEYWORD_MODEL_CONTAINER_DIR="/models/qwen2.5-7b-instruct/q3_k_m"
+                    KEYWORD_MODEL_CONTAINER_PATH="${KEYWORD_MODEL_CONTAINER_DIR}/${KEYWORD_MODEL_FILENAME}"
+
+                    get_env() {
+                      key="$1"
+                      grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
+                    }
+
+                    KEYWORD_MODEL_HOST_DIR_RAW="$(get_env KEYWORD_MODEL_HOST_DIR)"
+                    KEYWORD_MODEL_HF_REPO_ID_VALUE="$(get_env KEYWORD_MODEL_HF_REPO_ID)"
+                    KEYWORD_MODEL_HF_FILENAME_VALUE="$(get_env KEYWORD_MODEL_HF_FILENAME)"
+
+                    if [ -z "$KEYWORD_MODEL_HOST_DIR_RAW" ]; then
+                      KEYWORD_MODEL_HOST_DIR_RAW="$DEFAULT_KEYWORD_MODEL_HOST_DIR"
+                    fi
+
+                    if [ -z "$KEYWORD_MODEL_HF_REPO_ID_VALUE" ]; then
+                      KEYWORD_MODEL_HF_REPO_ID_VALUE="$DEFAULT_KEYWORD_MODEL_HF_REPO_ID"
+                    fi
+
+                    if [ -z "$KEYWORD_MODEL_HF_FILENAME_VALUE" ]; then
+                      KEYWORD_MODEL_HF_FILENAME_VALUE="$DEFAULT_KEYWORD_MODEL_HF_FILENAME"
+                    fi
+
+                    case "$KEYWORD_MODEL_HOST_DIR_RAW" in
+                      /*)
+                        KEYWORD_MODEL_HOST_DIR_VALUE="$KEYWORD_MODEL_HOST_DIR_RAW"
+                        ;;
+                      *)
+                        KEYWORD_MODEL_HOST_DIR_VALUE="${DEPLOY_DIR}/${KEYWORD_MODEL_HOST_DIR_RAW#./}"
+                        ;;
+                    esac
+
+                    mkdir -p "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    KEYWORD_MODEL_HOST_DIR_VALUE="$(cd "$KEYWORD_MODEL_HOST_DIR_VALUE" && pwd -P)"
+                    KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILENAME}"
+
+                    print_step_status() {
+                      label="$1"
+                      status="$2"
+                      echo "[keyword-model] ${label}: ${status}"
+                    }
+
+                    run_observation() {
+                      label="$1"
+                      shift
+                      echo "[keyword-model] observe: ${label}"
+                      "$@"
+                      rc=$?
+                      echo "[keyword-model] observe exit=${rc}: ${label}"
+                      return 0
+                    }
+
+                    collect_keyword_model_diagnostics() {
+                      set +e
+                      echo "===== Keyword model diagnostics ====="
+                      echo "Current user: $(id -un)"
+                      echo "Current uid/gid: $(id -u):$(id -g)"
+                      echo "Current working directory: $(pwd)"
+                      echo "Resolved host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                      echo "Resolved model path: $KEYWORD_MODEL_PATH"
+                      echo "Resolved container dir: $KEYWORD_MODEL_CONTAINER_DIR"
+                      echo "Resolved container path: $KEYWORD_MODEL_CONTAINER_PATH"
+                      run_observation "host dir listing" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                      run_observation "host model stat" stat "$KEYWORD_MODEL_PATH"
+                      run_observation "host model type" file "$KEYWORD_MODEL_PATH"
+                      run_observation "host model size" du -h "$KEYWORD_MODEL_PATH"
+                      run_observation "path permissions" namei -l "$KEYWORD_MODEL_PATH"
+                      run_observation "jenkins user readability" test -r "$KEYWORD_MODEL_PATH"
+                      run_observation "jenkins user file existence" test -f "$KEYWORD_MODEL_PATH"
+                      run_observation "container mount listing" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim ls -lah "$KEYWORD_MODEL_CONTAINER_DIR"
+                      run_observation "container mount model existence" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$KEYWORD_MODEL_CONTAINER_PATH'); print(p.exists(), p.stat().st_size if p.exists() else 'missing')"
+                      if command -v sudo >/dev/null 2>&1 && id jenkins >/dev/null 2>&1; then
+                        run_observation "sudo -u jenkins file existence" sudo -n -u jenkins test -f "$KEYWORD_MODEL_PATH"
+                      fi
+                      set -e
+                    }
+
+                    require_check() {
+                      label="$1"
+                      shift
+                      if "$@"; then
+                        print_step_status "$label" "ok"
+                        return 0
+                      fi
+
+                      rc=$?
+                      print_step_status "$label" "failed (exit=${rc})"
+                      collect_keyword_model_diagnostics
+                      exit "$rc"
+                    }
+
+                    note_observation_limitations() {
+                      echo "[keyword-model] note: Jenkins host-side file checks may differ from the Docker daemon view."
+                      echo "[keyword-model] note: Docker mount revalidation is the deployment gate for this stage."
+                    }
+
+                    echo "Keyword model host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                    echo "Keyword model container dir: $KEYWORD_MODEL_CONTAINER_DIR"
+                    echo "Keyword model source: ${KEYWORD_MODEL_HF_REPO_ID_VALUE}/${KEYWORD_MODEL_HF_FILENAME_VALUE}"
+                    echo "Keyword model file path: $KEYWORD_MODEL_PATH"
+                    note_observation_limitations
+
+                    if [ ! -f "$KEYWORD_MODEL_PATH" ]; then
+                      echo "Keyword model is missing. Downloading the GGUF artifact..."
+
+                      docker_run_rc=0
+                      docker run --rm \
+                        -e HF_HOME=/tmp/hf-home \
+                        -e KEYWORD_MODEL_HF_REPO_ID="$KEYWORD_MODEL_HF_REPO_ID_VALUE" \
+                        -e KEYWORD_MODEL_HF_FILENAME="$KEYWORD_MODEL_HF_FILENAME_VALUE" \
+                        -e TARGET_PATH="$KEYWORD_MODEL_CONTAINER_PATH" \
+                        -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" \
+                        python:3.12-slim sh -ceu '
+                          python -m pip install --disable-pip-version-check --no-cache-dir huggingface_hub >/tmp/pip-install.log
+                          python - <<'"'"'PY'"'"'
+import os
+import shutil
+from pathlib import Path
+
+from huggingface_hub import hf_hub_download
+
+repo_id = os.environ["KEYWORD_MODEL_HF_REPO_ID"]
+filename = os.environ["KEYWORD_MODEL_HF_FILENAME"]
+target_path = Path(os.environ["TARGET_PATH"])
+temp_path = target_path.with_suffix(".download")
+
+try:
+    downloaded_path = Path(
+        hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            repo_type="model",
+        )
+    )
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(downloaded_path, temp_path)
+    temp_path.replace(target_path)
+    print(f"Downloaded {repo_id}/{filename} -> {target_path}")
+except Exception as exc:
+    temp_path.unlink(missing_ok=True)
+    raise SystemExit(
+        f"Failed to download keyword model {repo_id}/{filename} to {target_path}: {exc}"
+    ) from exc
+PY
+                          ls -lah '"$KEYWORD_MODEL_CONTAINER_DIR"'
+                        ' || docker_run_rc=$?
+
+                      echo "docker_run_exit=${docker_run_rc}"
+                      if [ "$docker_run_rc" -ne 0 ]; then
+                        print_step_status "docker download container" "failed"
+                        collect_keyword_model_diagnostics
+                        exit "$docker_run_rc"
+                      fi
+
+                      print_step_status "docker download container" "ok"
+                    else
+                      echo "Keyword model already exists. Skip download."
+                    fi
+
+                    echo "after download"
+                    # run_observation "host dir listing after download" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    # run_observation "host model stat after download" stat "$KEYWORD_MODEL_PATH"
+                    # run_observation "host model type after download" file "$KEYWORD_MODEL_PATH"
+                    # run_observation "host model size after download" du -h "$KEYWORD_MODEL_PATH"
+                    # run_observation "jenkins user file existence after download" test -f "$KEYWORD_MODEL_PATH"
+
+                    require_check "docker mount directory exists" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim test -d "$KEYWORD_MODEL_CONTAINER_DIR"
+                    require_check "docker mount model file exists" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim test -f "$KEYWORD_MODEL_CONTAINER_PATH"
+                    require_check "docker mount model file is readable" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim python -c "from pathlib import Path; p=Path('$KEYWORD_MODEL_CONTAINER_PATH'); print(p.stat().st_size); assert p.stat().st_size > 0"
                 '''
             }
         }
@@ -335,6 +552,9 @@ pipeline {
                         docker image inspect marketing-fastapi:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" fastapi)"
                         docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
 
+                        # Start shared dependencies before application container recreation.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
+
                         echo "Build commit: $BUILD_COMMIT"
                         echo "Build services: ${BUILD_SERVICES:-none}"
 
@@ -343,7 +563,7 @@ pipeline {
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build $BUILD_SERVICES
 
                           # 애플리케이션 컨테이너 교체 전에 공용 인프라 컨테이너를 먼저 보장한다.
-                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
 
                           # 변경된 서비스만 새 이미지로 교체한다. DB/Redis 같은 의존 서비스는 불필요하게 재시작하지 않는다.
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --no-deps --force-recreate $BUILD_SERVICES
@@ -362,6 +582,7 @@ pipeline {
                         docker inspect project-frontend --format 'frontend={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-keyword-server --format 'keyword-server={{ .Config.Image }}' || true
                     '''
                 }
             }
@@ -434,20 +655,37 @@ pipeline {
                             fi
                         done
 
-                        echo "===== Checking Spring to FastAPI ====="
+                        # Check the real AI containers directly instead of Spring's static ai-health endpoint.
+                        echo "===== Checking FastAPI Health ====="
                         for i in $(seq 1 30); do
-                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://nginx/api/ai-health; then
-                                echo "spring to fastapi is ready"
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://fastapi:8000/ai/health; then
+                                echo "fastapi is ready"
                                 break
                             fi
 
-                            echo "ai-health not ready yet... retry $i/30"
+                            echo "fastapi health not ready yet... retry $i/30"
                             sleep 2
 
                             if [ "$i" -eq 30 ]; then
-                                echo "ai-health check failed"
-                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs spring --tail=100
+                                echo "fastapi health check failed"
                                 docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs fastapi --tail=100
+                                exit 1
+                            fi
+                        done
+
+                        echo "===== Checking Keyword Server Health ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://keyword-server:8001/health; then
+                                echo "keyword-server is ready"
+                                break
+                            fi
+
+                            echo "keyword-server health not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "keyword-server health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs keyword-server --tail=100
                                 exit 1
                             fi
                         done

@@ -10,6 +10,10 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.db.redis import get_redis
 from app.main import app
+from app.services.canonical_keyword_resolver import (
+    CanonicalKeywordMatch,
+    CanonicalKeywordResolution,
+)
 from app.services.keyword_extraction import KeywordExtractionResult
 
 if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"):
@@ -19,19 +23,35 @@ if sys.platform == "win32" and hasattr(asyncio, "WindowsProactorEventLoopPolicy"
 class DefaultKeywordExtractionService:
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         return KeywordExtractionResult(
+            purpose="메뉴 홍보",
             draft_keywords=["signature menu", "cozy table"],
-            weather_signals=[],
-            final_keywords=["signature menu", "cozy table"],
+            final_keywords=[],
         )
 
 
-class DefaultMenuKeywordFallbackService:
-    async def choose_menu_keyword(
+class DefaultCanonicalKeywordResolverService:
+    async def resolve_keywords(
         self,
-        store_id,
-        weather_signals: list[str],
-    ) -> tuple[str | None, str | None]:
-        return None, None
+        draft_keywords: list[str],
+    ) -> CanonicalKeywordResolution:
+        code_map = {
+            "signature menu": "CANONICAL_SIGNATURE_MENU",
+            "cozy table": "CANONICAL_COZY_TABLE",
+        }
+        matches = [
+            CanonicalKeywordMatch(
+                draft_keyword=keyword,
+                final_keyword=code_map.get(keyword, keyword),
+                display_name=keyword if keyword in code_map else None,
+                score=0.99 if keyword in code_map else None,
+                matched=keyword in code_map,
+            )
+            for keyword in draft_keywords
+        ]
+        return CanonicalKeywordResolution(
+            final_keywords=[match.final_keyword for match in matches],
+            matches=matches,
+        )
 
 
 @pytest.fixture
@@ -62,18 +82,21 @@ def client(
 
     app.dependency_overrides[get_redis] = _get_redis
     original_keyword_enabled = settings.KEYWORD_MODEL_ENABLED
+    original_canonical_enabled = settings.CANONICAL_KEYWORD_RESOLVER_ENABLED
     original_debug = settings.DEBUG
     settings.KEYWORD_MODEL_ENABLED = False
+    settings.CANONICAL_KEYWORD_RESOLVER_ENABLED = False
     settings.DEBUG = False
     with TestClient(app) as test_client:
         try:
             app.state.keyword_extraction_service = DefaultKeywordExtractionService()
-            app.state.menu_keyword_fallback_service = (
-                DefaultMenuKeywordFallbackService()
+            app.state.canonical_keyword_resolver_service = (
+                DefaultCanonicalKeywordResolverService()
             )
             yield test_client
         finally:
             settings.KEYWORD_MODEL_ENABLED = original_keyword_enabled
+            settings.CANONICAL_KEYWORD_RESOLVER_ENABLED = original_canonical_enabled
             settings.DEBUG = original_debug
             app.dependency_overrides.clear()
 

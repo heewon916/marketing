@@ -6,7 +6,11 @@ import logging
 import shutil
 from pathlib import Path
 
-from app.core.config import settings
+from app.core.config import (
+    DEFAULT_KEYWORD_MODEL_HF_FILENAME,
+    DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+    DEFAULT_KEYWORD_MODEL_PATH,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,7 @@ def _hf_hub_download(*, repo_id: str, filename: str, repo_type: str) -> str:
 def ensure_keyword_model_available(model_path: Path | None = None) -> Path:
     """Ensure the default local GGUF model file exists."""
 
-    model_path = model_path or settings.keyword_model_path
+    model_path = model_path or DEFAULT_KEYWORD_MODEL_PATH
 
     if model_path.exists():
         return model_path
@@ -35,8 +39,8 @@ def ensure_keyword_model_available(model_path: Path | None = None) -> Path:
     logger.info(
         "Keyword model is missing; downloading the configured text-only GGUF.",
         extra={
-            "keyword_model_repo_id": settings.KEYWORD_MODEL_HF_REPO_ID,
-            "keyword_model_filename": settings.KEYWORD_MODEL_HF_FILENAME,
+            "keyword_model_repo_id": DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+            "keyword_model_filename": DEFAULT_KEYWORD_MODEL_HF_FILENAME,
             "keyword_model_path": str(model_path),
         },
     )
@@ -44,8 +48,8 @@ def ensure_keyword_model_available(model_path: Path | None = None) -> Path:
     try:
         downloaded = Path(
             _hf_hub_download(
-                repo_id=settings.KEYWORD_MODEL_HF_REPO_ID,
-                filename=settings.KEYWORD_MODEL_HF_FILENAME,
+                repo_id=DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+                filename=DEFAULT_KEYWORD_MODEL_HF_FILENAME,
                 repo_type="model",
             )
         )
@@ -55,8 +59,8 @@ def ensure_keyword_model_available(model_path: Path | None = None) -> Path:
         temp_path.unlink(missing_ok=True)
         raise RuntimeError(
             "Failed to download the keyword model GGUF from "
-            f"{settings.KEYWORD_MODEL_HF_REPO_ID}/"
-            f"{settings.KEYWORD_MODEL_HF_FILENAME} to {model_path}."
+            f"{DEFAULT_KEYWORD_MODEL_HF_REPO_ID}/"
+            f"{DEFAULT_KEYWORD_MODEL_HF_FILENAME} to {model_path}."
         ) from exc
 
     if not model_path.exists():

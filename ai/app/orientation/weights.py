@@ -6,7 +6,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from app.core.config import settings
+from app.core.config import DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH, settings
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def ensure_orientation_weights_available() -> Path:
     """Ensure the configured orientation weights file exists locally."""
 
-    weights_path = settings.orientation_model_weights_path
+    weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
     if weights_path.exists():
         return weights_path
 
