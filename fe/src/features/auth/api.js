@@ -11,7 +11,7 @@ export const authApi = {
   loginWithInstagram(purpose = INSTAGRAM_AUTH_PURPOSE.LOGIN) {
     sessionStorage.setItem('instagramAuthPurpose', purpose);
 
-    window.location.href = `${BACKEND_URL}/api/v1/users/instagram`;
+    window.location.href = `${BACKEND_URL}/api/v1/oauth2/authorization/instagram`;
   },
 
   getMe() {
