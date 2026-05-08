@@ -58,7 +58,7 @@ export default function MyPageHeader({
         {storeName && (
           <div className="mx-auto flex w-full max-w-[430px] items-start justify-between px-9 pb-4 pt-10">
             <div className="flex flex-col">
-              <strong className="text-[30px] font-semibold tracking-tight text-black">
+              <strong className="text-[28px] font-semibold tracking-tight text-black">
                 {storeName}
               </strong>
 
@@ -68,7 +68,7 @@ export default function MyPageHeader({
                     href={instagramUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex w-fit items-center text-[18px] text-primary-100 transition-colors active:opacity-70"
+                    className="inline-flex w-fit items-center text-[16px] text-primary-100 transition-colors active:opacity-70"
                   >
                     <span className="border-b border-primary-100">
                       {instagramUsername}

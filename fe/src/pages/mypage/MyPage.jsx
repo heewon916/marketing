@@ -7,13 +7,13 @@ import AccountInfoSection from '@/features/mypage/sections/AccountInfoSection';
 import OperatingHoursSection from '@/features/mypage/sections/OperatingHoursSection';
 
 const myPageMockData = {
-  storeName: '싸피 카페',
-  instagramUsername: '@ssafy_cafe',
+  storeName: '바나프레소',
+  instagramUsername: '@banapresso_official',
   weeklyPostAchievementRate: 25,
   targetPostCount: 4,
   achievedPostCount: 1,
   weeklyReachCount: 17,
-  weeklyVisitIntentScore: 29,
+  weeklyVisitIntentScore: -29,
 };
 
 export default function MyPage() {

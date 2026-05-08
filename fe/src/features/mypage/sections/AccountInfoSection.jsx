@@ -5,11 +5,11 @@ import CardShell from '../components/CardShell';
 import Button from '@/components/common/Button';
 
 const accountMockData = {
-  storeName: '싸피 카페',
-  instagramUsername: '@ssafy_cafe',
-  businessName: '김가네',
+  storeName: '바나프레소',
+  instagramUsername: '@banapresso_official',
+  businessName: '바나프레소',
   category: '카페',
-  address: '서울시 강남구 역삼대로 123',
+  address: '서울시 강남구 테헤란로 208 1층 (역삼동)',
 };
 
 export default function AccountInfoSection() {

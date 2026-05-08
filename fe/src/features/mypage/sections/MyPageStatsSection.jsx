@@ -8,6 +8,9 @@ export default function MyPageStatsSection({
   weeklyReachCount,
   weeklyVisitIntentScore,
 }) {
+  const visitIntentValue = Math.abs(weeklyVisitIntentScore);
+  const visitIntentUnit = weeklyVisitIntentScore < 0 ? '%↓' : '%↑';
+
   return (
     <section className="flex flex-col gap-4">
       <WeeklyStatCard
@@ -49,8 +52,8 @@ export default function MyPageStatsSection({
             </>
           }
           modalTitle="방문 관심도"
-          value={weeklyVisitIntentScore}
-          unit="%↑"
+          value={visitIntentValue}
+          unit={visitIntentUnit}
           description={
             <span className="flex flex-col gap-1">
               <span>

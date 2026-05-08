@@ -69,7 +69,7 @@ export default function MetricCard({
         </div>
 
         <div className="flex w-full items-baseline justify-end gap-1.5 text-right">
-          <strong className="text-[38px] font-semibold tracking-tight text-accent-100">
+          <strong className="text-[38px] font-semibold tracking-tight text-primary-100">
             {animatedValue.toLocaleString()}
           </strong>
 
