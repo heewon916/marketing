@@ -19,7 +19,7 @@ DEFAULT_KEYWORD_MODEL_PATH = (
     ROOT_DIR / "models" / "qwen2-1.5b-instruct" / "q3_k_m" / "model.gguf"
 )
 DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2-1.5B-Instruct-GGUF"
-DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2-1.5b-instruct-q3_k_m.gguf"
+DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2-1_5b-instruct-q3_k_m.gguf"
 DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 60.0
 DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT = "/health"
 
