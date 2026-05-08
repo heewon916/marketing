@@ -485,11 +485,11 @@ PY
                     fi
 
                     echo "after download"
-                    run_observation "host dir listing after download" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
-                    run_observation "host model stat after download" stat "$KEYWORD_MODEL_PATH"
-                    run_observation "host model type after download" file "$KEYWORD_MODEL_PATH"
-                    run_observation "host model size after download" du -h "$KEYWORD_MODEL_PATH"
-                    run_observation "jenkins user file existence after download" test -f "$KEYWORD_MODEL_PATH"
+                    # run_observation "host dir listing after download" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    # run_observation "host model stat after download" stat "$KEYWORD_MODEL_PATH"
+                    # run_observation "host model type after download" file "$KEYWORD_MODEL_PATH"
+                    # run_observation "host model size after download" du -h "$KEYWORD_MODEL_PATH"
+                    # run_observation "jenkins user file existence after download" test -f "$KEYWORD_MODEL_PATH"
 
                     require_check "docker mount directory exists" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim test -d "$KEYWORD_MODEL_CONTAINER_DIR"
                     require_check "docker mount model file exists" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:$KEYWORD_MODEL_CONTAINER_DIR" python:3.12-slim test -f "$KEYWORD_MODEL_CONTAINER_PATH"
