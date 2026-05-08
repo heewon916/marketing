@@ -175,7 +175,12 @@ public class WeatherService implements WeatherContextProvider {
         Station nearestStation = airKoreaStationClient.nearestStation(stations, longitude, latitude);
         if (nearestStation == null) {
             log.warn("weather.airkorea.station-not-found: sido={}", sido);
-            return AirQualityData.empty();
+            String fallbackStationName = extractDistrictStationName(address);
+            if (fallbackStationName == null || fallbackStationName.isBlank()) {
+                return AirQualityData.empty();
+            }
+            log.warn("weather.airkorea.station-fallback: stationName={} address={}", fallbackStationName, address);
+            return airKoreaAirQualityClient.getAirQuality(fallbackStationName);
         }
         return airKoreaAirQualityClient.getAirQuality(nearestStation.stationName());
     }
@@ -226,5 +231,20 @@ public class WeatherService implements WeatherContextProvider {
     // 실황 API 값을 우선 사용하고, 없을 때 예보 API fallback 값을 사용한다.
     private <T> T firstNonNull(T first, T second) {
         return first != null ? first : second;
+    }
+
+    private String extractDistrictStationName(String address) {
+        if (address == null || address.isBlank()) {
+            return null;
+        }
+
+        String[] parts = address.trim().split("\\s+");
+        for (int index = 1; index < parts.length; index++) {
+            String part = parts[index];
+            if (part.endsWith("구") || part.endsWith("군") || part.endsWith("시")) {
+                return part;
+            }
+        }
+        return null;
     }
 }
