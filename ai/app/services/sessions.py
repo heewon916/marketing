@@ -9,6 +9,11 @@ from app.schemas.sessions import ProcessUtteranceRequest
 from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
+from app.services.caption_generation import (
+    CaptionGenerationResult,
+    CaptionGenerationService,
+    CaptionGenerationUnavailableError,
+)
 from app.services.canonical_keyword_resolver import (
     CanonicalKeywordResolverService,
     CanonicalKeywordResolution,
@@ -83,6 +88,18 @@ def build_text_generation_result(
         guide_text,
         stored_caption,
         effective_fallback_source,
+    )
+
+
+def _result_from_caption_generation(
+    result: CaptionGenerationResult,
+) -> tuple[str, list[str], str, str, None]:
+    return (
+        result.draft_caption,
+        result.draft_hashtags,
+        result.guide_text,
+        result.stored_caption,
+        None,
     )
 
 
@@ -357,6 +374,7 @@ async def process_utterance(
     payload: ProcessUtteranceRequest,
     redis: Redis,
     keyword_service: KeywordExtractionService,
+    caption_service: CaptionGenerationService,
     canonical_keyword_resolver: CanonicalKeywordResolverService,
 ) -> ProcessUtteranceResult:
     weather_tags = evaluate_weather_tags(
@@ -403,38 +421,77 @@ async def process_utterance(
         resolution=canonical_resolution,
         session_id=session_id,
     )
-    caption_keywords = draft_keywords
-    (
-        draft_caption,
-        draft_hashtags,
-        guide_text,
-        stored_caption,
-        _fallback_source,
-    ) = build_text_generation_result(
-        keywords=caption_keywords,
-        owner_persona=payload.owner_persona,
-        cloud_cover=payload.weather.cloud_cover,
-        weather_tags=weather_tags,
-        fallback_source=None,
-    )
-    logger.info(
-        "Built text generation result for process-utterance.",
-        extra=build_log_extra(
-            "session.process_utterance.text_generation.completed",
-            component="session",
-            stage="text_generation",
-            session_id=session_id,
-            outcome="succeeded",
-            weather_tag_count=len(weather_tags),
-            weather_tags_preview=", ".join(weather_tags[:3]),
-            draft_caption_length=len(draft_caption),
-            guide_text_length=len(guide_text),
-        ),
-    )
+    caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    fallback_source: str | None = None
+    try:
+        (
+            draft_caption,
+            draft_hashtags,
+            guide_text,
+            stored_caption,
+            fallback_source,
+        ) = _result_from_caption_generation(
+            await caption_service.generate_text(
+                keywords=caption_keywords,
+                owner_persona=payload.owner_persona,
+                cloud_cover=payload.weather.cloud_cover,
+                weather_tags=weather_tags,
+            )
+        )
+        logger.info(
+            "Built text generation result from caption model.",
+            extra=build_log_extra(
+                "session.process_utterance.text_generation.completed",
+                component="session",
+                stage="text_generation",
+                session_id=session_id,
+                outcome="succeeded",
+                text_generation_source="caption_model",
+                weather_tag_count=len(weather_tags),
+                weather_tags_preview=", ".join(weather_tags[:3]),
+                draft_caption_length=len(draft_caption),
+                guide_text_length=len(guide_text),
+            ),
+        )
+    except CaptionGenerationUnavailableError as exc:
+        fallback_source = "caption_model_fallback"
+        (
+            draft_caption,
+            draft_hashtags,
+            guide_text,
+            stored_caption,
+            fallback_source,
+        ) = build_text_generation_result(
+            keywords=caption_keywords,
+            owner_persona=payload.owner_persona,
+            cloud_cover=payload.weather.cloud_cover,
+            weather_tags=weather_tags,
+            fallback_source=fallback_source,
+        )
+        logger.warning(
+            "Caption model generation failed; falling back to rule-based text generation: %s",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "session.process_utterance.text_generation.completed",
+                component="session",
+                stage="text_generation",
+                session_id=session_id,
+                outcome="fallback",
+                text_generation_source="rule_based_fallback",
+                error_type=exc.__class__.__name__,
+                weather_tag_count=len(weather_tags),
+                weather_tags_preview=", ".join(weather_tags[:3]),
+                draft_caption_length=len(draft_caption),
+                guide_text_length=len(guide_text),
+            ),
+        )
     debug_fields = _build_process_utterance_debug_fields(
         purpose=purpose,
         canonical_resolution=canonical_resolution,
     )
+    if fallback_source is not None:
+        debug_fields["debug:text_generation_fallback_source"] = fallback_source
     await _persist_process_utterance_result(
         redis=redis,
         session_id=session_id,
