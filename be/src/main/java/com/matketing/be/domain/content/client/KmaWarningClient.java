@@ -16,6 +16,7 @@ public class KmaWarningClient {
     private final WeatherProperties properties;
 
     public KmaWarningClient(RestClient.Builder builder, WeatherProperties properties) {
+        // 특보 API 전용 baseUrl을 가진 RestClient를 만들어 다른 기상 API 설정과 분리한다.
         this.restClient = builder.baseUrl(properties.kmaWarningBaseUrl()).build();
         this.properties = properties;
     }
@@ -29,11 +30,13 @@ public class KmaWarningClient {
      * @return 호우/태풍 특보 정보
      */
     public WarningData getWarnings(String address) {
+        // 운영 환경에서 서비스키가 빠진 경우에도 게시글 생성 흐름이 중단되지 않도록 빈 특보로 처리한다.
         if (properties.kmaServiceKey() == null || properties.kmaServiceKey().isBlank()) {
             log.warn("weather.kma.warning-skipped: KMA_SERVICE_KEY is empty");
             return WarningData.empty();
         }
 
+        // 기상청 특보 응답은 전국 특보 문장을 내려주기 때문에, 먼저 매장 주소에서 비교할 지역명을 뽑는다.
         Region region = Region.from(address);
         if (region.isEmpty()) {
             log.warn("weather.kma.warning-region-unmatched: address={}", address);
@@ -41,6 +44,8 @@ public class KmaWarningClient {
         }
 
         try {
+            // getPwnStatus는 현재 발표 중인 기상특보 현황을 조회한다.
+            // serviceKeyForQuery()는 URL 인코딩 여부 차이를 WeatherProperties 쪽에서 정리한 값이다.
             Map<String, Object> response = restClient.get()
                     .uri(uriBuilder -> uriBuilder.path("/getPwnStatus")
                             .queryParam("serviceKey", properties.kmaServiceKeyForQuery())
@@ -51,6 +56,7 @@ public class KmaWarningClient {
                     .retrieve()
                     .body(Map.class);
 
+            // 기상청 OpenAPI는 HTTP 200이어도 header.resultCode로 업무 성공/실패를 따로 알려준다.
             if (!isSuccess(response)) {
                 log.warn("weather.kma.warning-failed: non-success result. address={}", address);
                 return WarningData.empty();
@@ -69,6 +75,7 @@ public class KmaWarningClient {
                         continue;
                     }
                     // 한 지역에 여러 문구가 있을 수 있으므로 필요한 특보가 처음 발견된 값만 저장한다.
+                    // 경보와 주의보가 동시에 잡히면 인자로 먼저 넣은 경보를 우선한다.
                     if (heavyRainWarning == null) {
                         heavyRainWarning = firstContaining(text, "호우경보", "호우주의보");
                     }
@@ -98,15 +105,18 @@ public class KmaWarningClient {
     }
 
     private boolean isSuccess(Map<String, Object> response) {
+        // 일부 공공데이터 응답은 성공 코드를 "00" 또는 "0"으로 내려줄 수 있어 둘 다 허용한다.
         String resultCode = stringValue(header(response).get("resultCode"));
         return "00".equals(resultCode) || "0".equals(resultCode);
     }
 
     private Map<String, Object> header(Map<String, Object> response) {
+        // response.header가 없거나 형식이 달라도 mapValue가 빈 Map으로 바꿔 예외를 막는다.
         return mapValue(mapValue(response.get("response")).get("header"));
     }
 
     private List<Map<String, Object>> items(Map<String, Object> response) {
+        // 기상청 응답은 item이 1건이면 객체, 여러 건이면 배열로 내려올 수 있어 두 형태를 모두 처리한다.
         Object item = mapValue(mapValue(mapValue(response.get("response")).get("body")).get("items")).get("item");
         if (item instanceof List<?> list) {
             return list.stream()
@@ -121,6 +131,7 @@ public class KmaWarningClient {
     }
 
     private Map<String, Object> mapValue(Object value) {
+        // 외부 API 응답 구조가 예상과 달라도 호출부에서 NullPointerException이 나지 않도록 빈 Map을 반환한다.
         if (value instanceof Map<?, ?> map) {
             return (Map<String, Object>) map;
         }
@@ -128,6 +139,7 @@ public class KmaWarningClient {
     }
 
     private String stringValue(Object value) {
+        // 숫자 코드처럼 문자열이 아닌 값도 contains/equals 비교에 쓸 수 있게 문자열로 통일한다.
         return value == null ? null : String.valueOf(value);
     }
 
@@ -144,6 +156,7 @@ public class KmaWarningClient {
         }
 
         boolean isEmpty() {
+            // 주소가 없거나 공백이면 특보 문장과 비교할 기준이 없다.
             return sido == null && sigungu == null;
         }
 

@@ -28,7 +28,7 @@ public class KmaForecastClient {
     }
 
     /**
-     * [기상청 초단기실황 조회]
+     * [기상청 초단기실황 조회] /getUltraSrtNcst
      * - 현재 기온(T1H), 1시간 강수량(RN1), 습도(REH), 풍속(WSD)을 조회한다.
      * - 초단기실황은 매시각 10분 이후 제공되므로, 현재 분이 10분 미만이면 직전 시간을 base_time으로 사용한다.
      * - 외부 API 실패 또는 resultCode 실패 시 게시글 생성을 막지 않도록 빈 DTO를 반환한다.
@@ -132,12 +132,12 @@ public class KmaForecastClient {
                 return VilageFcstData.empty();
             }
 
-            String cloudCover = null;
-            Double minTemperature = null;
-            Double maxTemperature = null;
-            Double precipitation = null;
-            Integer humidity = null;
-            Double windSpeed = null;
+            String cloudCover = null;       // 구름 양
+            Double minTemperature = null;   // 최저 기온
+            Double maxTemperature = null;   // 최고 기온
+            Double precipitation = null;    // 강수량
+            Integer humidity = null;        // 습도
+            Double windSpeed = null;        // 풍속
             Double tmpMin = null;
             Double tmpMax = null;
             String today = now.format(DATE_FORMATTER);
@@ -168,6 +168,8 @@ public class KmaForecastClient {
                     }
                 }
             }
+
+            // 일교차 계산
             Double diurnalRange = calculateDiurnalRange(minTemperature, maxTemperature, tmpMin, tmpMax);
             return new VilageFcstData(cloudCover, precipitation, humidity, windSpeed, diurnalRange);
         } catch (RestClientException exception) {

@@ -58,7 +58,10 @@ public class WeatherService implements WeatherContextProvider {
     public AiWeatherRequest getWeatherContext(Store store, LocalDateTime now) {
         validateCoordinates(store);
 
+        // 1. store 캐시 키 설정: weather-context:{storeId}:{now}
         String cacheKey = weatherContextKey(store.getId().toString(), now);
+
+        // 2. 해당 시간대에 대한 값이 이미 계산되어 있으면
         String cached = redisTemplate.opsForValue().get(cacheKey);
         if (cached != null && !cached.isBlank()) {
             try {
@@ -68,12 +71,14 @@ public class WeatherService implements WeatherContextProvider {
             }
         }
 
+        // 3. 외부 API를 호출해서 필요한 데이터를 가져온다.
         AiWeatherRequest weather = fetchWeatherContext(store, now);
         try {
+            // 4. 받아온 데이터를 기반으로 redis에 캐싱한다
             redisTemplate.opsForValue().set(
-                    cacheKey,
+                    cacheKey,                                        // weather-context:{storeId}:{time}
                     objectMapper.writeValueAsString(weather),
-                    Duration.ofSeconds(properties.cacheTtlSeconds())
+                    Duration.ofSeconds(properties.cacheTtlSeconds()) // 40분
             );
         } catch (JsonProcessingException exception) {
             log.warn("weather.cache.write-failed: key={}", cacheKey, exception);
@@ -92,13 +97,21 @@ public class WeatherService implements WeatherContextProvider {
      * @return 통합 weather DTO
      */
     private AiWeatherRequest fetchWeatherContext(Store store, LocalDateTime now) {
+        // 1. store의 경도, 위도를 기상청 격자 좌표로 변환한다.
         double latitude = store.getLatitude().doubleValue();
         double longitude = store.getLongitude().doubleValue();
         KmaGridConverter.Grid grid = KmaGridConverter.convert(longitude, latitude);
 
+        // 2-1. 기상청 초단기 실황 조회 - 기온(T1H), 1시간 강수량(RN1), 습도(REH), 풍속(WSD)
         UltraSrtNcstData ultra = kmaForecastClient.getUltraSrtNcst(now, grid.nx(), grid.ny());
+
+        // 2-2. 기상청 단기예보 조회 - 하늘상태(SKY), 최저/최고기온(TMN/TMX), 시간별 기온(TMP), 예보 fallback 값
         VilageFcstData vilage = kmaForecastClient.getVilageFcst(now, grid.nx(), grid.ny());
+
+        // 2-3. 기상특보 조회 - 호우/태풍 특보
         WarningData warning = getCachedWarnings(store.getAddress());
+
+        // 2-4. 에어코리아 대기질 조회 - PM10/PM2.5
         AirQualityData airQuality = getAirQuality(store.getAddress(), longitude, latitude);
 
         Double temperature = firstNonNull(ultra.temperature(), null);
@@ -141,12 +154,13 @@ public class WeatherService implements WeatherContextProvider {
             }
         }
 
+        // 해당 주소에 대한 기상특보 /getPwnStatus를 조회해 캐싱한다. 10분 동안 캐싱된다.
         WarningData warning = kmaWarningClient.getWarnings(address);
         try {
             redisTemplate.opsForValue().set(
                     cacheKey,
                     objectMapper.writeValueAsString(warning),
-                    Duration.ofSeconds(properties.warningCacheTtlSeconds())
+                    Duration.ofSeconds(properties.warningCacheTtlSeconds()) // 10분
             );
         } catch (JsonProcessingException exception) {
             log.warn("weather.warning-cache.write-failed: key={}", cacheKey, exception);
@@ -171,8 +185,10 @@ public class WeatherService implements WeatherContextProvider {
             return AirQualityData.empty();
         }
 
-        List<Station> stations = getCachedStations(sido);
+        // 1. 주소에서 sido를 추출해 주변의 가까운 측정소를 찾는다.
+        List<Station> stations = getCachedStations(sido);  // 이때 측정소 목록은 캐시에서 먼저 조회시킨다.
         Station nearestStation = airKoreaStationClient.nearestStation(stations, longitude, latitude);
+        // TODO 2. 실패한 경우, 서울시 용산구 기준으로 대기질을 조회하게 된다.
         if (nearestStation == null) {
             log.warn("weather.airkorea.station-not-found: sido={}", sido);
             String fallbackStationName = extractDistrictStationName(address);
@@ -182,6 +198,7 @@ public class WeatherService implements WeatherContextProvider {
             log.warn("weather.airkorea.station-fallback: stationName={} address={}", fallbackStationName, address);
             return airKoreaAirQualityClient.getAirQuality(fallbackStationName);
         }
+        // 3. 해당 측정소에서의 대기질을 조회해 리턴한다.
         return airKoreaAirQualityClient.getAirQuality(nearestStation.stationName());
     }
 
@@ -195,6 +212,8 @@ public class WeatherService implements WeatherContextProvider {
     private List<Station> getCachedStations(String sido) {
         String cacheKey = "airkorea-stations:" + sido;
         String cached = redisTemplate.opsForValue().get(cacheKey);
+
+        // 1. 이미 캐싱했던 곳이면 read만 한다.
         if (cached != null && !cached.isBlank()) {
             try {
                 return objectMapper.readValue(cached, STATION_LIST_TYPE);
@@ -203,6 +222,7 @@ public class WeatherService implements WeatherContextProvider {
             }
         }
 
+        // 2. 처음 조회하는 곳이면 주소로부터 측정소를 가져오고 캐싱한 뒤에 리턴한다. 1시간 동안 캐싱한다.
         List<Station> stations = airKoreaStationClient.getStations(sido);
         try {
             redisTemplate.opsForValue().set(
@@ -216,6 +236,10 @@ public class WeatherService implements WeatherContextProvider {
         return stations;
     }
 
+    //=======================================
+    // 여기서부터 날씨 조회에 필요한 부가 로직이다.
+    //=======================================
+
     // 매장 좌표가 없으면 기상청 격자 변환과 측정소 거리 계산을 할 수 없으므로 즉시 실패 처리한다.
     private void validateCoordinates(Store store) {
         if (store.getLatitude() == null || store.getLongitude() == null) {
@@ -223,7 +247,7 @@ public class WeatherService implements WeatherContextProvider {
         }
     }
 
-    // 같은 매장/같은 시간대의 반복 호출을 묶기 위한 weather context 캐시 키다.
+    // Redis: 같은 매장/같은 시간대의 반복 호출을 묶기 위한 weather context 캐시 키다.
     private String weatherContextKey(String storeId, LocalDateTime now) {
         return "weather-context:" + storeId + ":" + now.format(CACHE_HOUR_FORMATTER);
     }
