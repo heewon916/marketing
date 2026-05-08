@@ -236,6 +236,7 @@ class KeywordExtractionService:
         timeout_seconds: float = 10.0,
         base_url: str | None = None,
         chat_endpoint: str | None = None,
+        health_endpoint: str | None = None,
         api_key: str | None = None,
     ) -> None:
         self.model_path = model_path
@@ -249,6 +250,7 @@ class KeywordExtractionService:
         self.timeout_seconds = timeout_seconds
         self.base_url = (base_url or "").rstrip("/")
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
+        self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
         self._server_checked = False
         self._morph_analyzer: Any = None
@@ -391,6 +393,10 @@ class KeywordExtractionService:
     @property
     def _chat_url(self) -> str:
         return f"{self.base_url}{self.chat_endpoint}"
+
+    @property
+    def _health_url(self) -> str:
+        return f"{self.base_url}{self.health_endpoint}"
 
     async def _post_chat_completion(
         self,
@@ -821,6 +827,7 @@ def build_keyword_extraction_service() -> KeywordExtractionService:
         timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
         base_url=settings.KEYWORD_MODEL_BASE_URL,
         chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
+        health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
         api_key=settings.KEYWORD_MODEL_API_KEY,
     )
 
