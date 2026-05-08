@@ -34,11 +34,11 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 FastAPI no longer calls the keyword GGUF model directly during inference.
 Instead, keyword extraction sends HTTP requests to a separately served
-`llama-server` container on the same Docker Network.
+`keyword-server` container on the same Docker network.
 
 - Base URL: `KEYWORD_MODEL_BASE_URL`
 - Chat endpoint: `KEYWORD_MODEL_CHAT_ENDPOINT`
-- Default target: `http://llama-server:8000/v1/chat/completions`
+- Default target: `http://keyword-server:8001/v1/chat/completions`
 
 At startup, FastAPI only checks connectivity to the remote keyword server.
 If the server is unavailable, the app still starts and `process-utterance`
@@ -110,18 +110,63 @@ Current implementation notes:
 - `PRECIP_SNOW` is intentionally excluded for now because the current request schema does not provide a reliable snowfall signal.
 - Weather tags are internal session state only; they are not exposed in the public API response yet.
 
+## Local and deployment modes
+
+Keyword extraction now assumes a remote llama.cpp server regardless of whether
+FastAPI itself runs in Docker or directly on the host.
+
+### Ubuntu deployment
+
+Production deployment uses Docker Compose from the repository root.
+
+- `fastapi` runs as the `marketing-fastapi:latest` container.
+- `keyword-server` runs as `ghcr.io/ggml-org/llama.cpp:server`.
+- The GGUF file is mounted from the Ubuntu host through
+  `KEYWORD_MODEL_HOST_DIR` and `KEYWORD_MODEL_FILE`.
+- The default internal target from FastAPI is
+  `http://keyword-server:8001/v1/chat/completions`.
+
+Minimum deployment variables:
+
+- `KEYWORD_MODEL_HOST_DIR`
+- `KEYWORD_MODEL_FILE`
+- Optional: `KEYWORD_MODEL_CTX_SIZE`
+- Optional: `KEYWORD_MODEL_GPU_LAYERS`
+
+### Local development
+
+Local development can stay flexible. You do not need to mirror the Ubuntu
+deployment exactly as long as FastAPI can reach a running llama.cpp server.
+
+If FastAPI runs in Docker and the model server runs separately on the host,
+use:
+
+```env
+KEYWORD_MODEL_BASE_URL=http://host.docker.internal:8080
+KEYWORD_MODEL_CHAT_ENDPOINT=/v1/chat/completions
+```
+
+One working local example for the model server is:
+
+```powershell
+docker run --rm -p 8080:8080 `
+  -v C:\path\to\models:/models `
+  ghcr.io/ggml-org/llama.cpp:server `
+  -m /models/model.gguf --port 8080 -c 2048 --host 0.0.0.0
+```
+
+If both services run under Compose, keep the default
+`KEYWORD_MODEL_BASE_URL=http://keyword-server:8001`.
+
 ## Legacy local GGUF settings
 
-The previous local GGUF configuration is kept in code as a legacy fallback
-reference during migration, but it is no longer used by the FastAPI inference
-path.
+The previous local GGUF configuration is still kept in code as migration
+reference, but the active FastAPI inference path now depends on the remote
+`keyword-server`.
 
 - Legacy path: `ai/models/qwen-gguf/model.gguf`
 - Legacy repo: `Qwen/Qwen2.5-7B-Instruct-GGUF`
 - Legacy file: `qwen2.5-7b-instruct-q3_k_m.gguf`
-
-Container creation, Docker Compose wiring, and actual `llama-server` startup
-are handled in a later task and are intentionally out of scope here.
 
 ## Linux deployment notes
 
@@ -129,8 +174,8 @@ Development was done on Windows, but deployment is expected to run on Linux.
 Keep the following in mind when preparing the server:
 
 - Do not copy `ai/.venv` from Windows to Linux. Create a new virtual environment on Linux and run `uv sync` there.
-- Native packages such as `llama-cpp-python` are still listed for legacy compatibility, but the FastAPI service now expects a reachable remote `llama-server` for keyword extraction.
-- The local GGUF model file itself is only relevant if you later restore direct local inference or use it in the separate model-serving container.
+- FastAPI no longer needs `llama-cpp-python` or a local GGUF mount to serve keyword extraction requests.
+- The GGUF model file is only mounted into the separate `keyword-server` container.
 - First startup may still take time if orientation weights need to be downloaded. Plan for this in container startup and health checks.
-- If you later run `llama-server` with Docker or Docker Compose, connect it to the same network as the FastAPI container and provide a stable service name such as `llama-server`.
+- Connect `keyword-server` to the same Docker network as FastAPI and keep a stable service name.
 - Verify that the server has enough disk space and memory for `tensorflow-cpu`, the orientation weights, and the separately served keyword model container.

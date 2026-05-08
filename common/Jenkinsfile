@@ -202,6 +202,34 @@ pipeline {
                       esac
                     }
 
+                    require_optional_integer() {
+                      key="$1"
+                      value="$(get_env "$key" || true)"
+
+                      if [ -z "$value" ]; then
+                        return
+                      fi
+
+                      echo "$value" | grep -Eq '^-?[0-9]+$' || {
+                        echo "ERROR: ${key} should be an integer"
+                        exit 1
+                      }
+                    }
+
+                    require_optional_positive_integer() {
+                      key="$1"
+                      value="$(get_env "$key" || true)"
+
+                      if [ -z "$value" ]; then
+                        return
+                      fi
+
+                      echo "$value" | grep -Eq '^[1-9][0-9]*$' || {
+                        echo "ERROR: ${key} should be a positive integer"
+                        exit 1
+                      }
+                    }
+
                     require_env POSTGRES_DB
                     require_env POSTGRES_USER
                     require_env POSTGRES_PASSWORD
@@ -230,6 +258,10 @@ pipeline {
                     require_env INSTAGRAM_CLIENT_ID
                     require_env INSTAGRAM_CLIENT_SECRET
                     require_env FIREBASE_ENABLED
+                    require_env KEYWORD_MODEL_HOST_DIR
+                    require_env KEYWORD_MODEL_FILE
+                    require_optional_positive_integer KEYWORD_MODEL_CTX_SIZE
+                    require_optional_integer KEYWORD_MODEL_GPU_LAYERS
 
                     # region 형식 간단 검증
                     S3_REGION_VALUE="$(get_env S3_REGION)"
@@ -277,6 +309,34 @@ pipeline {
                     test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
+                '''
+            }
+        }
+
+        stage('Check Keyword Model Provisioning') {
+            steps {
+                sh '''
+                    set +x
+                    set -eu
+
+                    echo "===== Check keyword model provisioning ====="
+
+                    ENV_PATH="${DEPLOY_DIR}/.env"
+
+                    get_env() {
+                      key="$1"
+                      grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2-
+                    }
+
+                    KEYWORD_MODEL_HOST_DIR_VALUE="$(get_env KEYWORD_MODEL_HOST_DIR)"
+                    KEYWORD_MODEL_FILE_VALUE="$(get_env KEYWORD_MODEL_FILE)"
+                    KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILE_VALUE}"
+
+                    test -d "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    test -f "$KEYWORD_MODEL_PATH"
+
+                    echo "Keyword model directory exists: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                    echo "Keyword model file exists: $KEYWORD_MODEL_PATH"
                 '''
             }
         }
@@ -335,6 +395,9 @@ pipeline {
                         docker image inspect marketing-fastapi:latest >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" fastapi)"
                         docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
 
+                        # Start shared dependencies before application container recreation.
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
+
                         echo "Build commit: $BUILD_COMMIT"
                         echo "Build services: ${BUILD_SERVICES:-none}"
 
@@ -343,7 +406,7 @@ pipeline {
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build $BUILD_SERVICES
 
                           # 애플리케이션 컨테이너 교체 전에 공용 인프라 컨테이너를 먼저 보장한다.
-                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server
 
                           # 변경된 서비스만 새 이미지로 교체한다. DB/Redis 같은 의존 서비스는 불필요하게 재시작하지 않는다.
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --no-deps --force-recreate $BUILD_SERVICES
@@ -362,6 +425,7 @@ pipeline {
                         docker inspect project-frontend --format 'frontend={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
+                        docker inspect project-keyword-server --format 'keyword-server={{ .Config.Image }}' || true
                     '''
                 }
             }
@@ -434,20 +498,37 @@ pipeline {
                             fi
                         done
 
-                        echo "===== Checking Spring to FastAPI ====="
+                        # Check the real AI containers directly instead of Spring's static ai-health endpoint.
+                        echo "===== Checking FastAPI Health ====="
                         for i in $(seq 1 30); do
-                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://nginx/api/ai-health; then
-                                echo "spring to fastapi is ready"
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://fastapi:8000/ai/health; then
+                                echo "fastapi is ready"
                                 break
                             fi
 
-                            echo "ai-health not ready yet... retry $i/30"
+                            echo "fastapi health not ready yet... retry $i/30"
                             sleep 2
 
                             if [ "$i" -eq 30 ]; then
-                                echo "ai-health check failed"
-                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs spring --tail=100
+                                echo "fastapi health check failed"
                                 docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs fastapi --tail=100
+                                exit 1
+                            fi
+                        done
+
+                        echo "===== Checking Keyword Server Health ====="
+                        for i in $(seq 1 30); do
+                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS http://keyword-server:8001/health; then
+                                echo "keyword-server is ready"
+                                break
+                            fi
+
+                            echo "keyword-server health not ready yet... retry $i/30"
+                            sleep 2
+
+                            if [ "$i" -eq 30 ]; then
+                                echo "keyword-server health check failed"
+                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs keyword-server --tail=100
                                 exit 1
                             fi
                         done
