@@ -1,4 +1,4 @@
-import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -7,23 +7,60 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR.parent / ".env"
+
 DEFAULT_ORIENTATION_MODEL_NAME = "vit"
 DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = (
     ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
 )
-# Legacy local GGUF settings are kept for reference during the llama-server migration.
+
+DEFAULT_KEYWORD_MODEL_SERVER_PORT = 8001
+DEFAULT_KEYWORD_MODEL_HOST_DIR = "./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
 DEFAULT_KEYWORD_MODEL_PATH = (
-    ROOT_DIR / "models" / "qwen2.5-7b-instruct" / "q3_k_m" / "model.gguf"
+    ROOT_DIR / "models" / "qwen2-1.5b-instruct" / "q3_k_m" / "model.gguf"
 )
-DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
-DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
+DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2-1.5B-Instruct-GGUF"
+DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2-1.5b-instruct-q3_k_m.gguf"
 DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 60.0
 DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT = "/health"
+
+DEFAULT_CAPTION_MODEL_SERVER_PORT = 8002
+DEFAULT_CAPTION_MODEL_HOST_DIR = "./.models/caption/qwen2.5-7b-instruct/q3_k_m"
+DEFAULT_CAPTION_MODEL_PATH = (
+    ROOT_DIR / "models" / "qwen2.5-7b-instruct" / "q3_k_m" / "model.gguf"
+)
+DEFAULT_CAPTION_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
+DEFAULT_CAPTION_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
+DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS = 120.0
+DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT = "/health"
+
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR = (
     ROOT_DIR / "models" / "canonical-keywords"
 )
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM = 384
+
+
+@dataclass(frozen=True)
+class LlamaModelClientSettings:
+    base_url: str
+    chat_endpoint: str
+    health_endpoint: str
+    api_key: str | None
+    timeout_seconds: float
+    max_tokens: int
+    temperature: float
+    top_p: float
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class LlamaModelServerSettings:
+    host_dir: str
+    hf_repo_id: str
+    hf_filename: str
+    server_port: int
+    ctx_size: int
+    gpu_layers: int
 
 
 class Settings(BaseSettings):
@@ -64,19 +101,43 @@ class Settings(BaseSettings):
     ORIENTATION_MODEL_DOWNLOAD_URL: str = (
         "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
     )
-    KEYWORD_MODEL_BASE_URL: str = "http://keyword-server:8001"
+
+    KEYWORD_MODEL_HOST_DIR: str = DEFAULT_KEYWORD_MODEL_HOST_DIR
+    KEYWORD_MODEL_HF_REPO_ID: str = DEFAULT_KEYWORD_MODEL_HF_REPO_ID
+    KEYWORD_MODEL_HF_FILENAME: str = DEFAULT_KEYWORD_MODEL_HF_FILENAME
+    KEYWORD_MODEL_SERVER_PORT: int = DEFAULT_KEYWORD_MODEL_SERVER_PORT
+    KEYWORD_MODEL_BASE_URL: str = (
+        f"http://keyword-server:{DEFAULT_KEYWORD_MODEL_SERVER_PORT}"
+    )
     KEYWORD_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
     KEYWORD_MODEL_HEALTH_ENDPOINT: str = DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT
     KEYWORD_MODEL_API_KEY: str | None = None
-    # Legacy local inference settings kept for rollback while FastAPI moves to llama-server.
     KEYWORD_MODEL_CTX_SIZE: int = 2048
+    KEYWORD_MODEL_GPU_LAYERS: int = 20
     KEYWORD_MODEL_MAX_TOKENS: int = 64
     KEYWORD_MODEL_TEMPERATURE: float = 0.1
     KEYWORD_MODEL_TOP_P: float = 0.9
-    KEYWORD_MODEL_THREADS: int = max((os.cpu_count() or 1) - 2, 1)
-    KEYWORD_MODEL_GPU_LAYERS: int = 20
     KEYWORD_MODEL_ENABLED: bool = True
     KEYWORD_MODEL_TIMEOUT_SECONDS: float = DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+
+    CAPTION_MODEL_HOST_DIR: str = DEFAULT_CAPTION_MODEL_HOST_DIR
+    CAPTION_MODEL_HF_REPO_ID: str = DEFAULT_CAPTION_MODEL_HF_REPO_ID
+    CAPTION_MODEL_HF_FILENAME: str = DEFAULT_CAPTION_MODEL_HF_FILENAME
+    CAPTION_MODEL_SERVER_PORT: int = DEFAULT_CAPTION_MODEL_SERVER_PORT
+    CAPTION_MODEL_BASE_URL: str = (
+        f"http://caption-server:{DEFAULT_CAPTION_MODEL_SERVER_PORT}"
+    )
+    CAPTION_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
+    CAPTION_MODEL_HEALTH_ENDPOINT: str = DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT
+    CAPTION_MODEL_API_KEY: str | None = None
+    CAPTION_MODEL_CTX_SIZE: int = 2048
+    CAPTION_MODEL_GPU_LAYERS: int = 20
+    CAPTION_MODEL_MAX_TOKENS: int = 64
+    CAPTION_MODEL_TEMPERATURE: float = 0.7
+    CAPTION_MODEL_TOP_P: float = 0.9
+    CAPTION_MODEL_ENABLED: bool = True
+    CAPTION_MODEL_TIMEOUT_SECONDS: float = DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
+
     CANONICAL_KEYWORD_RESOLVER_ENABLED: bool = True
     CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME: str = (
         DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME
@@ -113,5 +174,60 @@ class Settings(BaseSettings):
                 self.S3_REGION,
             ]
         )
+
+    @computed_field
+    @property
+    def keyword_model_client(self) -> LlamaModelClientSettings:
+        return LlamaModelClientSettings(
+            base_url=self.KEYWORD_MODEL_BASE_URL.rstrip("/"),
+            chat_endpoint=self.KEYWORD_MODEL_CHAT_ENDPOINT,
+            health_endpoint=self.KEYWORD_MODEL_HEALTH_ENDPOINT,
+            api_key=self.KEYWORD_MODEL_API_KEY,
+            timeout_seconds=self.KEYWORD_MODEL_TIMEOUT_SECONDS,
+            max_tokens=self.KEYWORD_MODEL_MAX_TOKENS,
+            temperature=self.KEYWORD_MODEL_TEMPERATURE,
+            top_p=self.KEYWORD_MODEL_TOP_P,
+            enabled=self.KEYWORD_MODEL_ENABLED,
+        )
+
+    @computed_field
+    @property
+    def caption_model_client(self) -> LlamaModelClientSettings:
+        return LlamaModelClientSettings(
+            base_url=self.CAPTION_MODEL_BASE_URL.rstrip("/"),
+            chat_endpoint=self.CAPTION_MODEL_CHAT_ENDPOINT,
+            health_endpoint=self.CAPTION_MODEL_HEALTH_ENDPOINT,
+            api_key=self.CAPTION_MODEL_API_KEY,
+            timeout_seconds=self.CAPTION_MODEL_TIMEOUT_SECONDS,
+            max_tokens=self.CAPTION_MODEL_MAX_TOKENS,
+            temperature=self.CAPTION_MODEL_TEMPERATURE,
+            top_p=self.CAPTION_MODEL_TOP_P,
+            enabled=self.CAPTION_MODEL_ENABLED,
+        )
+
+    @computed_field
+    @property
+    def keyword_model_server(self) -> LlamaModelServerSettings:
+        return LlamaModelServerSettings(
+            host_dir=self.KEYWORD_MODEL_HOST_DIR,
+            hf_repo_id=self.KEYWORD_MODEL_HF_REPO_ID,
+            hf_filename=self.KEYWORD_MODEL_HF_FILENAME,
+            server_port=self.KEYWORD_MODEL_SERVER_PORT,
+            ctx_size=self.KEYWORD_MODEL_CTX_SIZE,
+            gpu_layers=self.KEYWORD_MODEL_GPU_LAYERS,
+        )
+
+    @computed_field
+    @property
+    def caption_model_server(self) -> LlamaModelServerSettings:
+        return LlamaModelServerSettings(
+            host_dir=self.CAPTION_MODEL_HOST_DIR,
+            hf_repo_id=self.CAPTION_MODEL_HF_REPO_ID,
+            hf_filename=self.CAPTION_MODEL_HF_FILENAME,
+            server_port=self.CAPTION_MODEL_SERVER_PORT,
+            ctx_size=self.CAPTION_MODEL_CTX_SIZE,
+            gpu_layers=self.CAPTION_MODEL_GPU_LAYERS,
+        )
+
 
 settings = Settings()

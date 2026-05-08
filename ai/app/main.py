@@ -137,6 +137,7 @@ def _session_id_from_path(request: Request) -> str | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    keyword_client = settings.keyword_model_client
     redis = get_redis_client()
     temp_root = Path(mkdtemp(prefix="ai-frame-extractor-"))
     logger.info(
@@ -228,10 +229,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         extra=build_log_extra(
             "app.startup.keyword_extraction_configured",
             component="startup",
-            keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-            keyword_chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
-            keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
-            keyword_timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
+            keyword_model_base_url=keyword_client.base_url,
+            keyword_chat_endpoint=keyword_client.chat_endpoint,
+            keyword_health_endpoint=keyword_client.health_endpoint,
+            keyword_timeout_seconds=keyword_client.timeout_seconds,
         ),
     )
     logger.info(
@@ -256,8 +257,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 component="startup",
                 stage="keyword_preload",
                 outcome="succeeded",
-                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
+                keyword_model_base_url=keyword_client.base_url,
+                keyword_health_endpoint=keyword_client.health_endpoint,
             ),
         )
     except KeywordExtractionUnavailableError as exc:
@@ -272,8 +273,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type=exc.__class__.__name__,
-                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
+                keyword_model_base_url=keyword_client.base_url,
+                keyword_health_endpoint=keyword_client.health_endpoint,
             ),
         )
     except Exception:
@@ -287,8 +288,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 stage="keyword_preload",
                 outcome="failed",
                 error_type="unexpected_startup_error",
-                keyword_model_base_url=settings.KEYWORD_MODEL_BASE_URL,
-                keyword_health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
+                keyword_model_base_url=keyword_client.base_url,
+                keyword_health_endpoint=keyword_client.health_endpoint,
             ),
         )
 

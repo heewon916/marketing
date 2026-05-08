@@ -5,14 +5,12 @@ import logging
 import re
 import threading
 import time
-from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Request
 import httpx
 
 from app.core.config import (
-    DEFAULT_KEYWORD_MODEL_PATH,
     settings,
 )
 from app.logging import build_log_extra, preview_text
@@ -225,28 +223,20 @@ class KeywordExtractionResult:
 class KeywordExtractionService:
     def __init__(
         self,
-        model_path: Path,
         enabled: bool = True,
-        n_ctx: int = 2048,
         max_tokens: int = 64,
         temperature: float = 0.1,
         top_p: float = 0.9,
-        n_threads: int = 1,
-        n_gpu_layers: int = 20,
         timeout_seconds: float = 10.0,
         base_url: str | None = None,
         chat_endpoint: str | None = None,
         health_endpoint: str | None = None,
         api_key: str | None = None,
     ) -> None:
-        self.model_path = model_path
         self.enabled = enabled
-        self.n_ctx = n_ctx
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.top_p = top_p
-        self.n_threads = n_threads
-        self.n_gpu_layers = n_gpu_layers
         self.timeout_seconds = timeout_seconds
         self.base_url = (base_url or "").rstrip("/")
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
@@ -831,20 +821,17 @@ class KeywordExtractionService:
 
 
 def build_keyword_extraction_service() -> KeywordExtractionService:
+    client = settings.keyword_model_client
     return KeywordExtractionService(
-        model_path=DEFAULT_KEYWORD_MODEL_PATH,
-        enabled=settings.KEYWORD_MODEL_ENABLED,
-        n_ctx=settings.KEYWORD_MODEL_CTX_SIZE,
-        max_tokens=settings.KEYWORD_MODEL_MAX_TOKENS,
-        temperature=settings.KEYWORD_MODEL_TEMPERATURE,
-        top_p=settings.KEYWORD_MODEL_TOP_P,
-        n_threads=settings.KEYWORD_MODEL_THREADS,
-        n_gpu_layers=settings.KEYWORD_MODEL_GPU_LAYERS,
-        timeout_seconds=settings.KEYWORD_MODEL_TIMEOUT_SECONDS,
-        base_url=settings.KEYWORD_MODEL_BASE_URL,
-        chat_endpoint=settings.KEYWORD_MODEL_CHAT_ENDPOINT,
-        health_endpoint=settings.KEYWORD_MODEL_HEALTH_ENDPOINT,
-        api_key=settings.KEYWORD_MODEL_API_KEY,
+        enabled=client.enabled,
+        max_tokens=client.max_tokens,
+        temperature=client.temperature,
+        top_p=client.top_p,
+        timeout_seconds=client.timeout_seconds,
+        base_url=client.base_url,
+        chat_endpoint=client.chat_endpoint,
+        health_endpoint=client.health_endpoint,
+        api_key=client.api_key,
     )
 
 
