@@ -3,7 +3,7 @@ from pathlib import Path
 from app.keyword_model_download import ensure_keyword_model_available
 
 CONTAINER_KEYWORD_MODEL_PATH = Path(
-    "/models/qwen2.5-7b-instruct/q3_k_m/model.gguf"
+    "/models/qwen2-1.5b-instruct/q3_k_m/model.gguf"
 )
 
 
