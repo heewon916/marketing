@@ -359,13 +359,67 @@ pipeline {
                     KEYWORD_MODEL_HOST_DIR_VALUE="$(cd "$KEYWORD_MODEL_HOST_DIR_VALUE" && pwd -P)"
                     KEYWORD_MODEL_PATH="${KEYWORD_MODEL_HOST_DIR_VALUE}/${KEYWORD_MODEL_FILENAME}"
 
+                    print_step_status() {
+                      label="$1"
+                      status="$2"
+                      echo "[keyword-model] ${label}: ${status}"
+                    }
+
+                    run_observation() {
+                      label="$1"
+                      shift
+                      echo "[keyword-model] observe: ${label}"
+                      "$@"
+                      rc=$?
+                      echo "[keyword-model] observe exit=${rc}: ${label}"
+                      return 0
+                    }
+
+                    collect_keyword_model_diagnostics() {
+                      set +e
+                      echo "===== Keyword model diagnostics ====="
+                      echo "Current user: $(id -un)"
+                      echo "Current uid/gid: $(id -u):$(id -g)"
+                      echo "Current working directory: $(pwd)"
+                      echo "Resolved host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
+                      echo "Resolved model path: $KEYWORD_MODEL_PATH"
+                      run_observation "host dir listing" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                      run_observation "host model stat" stat "$KEYWORD_MODEL_PATH"
+                      run_observation "host model type" file "$KEYWORD_MODEL_PATH"
+                      run_observation "host model size" du -h "$KEYWORD_MODEL_PATH"
+                      run_observation "path permissions" namei -l "$KEYWORD_MODEL_PATH"
+                      run_observation "jenkins user readability" test -r "$KEYWORD_MODEL_PATH"
+                      run_observation "jenkins user file existence" test -f "$KEYWORD_MODEL_PATH"
+                      run_observation "container mount listing" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:/models" python:3.12-slim ls -lah /models
+                      run_observation "container mount model existence" docker run --rm -v "$KEYWORD_MODEL_HOST_DIR_VALUE:/models" python:3.12-slim python -c "from pathlib import Path; p=Path('/models/model.gguf'); print(p.exists(), p.stat().st_size if p.exists() else 'missing')"
+                      if command -v sudo >/dev/null 2>&1 && id jenkins >/dev/null 2>&1; then
+                        run_observation "sudo -u jenkins file existence" sudo -n -u jenkins test -f "$KEYWORD_MODEL_PATH"
+                      fi
+                      set -e
+                    }
+
+                    require_check() {
+                      label="$1"
+                      shift
+                      if "$@"; then
+                        print_step_status "$label" "ok"
+                        return 0
+                      fi
+
+                      rc=$?
+                      print_step_status "$label" "failed (exit=${rc})"
+                      collect_keyword_model_diagnostics
+                      exit "$rc"
+                    }
+
                     echo "Keyword model host dir: $KEYWORD_MODEL_HOST_DIR_VALUE"
                     echo "Keyword model source: ${KEYWORD_MODEL_HF_REPO_ID_VALUE}/${KEYWORD_MODEL_HF_FILENAME_VALUE}"
-                    echo "Keyword model file exists: $KEYWORD_MODEL_PATH"
+                    echo "Keyword model file path: $KEYWORD_MODEL_PATH"
 
                     if [ ! -f "$KEYWORD_MODEL_PATH" ]; then
                       echo "Keyword model is missing. Downloading the GGUF artifact..."
 
+                      docker_run_rc=0
                       docker run --rm \
                         -e HF_HOME=/tmp/hf-home \
                         -e KEYWORD_MODEL_HF_REPO_ID="$KEYWORD_MODEL_HF_REPO_ID_VALUE" \
@@ -404,13 +458,26 @@ except Exception as exc:
         f"Failed to download keyword model {repo_id}/{filename} to {target_path}: {exc}"
     ) from exc
 PY
-                        '
+                        ' || docker_run_rc=$?
+
+                      echo "docker_run_exit=${docker_run_rc}"
+                      if [ "$docker_run_rc" -ne 0 ]; then
+                        print_step_status "docker download container" "failed"
+                        collect_keyword_model_diagnostics
+                        exit "$docker_run_rc"
+                      fi
+
+                      print_step_status "docker download container" "ok"
                     else
                       echo "Keyword model already exists. Skip download."
                     fi
 
-                    test -d "$KEYWORD_MODEL_HOST_DIR_VALUE"
-                    test -f "$KEYWORD_MODEL_PATH"
+                    echo "after download"
+                    run_observation "host dir listing after download" ls -lah "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    run_observation "host model stat after download" stat "$KEYWORD_MODEL_PATH"
+
+                    require_check "host directory exists" test -d "$KEYWORD_MODEL_HOST_DIR_VALUE"
+                    require_check "host model file exists" test -f "$KEYWORD_MODEL_PATH"
                 '''
             }
         }
