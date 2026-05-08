@@ -3,11 +3,17 @@ import Button from '@/components/common/Button';
 import RoundedInput from '@/features/auth/onboarding/components/RoundedInput';
 import StaticMap from '@/features/auth/onboarding/components/StaticMap';
 import { loadKakaoMap } from '@/utils/loadKakaoMap';
+import { accountInfoCardStyles } from './accountInfoCardStyles';
 import CardShell from './CardShell';
 
 const categories = ['식당', '주점', '카페', '제과점'];
 
-export default function AccountInfoEdit({ formData, onChange }) {
+export default function AccountInfoEdit({
+  formData,
+  onChange,
+  onCancel,
+  onSave,
+}) {
   const initialStoreLocation = {
     storeName: formData.businessName,
     address: formData.address,
@@ -89,22 +95,23 @@ export default function AccountInfoEdit({ formData, onChange }) {
   };
 
   return (
-    <CardShell className="flex flex-col gap-5 p-5">
-      <label className="flex flex-col gap-2">
-        <span className="text-[14px] font-medium text-gray-400">
+    <CardShell className="flex flex-col px-7 py-8">
+      <div className="flex flex-col">
+        <label className={`${accountInfoCardStyles.section} flex flex-col gap-2`}>
+        <span className={accountInfoCardStyles.label}>
           상호명
         </span>
 
         <input
           value={formData.businessName}
           onChange={(event) => updateField('businessName', event.target.value)}
-          className="h-12 rounded-xl border border-gray-200 bg-white px-4 text-[17px] font-medium text-accent-100 outline-none focus:border-primary-100"
+          className="h-12 rounded-xl border border-gray-200 bg-white px-4 text-[18px] font-semibold text-accent-100 outline-none placeholder:font-medium placeholder:text-gray-400 focus:border-primary-100"
           placeholder="상호명을 입력해주세요"
         />
-      </label>
+        </label>
 
-      <div className="flex flex-col gap-3">
-        <span className="text-[14px] font-medium text-gray-400">
+        <div className={`${accountInfoCardStyles.section} flex flex-col gap-3`}>
+        <span className={accountInfoCardStyles.label}>
           업종
         </span>
 
@@ -118,17 +125,17 @@ export default function AccountInfoEdit({ formData, onChange }) {
                 size="sm"
                 variant={isSelected ? 'primary' : 'white'}
                 onClick={() => updateField('category', category)}
-                className="w-full text-[17px] font-medium"
+                className="w-full text-[18px] font-semibold"
               >
                 {category}
               </Button>
             );
           })}
         </div>
-      </div>
+        </div>
 
-      <div className="flex flex-col gap-3">
-        <span className="text-[14px] font-medium text-gray-400">
+        <div className={`${accountInfoCardStyles.section} flex flex-col gap-3`}>
+        <span className={accountInfoCardStyles.label}>
           위치
         </span>
 
@@ -138,6 +145,7 @@ export default function AccountInfoEdit({ formData, onChange }) {
             onChange={handleChangeKeyword}
             placeholder="가게명 또는 주소를 입력해주세요"
             icon="search"
+            className="h-12 py-0 text-[18px] font-semibold text-accent-100 placeholder:font-medium placeholder:text-gray-400"
           />
 
           {isSearching && (
@@ -178,6 +186,27 @@ export default function AccountInfoEdit({ formData, onChange }) {
             longitude: formData.longitude,
           }}
         />
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-center gap-3">
+        <Button
+          size="sm"
+          variant="white"
+          onClick={onCancel}
+          className="text-[18px] font-bold"
+        >
+          취소
+        </Button>
+
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onSave}
+          className="text-[18px] font-bold"
+        >
+          저장하기
+        </Button>
       </div>
     </CardShell>
   );
