@@ -10,10 +10,12 @@ from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
 from app.services.caption_generation import (
+    CaptionGenerationRequest,
     CaptionGenerationResult,
     CaptionGenerationService,
     CaptionGenerationUnavailableError,
 )
+from app.services.content_purpose import ContentPurpose
 from app.services.canonical_keyword_resolver import (
     CanonicalKeywordResolverService,
     CanonicalKeywordResolution,
@@ -23,72 +25,13 @@ from app.services.weather_tags import evaluate_weather_tags
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
 STATUS_TEXT_GENERATED = "TEXT_GENERATED"
-DEFAULT_FALLBACK_GUIDE_TEXT = "사장님의 예쁜 가게를 한 번 자랑해볼까요?"
 logger = logging.getLogger(__name__)
-
-# TODO : owner_persona 동일한 레퍼런스 캡션 중 keywords 소재와 유사한 것, 날씨, 자신의 keywords 참고해 draft caption 생성하기 
-def build_draft_caption(
-    keywords: list[str],
-    owner_persona: str,
-    cloud_cover: str,
-    weather_tags: list[str],
-) -> tuple[str, list[str]]:
-    keyword_phrase = ", ".join(keywords) if keywords else "today's highlights"
-    caption = (
-        f"{cloud_cover} day, {owner_persona} mood. "
-        f"How about sharing {keyword_phrase} with your audience today?"
-    )
-    hashtags = [f"#{kw.replace(' ', '')}" for kw in keywords[:5]]
-    if cloud_cover:
-        hashtags.append(f"#{cloud_cover.replace(' ', '')}")
-    return caption, hashtags
-
-def build_guide_text(keywords: list[str], weather_tags: list[str]) -> str:
-    if not keywords:
-        return "Capture the store atmosphere clearly so the main subject stands out."
-    keyword_phrase = ", ".join(keywords)
-    return (
-        f"Make sure {keyword_phrase} is clearly visible in the shot. "
-        "Check the framing and subject emphasis before shooting."
-    )
-
 
 def resolve_caption_keywords(
     draft_keywords: list[str],
     final_keywords: list[str],
 ) -> list[str]:
     return final_keywords or draft_keywords
-
-
-def build_text_generation_result(
-    keywords: list[str],
-    owner_persona: str,
-    cloud_cover: str,
-    weather_tags: list[str],
-    fallback_source: str | None,
-) -> tuple[str, list[str], str, str, str | None]:
-    draft_caption, draft_hashtags = build_draft_caption(
-        keywords,
-        owner_persona=owner_persona,
-        cloud_cover=cloud_cover,
-        weather_tags=weather_tags,
-    )
-    guide_text = (
-        build_guide_text(keywords, weather_tags)
-        if keywords
-        else DEFAULT_FALLBACK_GUIDE_TEXT
-    )
-    effective_fallback_source = fallback_source
-    if not keywords and effective_fallback_source is None:
-        effective_fallback_source = "default_guide"
-    stored_caption = " ".join(part for part in [draft_caption, *draft_hashtags] if part)
-    return (
-        draft_caption,
-        draft_hashtags,
-        guide_text,
-        stored_caption,
-        effective_fallback_source,
-    )
 
 
 def _result_from_caption_generation(
@@ -222,7 +165,7 @@ async def upsert_content_session(
 @dataclass
 class ProcessUtteranceResult:
     status: str
-    purpose: str
+    purpose: ContentPurpose
     weather_tags: list[str]
     draft_keywords: list[str]
     final_keywords: list[str]
@@ -265,7 +208,7 @@ async def _persist_process_utterance_started(
 def _build_keyword_state(
     extraction_result,
     session_id: str,
-) -> tuple[str, list[str]]:
+) -> tuple[ContentPurpose, list[str]]:
     purpose = extraction_result.purpose
     draft_keywords = list(extraction_result.draft_keywords)
 
@@ -312,7 +255,7 @@ def _build_final_keyword_state(
 
 
 def _build_process_utterance_debug_fields(
-    purpose: str,
+    purpose: ContentPurpose,
     canonical_resolution: CanonicalKeywordResolution,
 ) -> dict[str, str]:
     return {
@@ -422,20 +365,30 @@ async def process_utterance(
         session_id=session_id,
     )
     caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    caption_request = CaptionGenerationRequest(
+        purpose=purpose,
+        keywords=caption_keywords,
+        owner_persona=payload.owner_persona,
+        weather_tags=weather_tags,
+    )
     fallback_source: str | None = None
     if not caption_keywords:
+        fallback_result = caption_service.build_fallback_result(
+            caption_request,
+            fallback_source=None,
+        )
         (
             draft_caption,
             draft_hashtags,
             guide_text,
             stored_caption,
             fallback_source,
-        ) = build_text_generation_result(
-            keywords=caption_keywords,
-            owner_persona=payload.owner_persona,
-            cloud_cover=payload.weather.cloud_cover,
-            weather_tags=weather_tags,
-            fallback_source=None,
+        ) = (
+            fallback_result.result.draft_caption,
+            fallback_result.result.draft_hashtags,
+            fallback_result.result.guide_text,
+            fallback_result.result.stored_caption,
+            fallback_result.fallback_source,
         )
         logger.info(
             "Built text generation result from default guide fallback.",
@@ -446,6 +399,7 @@ async def process_utterance(
                 session_id=session_id,
                 outcome="fallback",
                 text_generation_source="default_guide",
+                purpose=purpose,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(draft_caption),
@@ -461,12 +415,7 @@ async def process_utterance(
                 stored_caption,
                 fallback_source,
             ) = _result_from_caption_generation(
-                await caption_service.generate_text(
-                    keywords=caption_keywords,
-                    owner_persona=payload.owner_persona,
-                    cloud_cover=payload.weather.cloud_cover,
-                    weather_tags=weather_tags,
-                )
+                await caption_service.generate_text(caption_request)
             )
             logger.info(
                 "Built text generation result from caption model.",
@@ -477,6 +426,7 @@ async def process_utterance(
                     session_id=session_id,
                     outcome="succeeded",
                     text_generation_source="caption_model",
+                    purpose=purpose,
                     weather_tag_count=len(weather_tags),
                     weather_tags_preview=", ".join(weather_tags[:3]),
                     draft_caption_length=len(draft_caption),
@@ -484,19 +434,22 @@ async def process_utterance(
                 ),
             )
         except CaptionGenerationUnavailableError as exc:
-            fallback_source = "caption_model_fallback"
+            fallback_result = caption_service.build_fallback_result(
+                caption_request,
+                fallback_source="caption_model_fallback",
+            )
             (
                 draft_caption,
                 draft_hashtags,
                 guide_text,
                 stored_caption,
                 fallback_source,
-            ) = build_text_generation_result(
-                keywords=caption_keywords,
-                owner_persona=payload.owner_persona,
-                cloud_cover=payload.weather.cloud_cover,
-                weather_tags=weather_tags,
-                fallback_source=fallback_source,
+            ) = (
+                fallback_result.result.draft_caption,
+                fallback_result.result.draft_hashtags,
+                fallback_result.result.guide_text,
+                fallback_result.result.stored_caption,
+                fallback_result.fallback_source,
             )
             logger.warning(
                 "Caption model generation failed; falling back to rule-based text generation: %s",
@@ -510,6 +463,7 @@ async def process_utterance(
                     outcome="fallback",
                     text_generation_source="rule_based_fallback",
                     error_type=exc.__class__.__name__,
+                    purpose=purpose,
                     weather_tag_count=len(weather_tags),
                     weather_tags_preview=", ".join(weather_tags[:3]),
                     draft_caption_length=len(draft_caption),

@@ -12,8 +12,38 @@ from app.services.canonical_keyword_resolver import (
     CanonicalKeywordMatch,
     CanonicalKeywordResolution,
 )
-from app.services.caption_generation import CaptionGenerationResult
+from app.services.caption_generation import (
+    CaptionFallbackResult,
+    CaptionGenerationRequest,
+    CaptionGenerationResult,
+    DEFAULT_FALLBACK_GUIDE_TEXT,
+)
 from app.services.keyword_extraction import KeywordExtractionResult
+from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
+
+
+def _weather_context_for_tests(weather_tags: list[str]) -> str:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return "폭우가 오는 날"
+    if PRECIP_RAIN in weather_tags:
+        return "비 오는 날"
+    if PRECIP_CLEAR in weather_tags:
+        return "맑은 날"
+    if PRECIP_CLOUDY in weather_tags:
+        return "흐린 날"
+    return ""
+
+
+def _weather_hashtags_for_tests(weather_tags: list[str]) -> list[str]:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return ["#폭우"]
+    if PRECIP_RAIN in weather_tags:
+        return ["#비오는날"]
+    if PRECIP_CLEAR in weather_tags:
+        return ["#맑은날"]
+    if PRECIP_CLOUDY in weather_tags:
+        return ["#흐린날"]
+    return []
 
 class DefaultKeywordExtractionService:
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
@@ -52,22 +82,63 @@ class DefaultCanonicalKeywordResolverService:
 class DefaultCaptionGenerationService:
     async def generate_text(
         self,
-        *,
-        keywords: list[str],
-        owner_persona: str,
-        cloud_cover: str,
-        weather_tags: list[str],
+        request: CaptionGenerationRequest,
     ) -> CaptionGenerationResult:
-        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in keywords[:3]]
-        if cloud_cover:
-            hashtags.append(f"#{cloud_cover.replace(' ', '')}")
+        weather_context = _weather_context_for_tests(request.weather_tags)
+        hashtags = [
+            f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:3]
+        ]
+        hashtags.extend(
+            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
+            if hashtag not in hashtags
+        )
         return CaptionGenerationResult(
             guide_text="사장님의 예쁜 가게를 한 번 자랑해볼까요?",
             draft_caption=(
-                f"{cloud_cover} 분위기와 {owner_persona} 무드로 "
-                f"{', '.join(keywords) if keywords else '오늘의 매장'}를 소개해보세요."
+                f"{weather_context or '오늘의 분위기'}와 {request.owner_persona} 무드로 "
+                f"{', '.join(request.keywords) if request.keywords else '오늘의 매장'}를 소개해보세요."
             ),
             draft_hashtags=hashtags or ["#today"],
+        )
+
+    def build_fallback_result(
+        self,
+        request: CaptionGenerationRequest,
+        fallback_source: str | None,
+    ) -> CaptionFallbackResult:
+        keyword_phrase = (
+            ", ".join(request.keywords) if request.keywords else "today's highlights"
+        )
+        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
+        hashtags.extend(
+            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
+            if hashtag not in hashtags
+        )
+        weather_context = _weather_context_for_tests(request.weather_tags)
+        caption = (
+            f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
+            f"{keyword_phrase}를 소개해보세요."
+        )
+        guide_text = (
+            DEFAULT_FALLBACK_GUIDE_TEXT
+            if not request.keywords
+            else (
+                f"Make sure {', '.join(request.keywords)} is clearly visible in the shot. "
+                "Check the framing and subject emphasis before shooting."
+            )
+        )
+        if not hashtags:
+            hashtags.append("#오늘기록")
+        effective_fallback_source = fallback_source
+        if not request.keywords and effective_fallback_source is None:
+            effective_fallback_source = "default_guide"
+        return CaptionFallbackResult(
+            result=CaptionGenerationResult(
+                guide_text=guide_text,
+                draft_caption=caption,
+                draft_hashtags=hashtags,
+            ),
+            fallback_source=effective_fallback_source,
         )
 
 

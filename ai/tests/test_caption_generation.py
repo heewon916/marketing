@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from app.services.caption_generation import (
+    CaptionGenerationRequest,
     CaptionGenerationService,
     CaptionGenerationUnavailableError,
 )
@@ -58,10 +59,12 @@ def test_caption_generation_service_calls_remote_server_successfully(
 
     result = _run_immediate(
         service.generate_text(
-            keywords=["signature menu"],
-            owner_persona="aesthetic",
-            cloud_cover="clear",
-            weather_tags=["PRECIP_CLEAR"],
+            CaptionGenerationRequest(
+                purpose="메뉴 홍보",
+                keywords=["signature menu"],
+                owner_persona="aesthetic",
+                weather_tags=["PRECIP_CLEAR"],
+            )
         )
     )
 
@@ -101,15 +104,58 @@ def test_caption_generation_service_retries_without_response_format(
 
     result = _run_immediate(
         service.generate_text(
-            keywords=["막걸리"],
-            owner_persona="warm",
-            cloud_cover="rainy",
-            weather_tags=["PRECIP_RAIN"],
+            CaptionGenerationRequest(
+                purpose="메뉴 홍보",
+                keywords=["막걸리"],
+                owner_persona="warm",
+                weather_tags=["PRECIP_RAIN"],
+            )
         )
     )
 
     assert calls == [True, False]
     assert result.draft_hashtags == ["#비오는날", "#막걸리"]
+
+
+def test_caption_generation_service_selects_prompt_by_purpose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+    prompts: list[str] = []
+
+    async def fake_post_chat_completion(prompt: str, *, include_response_format: bool):
+        prompts.append(prompt)
+        return _make_chat_response(
+            200,
+            content=(
+                '{"guide_text":"가이드를 확인하세요.",'
+                '"caption":"캡션을 확인하세요.",'
+                '"hashtags":["#테스트"]}'
+            ),
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+
+    for purpose in ("메뉴 홍보", "영업 공지", "일상 공유"):
+        _run_immediate(
+            service.generate_text(
+                CaptionGenerationRequest(
+                    purpose=purpose,
+                    keywords=["keyword"],
+                    owner_persona="warm",
+                    weather_tags=["PRECIP_CLEAR"],
+                )
+            )
+        )
+
+    assert 'The post purpose is "메뉴 홍보".' in prompts[0]
+    assert "Frame the copy like a menu, product, ingredient, or store offering promotion." in prompts[0]
+    assert "weather:" not in prompts[0]
+    assert "clear" not in prompts[0]
+    assert 'The post purpose is "영업 공지".' in prompts[1]
+    assert "Frame the copy like a clear business notice about operation, schedule, or availability." in prompts[1]
+    assert 'The post purpose is "일상 공유".' in prompts[2]
+    assert "Frame the copy like a daily share about the owner's routine, store atmosphere, or behind-the-scenes moment." in prompts[2]
 
 
 def test_caption_generation_service_preload_raises_when_server_unreachable(
