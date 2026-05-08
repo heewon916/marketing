@@ -16,15 +16,17 @@ from app.services.content_purpose import ContentPurpose
 
 logger = logging.getLogger(__name__)
 
-_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_MENU_PROMOTION_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
 
 Rules:
 - Return JSON object text only.
 - Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
+- The post purpose is "메뉴 홍보".
 - "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
 - "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
 - "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
 - Use the provided keywords naturally. Do not invent unrelated products.
+- Frame the copy like a menu, product, ingredient, or store offering promotion.
 - Keep the output suitable for an Instagram post by a local store owner.
 
 Input:
@@ -33,6 +35,50 @@ Input:
 - keywords: {keywords}
 - weather_tags: {weather_tags}
 """
+
+_BUSINESS_NOTICE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+
+Rules:
+- Return JSON object text only.
+- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
+- The post purpose is "영업 공지".
+- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
+- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
+- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
+- Use the provided keywords naturally. Do not invent unrelated products.
+- Frame the copy like a clear business notice about operation, schedule, or availability.
+- Keep the output suitable for an Instagram post by a local store owner.
+
+Input:
+- owner_persona: {owner_persona}
+- weather: {cloud_cover}
+- keywords: {keywords}
+- weather_tags: {weather_tags}
+"""
+
+_DAILY_SHARE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+
+Rules:
+- Return JSON object text only.
+- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
+- The post purpose is "일상 공유".
+- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
+- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
+- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
+- Use the provided keywords naturally. Do not invent unrelated products.
+- Frame the copy like a daily share about the owner's routine, store atmosphere, or behind-the-scenes moment.
+- Keep the output suitable for an Instagram post by a local store owner.
+
+Input:
+- owner_persona: {owner_persona}
+- weather: {cloud_cover}
+- keywords: {keywords}
+- weather_tags: {weather_tags}
+"""
+
+DEFAULT_FALLBACK_GUIDE_TEXT = (
+    "Capture the store atmosphere clearly so the main subject stands out."
+)
 
 
 class CaptionGenerationUnavailableError(RuntimeError):
@@ -61,6 +107,82 @@ class CaptionGenerationRequest:
     weather_tags: list[str] = field(default_factory=list)
 
 
+@dataclass
+class CaptionFallbackResult:
+    result: CaptionGenerationResult
+    fallback_source: str | None
+
+
+class CaptionPipeline:
+    def __init__(self, purpose: ContentPurpose, prompt_template: str) -> None:
+        self.purpose = purpose
+        self.prompt_template = prompt_template
+
+    def build_prompt(self, request: CaptionGenerationRequest) -> str:
+        return self.prompt_template.format(
+            owner_persona=request.owner_persona.strip(),
+            cloud_cover=request.cloud_cover.strip(),
+            keywords=", ".join(request.keywords) if request.keywords else "none",
+            weather_tags=", ".join(request.weather_tags)
+            if request.weather_tags
+            else "none",
+        )
+
+    def build_fallback(
+        self,
+        request: CaptionGenerationRequest,
+        fallback_source: str | None,
+    ) -> CaptionFallbackResult:
+        draft_caption, draft_hashtags = self._build_fallback_caption(request)
+        guide_text = (
+            self._build_fallback_guide_text(request)
+            if request.keywords
+            else DEFAULT_FALLBACK_GUIDE_TEXT
+        )
+        effective_fallback_source = fallback_source
+        if not request.keywords and effective_fallback_source is None:
+            effective_fallback_source = "default_guide"
+        return CaptionFallbackResult(
+            result=CaptionGenerationResult(
+                guide_text=guide_text,
+                draft_caption=draft_caption,
+                draft_hashtags=draft_hashtags,
+            ),
+            fallback_source=effective_fallback_source,
+        )
+
+    def _build_fallback_caption(
+        self,
+        request: CaptionGenerationRequest,
+    ) -> tuple[str, list[str]]:
+        keyword_phrase = (
+            ", ".join(request.keywords) if request.keywords else "today's highlights"
+        )
+        caption = (
+            f"{request.cloud_cover} day, {request.owner_persona} mood. "
+            f"How about sharing {keyword_phrase} with your audience today?"
+        )
+        hashtags = [f"#{kw.replace(' ', '')}" for kw in request.keywords[:5]]
+        if request.cloud_cover:
+            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        return caption, hashtags
+
+    def _build_fallback_guide_text(self, request: CaptionGenerationRequest) -> str:
+        keyword_phrase = ", ".join(request.keywords)
+        return (
+            f"Make sure {keyword_phrase} is clearly visible in the shot. "
+            "Check the framing and subject emphasis before shooting."
+        )
+
+
+def _build_caption_pipeline_registry() -> dict[ContentPurpose, CaptionPipeline]:
+    return {
+        "메뉴 홍보": CaptionPipeline("메뉴 홍보", _MENU_PROMOTION_PROMPT_TEMPLATE),
+        "영업 공지": CaptionPipeline("영업 공지", _BUSINESS_NOTICE_PROMPT_TEMPLATE),
+        "일상 공유": CaptionPipeline("일상 공유", _DAILY_SHARE_PROMPT_TEMPLATE),
+    }
+
+
 class CaptionGenerationService:
     def __init__(
         self,
@@ -84,6 +206,7 @@ class CaptionGenerationService:
         self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
         self._server_checked = False
+        self._pipelines = _build_caption_pipeline_registry()
 
     async def preload(self) -> None:
         await self._check_server_connection()
@@ -97,14 +220,7 @@ class CaptionGenerationService:
                 "Caption generation model is disabled."
             )
 
-        prompt = _PROMPT_TEMPLATE.format(
-            owner_persona=request.owner_persona.strip(),
-            cloud_cover=request.cloud_cover.strip(),
-            keywords=", ".join(request.keywords) if request.keywords else "none",
-            weather_tags=", ".join(request.weather_tags)
-            if request.weather_tags
-            else "none",
-        )
+        prompt = self._get_pipeline(request.purpose).build_prompt(request)
         started_at = time.perf_counter()
 
         logger.info(
@@ -126,7 +242,7 @@ class CaptionGenerationService:
         )
 
         try:
-            raw_output = await self._generate(prompt)
+            raw_output = await self._generate(prompt, purpose=request.purpose)
         except TimeoutError as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation timed out."
@@ -154,6 +270,16 @@ class CaptionGenerationService:
             ),
         )
         return result
+
+    def build_fallback_result(
+        self,
+        request: CaptionGenerationRequest,
+        fallback_source: str | None,
+    ) -> CaptionFallbackResult:
+        return self._get_pipeline(request.purpose).build_fallback(
+            request,
+            fallback_source,
+        )
 
     def _build_request_payload(
         self,
@@ -267,7 +393,15 @@ class CaptionGenerationService:
         body = response.text.lower()
         return "response_format" in body or "json_object" in body or "schema" in body
 
-    async def _generate(self, prompt: str) -> str:
+    def _get_pipeline(self, purpose: ContentPurpose) -> CaptionPipeline:
+        pipeline = self._pipelines.get(purpose)
+        if pipeline is None:
+            raise CaptionGenerationUnavailableError(
+                f"Caption pipeline is not configured for purpose: {purpose}."
+            )
+        return pipeline
+
+    async def _generate(self, prompt: str, *, purpose: ContentPurpose) -> str:
         if not self.base_url:
             raise CaptionGenerationUnavailableError(
                 "Caption generation server base URL is not configured."
@@ -310,6 +444,7 @@ class CaptionGenerationService:
                 component="caption_generation",
                 stage="generate",
                 outcome="succeeded",
+                purpose=purpose,
                 caption_model_base_url=self.base_url,
                 caption_chat_endpoint=self.chat_endpoint,
                 caption_http_status=response.status_code if response is not None else None,
