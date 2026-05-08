@@ -26,7 +26,7 @@ self.addEventListener("message", (event) => {
 messaging.onBackgroundMessage((payload) => {
   const title = payload.notification?.title || payload.data?.title || "alarm"
   const body = payload.notification?.body || payload.data?.body || ""
-  const url = payload.data?.url || payload.fcmOptions?.link || "/"
+  const url = payload.data.web_url || payload.data?.url || payload.fcmOptions?.link || "/"
 
   return self.registration.showNotification(title, {
     body,
