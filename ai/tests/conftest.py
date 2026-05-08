@@ -19,6 +19,31 @@ from app.services.caption_generation import (
     DEFAULT_FALLBACK_GUIDE_TEXT,
 )
 from app.services.keyword_extraction import KeywordExtractionResult
+from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
+
+
+def _weather_context_for_tests(weather_tags: list[str]) -> str:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return "폭우가 오는 날"
+    if PRECIP_RAIN in weather_tags:
+        return "비 오는 날"
+    if PRECIP_CLEAR in weather_tags:
+        return "맑은 날"
+    if PRECIP_CLOUDY in weather_tags:
+        return "흐린 날"
+    return ""
+
+
+def _weather_hashtags_for_tests(weather_tags: list[str]) -> list[str]:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return ["#폭우"]
+    if PRECIP_RAIN in weather_tags:
+        return ["#비오는날"]
+    if PRECIP_CLEAR in weather_tags:
+        return ["#맑은날"]
+    if PRECIP_CLOUDY in weather_tags:
+        return ["#흐린날"]
+    return []
 
 class DefaultKeywordExtractionService:
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
@@ -59,15 +84,18 @@ class DefaultCaptionGenerationService:
         self,
         request: CaptionGenerationRequest,
     ) -> CaptionGenerationResult:
+        weather_context = _weather_context_for_tests(request.weather_tags)
         hashtags = [
             f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:3]
         ]
-        if request.cloud_cover:
-            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        hashtags.extend(
+            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
+            if hashtag not in hashtags
+        )
         return CaptionGenerationResult(
             guide_text="사장님의 예쁜 가게를 한 번 자랑해볼까요?",
             draft_caption=(
-                f"{request.cloud_cover} 분위기와 {request.owner_persona} 무드로 "
+                f"{weather_context or '오늘의 분위기'}와 {request.owner_persona} 무드로 "
                 f"{', '.join(request.keywords) if request.keywords else '오늘의 매장'}를 소개해보세요."
             ),
             draft_hashtags=hashtags or ["#today"],
@@ -82,11 +110,14 @@ class DefaultCaptionGenerationService:
             ", ".join(request.keywords) if request.keywords else "today's highlights"
         )
         hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
-        if request.cloud_cover:
-            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        hashtags.extend(
+            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
+            if hashtag not in hashtags
+        )
+        weather_context = _weather_context_for_tests(request.weather_tags)
         caption = (
-            f"{request.cloud_cover} day, {request.owner_persona} mood. "
-            f"How about sharing {keyword_phrase} with your audience today?"
+            f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
+            f"{keyword_phrase}를 소개해보세요."
         )
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
@@ -96,6 +127,8 @@ class DefaultCaptionGenerationService:
                 "Check the framing and subject emphasis before shooting."
             )
         )
+        if not hashtags:
+            hashtags.append("#오늘기록")
         effective_fallback_source = fallback_source
         if not request.keywords and effective_fallback_source is None:
             effective_fallback_source = "default_guide"

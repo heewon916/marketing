@@ -33,6 +33,31 @@ from app.services.sessions import (
     resolve_caption_keywords,
     session_key,
 )
+from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
+
+
+def _weather_context_for_tests(weather_tags: list[str]) -> str:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return "폭우가 오는 날"
+    if PRECIP_RAIN in weather_tags:
+        return "비 오는 날"
+    if PRECIP_CLEAR in weather_tags:
+        return "맑은 날"
+    if PRECIP_CLOUDY in weather_tags:
+        return "흐린 날"
+    return ""
+
+
+def _weather_hashtags_for_tests(weather_tags: list[str]) -> list[str]:
+    if PRECIP_HEAVY_RAIN in weather_tags:
+        return ["#폭우"]
+    if PRECIP_RAIN in weather_tags:
+        return ["#비오는날"]
+    if PRECIP_CLEAR in weather_tags:
+        return ["#맑은날"]
+    if PRECIP_CLOUDY in weather_tags:
+        return ["#흐린날"]
+    return []
 
 
 def _make_chat_response(
@@ -222,7 +247,6 @@ class FakeCaptionGenerationService:
                 "purpose": request.purpose,
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
-                "cloud_cover": request.cloud_cover,
                 "weather_tags": list(request.weather_tags),
             }
         )
@@ -240,7 +264,6 @@ class FakeCaptionGenerationService:
                 "purpose": request.purpose,
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
-                "cloud_cover": request.cloud_cover,
                 "weather_tags": list(request.weather_tags),
                 "fallback_source": fallback_source,
             }
@@ -248,12 +271,15 @@ class FakeCaptionGenerationService:
         keyword_phrase = (
             ", ".join(request.keywords) if request.keywords else "today's highlights"
         )
+        weather_context = _weather_context_for_tests(request.weather_tags)
         hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
-        if request.cloud_cover:
-            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        hashtags.extend(
+            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
+            if hashtag not in hashtags
+        )
         caption = (
-            f"{request.cloud_cover} day, {request.owner_persona} mood. "
-            f"How about sharing {keyword_phrase} with your audience today?"
+            f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
+            f"{keyword_phrase}를 소개해보세요."
         )
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
@@ -263,6 +289,8 @@ class FakeCaptionGenerationService:
                 "Check the framing and subject emphasis before shooting."
             )
         )
+        if not hashtags:
+            hashtags.append("#오늘기록")
         effective_fallback_source = fallback_source
         if not request.keywords and effective_fallback_source is None:
             effective_fallback_source = "default_guide"
@@ -370,16 +398,15 @@ def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
             purpose="일상 공유",
             keywords=[],
             owner_persona="calm",
-            cloud_cover="clear",
             weather_tags=[],
         ),
         fallback_source=None,
     )
 
     assert fallback_result.result.draft_caption
-    assert fallback_result.result.draft_hashtags == ["#clear"]
+    assert fallback_result.result.draft_hashtags == ["#오늘기록"]
     assert fallback_result.result.guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
-    assert fallback_result.result.stored_caption.endswith("#clear")
+    assert fallback_result.result.stored_caption.endswith("#오늘기록")
     assert fallback_result.fallback_source == "default_guide"
 
 
@@ -434,6 +461,7 @@ def test_process_utterance_falls_back_when_caption_generation_fails(
     assert isinstance(body["caption"], str)
     assert fake_service.fallback_calls[0]["purpose"] == "메뉴 홍보"
     assert fake_service.fallback_calls[0]["fallback_source"] == "caption_model_fallback"
+    assert "cloud_cover" not in fake_service.fallback_calls[0]
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:text_generation_fallback_source"] == "caption_model_fallback"
     assert saved["caption"]
@@ -463,6 +491,7 @@ def test_process_utterance_passes_purpose_to_caption_request(
 
     assert response.status_code == 200
     assert fake_service.calls[0]["purpose"] == "영업 공지"
+    assert "cloud_cover" not in fake_service.calls[0]
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -531,7 +560,7 @@ def test_redis_payload_persisted(
     assert saved["status"] == "TEXT_GENERATED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"]
-    assert "#맑음" in saved["caption"]
+    assert "#맑은날" in saved["caption"]
     draft_keyword_fields = [
         field for field in saved if field.startswith("draft_keyword:")
     ]
@@ -624,6 +653,7 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
     assert "final_keyword:1" not in saved
     assert fake_service.fallback_calls[0]["purpose"] == "일상 공유"
     assert fake_service.fallback_calls[0]["fallback_source"] is None
+    assert "cloud_cover" not in fake_service.fallback_calls[0]
 
 
 def test_process_utterance_falls_back_to_draft_keywords_when_canonical_lookup_misses(

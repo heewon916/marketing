@@ -369,7 +369,6 @@ async def process_utterance(
         purpose=purpose,
         keywords=caption_keywords,
         owner_persona=payload.owner_persona,
-        cloud_cover=payload.weather.cloud_cover,
         weather_tags=weather_tags,
     )
     fallback_source: str | None = None

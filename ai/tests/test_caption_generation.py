@@ -63,7 +63,6 @@ def test_caption_generation_service_calls_remote_server_successfully(
                 purpose="메뉴 홍보",
                 keywords=["signature menu"],
                 owner_persona="aesthetic",
-                cloud_cover="clear",
                 weather_tags=["PRECIP_CLEAR"],
             )
         )
@@ -109,7 +108,6 @@ def test_caption_generation_service_retries_without_response_format(
                 purpose="메뉴 홍보",
                 keywords=["막걸리"],
                 owner_persona="warm",
-                cloud_cover="rainy",
                 weather_tags=["PRECIP_RAIN"],
             )
         )
@@ -145,7 +143,6 @@ def test_caption_generation_service_selects_prompt_by_purpose(
                     purpose=purpose,
                     keywords=["keyword"],
                     owner_persona="warm",
-                    cloud_cover="clear",
                     weather_tags=["PRECIP_CLEAR"],
                 )
             )
@@ -153,6 +150,8 @@ def test_caption_generation_service_selects_prompt_by_purpose(
 
     assert 'The post purpose is "메뉴 홍보".' in prompts[0]
     assert "Frame the copy like a menu, product, ingredient, or store offering promotion." in prompts[0]
+    assert "weather:" not in prompts[0]
+    assert "clear" not in prompts[0]
     assert 'The post purpose is "영업 공지".' in prompts[1]
     assert "Frame the copy like a clear business notice about operation, schedule, or availability." in prompts[1]
     assert 'The post purpose is "일상 공유".' in prompts[2]

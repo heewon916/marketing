@@ -13,6 +13,20 @@ import httpx
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
 from app.services.content_purpose import ContentPurpose
+from app.services.weather_tags import (
+    PRECIP_CLEAR,
+    PRECIP_CLOUDY,
+    PRECIP_HEAVY_RAIN,
+    PRECIP_RAIN,
+    SPECIAL_FINE_DUST,
+    SPECIAL_SEASONAL_CHANGE,
+    SPECIAL_TYPHOON,
+    TEMP_COLD,
+    TEMP_FREEZING,
+    TEMP_HOT,
+    TEMP_MILD,
+    TEMP_SCORCHING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +45,8 @@ Rules:
 
 Input:
 - owner_persona: {owner_persona}
-- weather: {cloud_cover}
+- weather_context: {weather_context}
 - keywords: {keywords}
-- weather_tags: {weather_tags}
 """
 
 _BUSINESS_NOTICE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
@@ -51,9 +64,8 @@ Rules:
 
 Input:
 - owner_persona: {owner_persona}
-- weather: {cloud_cover}
+- weather_context: {weather_context}
 - keywords: {keywords}
-- weather_tags: {weather_tags}
 """
 
 _DAILY_SHARE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
@@ -71,14 +83,103 @@ Rules:
 
 Input:
 - owner_persona: {owner_persona}
-- weather: {cloud_cover}
+- weather_context: {weather_context}
 - keywords: {keywords}
-- weather_tags: {weather_tags}
 """
 
 DEFAULT_FALLBACK_GUIDE_TEXT = (
     "Capture the store atmosphere clearly so the main subject stands out."
 )
+
+_PRIMARY_WEATHER_TAG_PRIORITY = (
+    PRECIP_HEAVY_RAIN,
+    PRECIP_RAIN,
+    PRECIP_CLEAR,
+    PRECIP_CLOUDY,
+)
+
+_SECONDARY_WEATHER_TAG_PRIORITY = (
+    SPECIAL_TYPHOON,
+    SPECIAL_FINE_DUST,
+    SPECIAL_SEASONAL_CHANGE,
+    TEMP_SCORCHING,
+    TEMP_HOT,
+    TEMP_COLD,
+    TEMP_FREEZING,
+    TEMP_MILD,
+)
+
+_WEATHER_CONTEXT_BY_TAG = {
+    PRECIP_HEAVY_RAIN: "폭우가 오는 날",
+    PRECIP_RAIN: "비 오는 날",
+    PRECIP_CLEAR: "맑은 날",
+    PRECIP_CLOUDY: "흐린 날",
+    SPECIAL_TYPHOON: "강풍 주의가 있는 날",
+    SPECIAL_FINE_DUST: "미세먼지 주의가 있는 날",
+    SPECIAL_SEASONAL_CHANGE: "환절기",
+    TEMP_SCORCHING: "무더운 날",
+    TEMP_HOT: "더운 날",
+    TEMP_COLD: "쌀쌀한 날",
+    TEMP_FREEZING: "매우 추운 날",
+    TEMP_MILD: "선선한 날",
+}
+
+_WEATHER_HASHTAG_BY_TAG = {
+    PRECIP_HEAVY_RAIN: "#폭우",
+    PRECIP_RAIN: "#비오는날",
+    PRECIP_CLEAR: "#맑은날",
+    PRECIP_CLOUDY: "#흐린날",
+    SPECIAL_TYPHOON: "#강풍주의",
+    SPECIAL_FINE_DUST: "#미세먼지주의",
+    SPECIAL_SEASONAL_CHANGE: "#환절기",
+    TEMP_SCORCHING: "#무더위",
+    TEMP_HOT: "#더운날",
+    TEMP_COLD: "#쌀쌀한날",
+    TEMP_FREEZING: "#한파",
+    TEMP_MILD: "#선선한날",
+}
+
+
+def _select_weather_copy_tags(weather_tags: list[str]) -> list[str]:
+    selected: list[str] = []
+
+    for tag in _PRIMARY_WEATHER_TAG_PRIORITY:
+        if tag in weather_tags:
+            selected.append(tag)
+            break
+
+    for tag in _SECONDARY_WEATHER_TAG_PRIORITY:
+        if tag in weather_tags and tag not in selected:
+            selected.append(tag)
+            break
+
+    if not selected:
+        for tag in weather_tags:
+            if tag in _WEATHER_CONTEXT_BY_TAG and tag not in selected:
+                selected.append(tag)
+            if len(selected) == 2:
+                break
+
+    return selected
+
+
+def _build_weather_context(weather_tags: list[str]) -> str:
+    selected_tags = _select_weather_copy_tags(weather_tags)
+    if not selected_tags:
+        return "특별한 날씨 포인트 없음"
+    return ", ".join(_WEATHER_CONTEXT_BY_TAG[tag] for tag in selected_tags)
+
+
+def _build_weather_hashtags(weather_tags: list[str], limit: int = 2) -> list[str]:
+    hashtags: list[str] = []
+    for tag in _select_weather_copy_tags(weather_tags):
+        hashtag = _WEATHER_HASHTAG_BY_TAG.get(tag)
+        if hashtag is None or hashtag in hashtags:
+            continue
+        hashtags.append(hashtag)
+        if len(hashtags) == limit:
+            break
+    return hashtags
 
 
 class CaptionGenerationUnavailableError(RuntimeError):
@@ -103,7 +204,6 @@ class CaptionGenerationRequest:
     purpose: ContentPurpose
     keywords: list[str]
     owner_persona: str
-    cloud_cover: str
     weather_tags: list[str] = field(default_factory=list)
 
 
@@ -121,11 +221,8 @@ class CaptionPipeline:
     def build_prompt(self, request: CaptionGenerationRequest) -> str:
         return self.prompt_template.format(
             owner_persona=request.owner_persona.strip(),
-            cloud_cover=request.cloud_cover.strip(),
+            weather_context=_build_weather_context(request.weather_tags),
             keywords=", ".join(request.keywords) if request.keywords else "none",
-            weather_tags=", ".join(request.weather_tags)
-            if request.weather_tags
-            else "none",
         )
 
     def build_fallback(
@@ -158,13 +255,23 @@ class CaptionPipeline:
         keyword_phrase = (
             ", ".join(request.keywords) if request.keywords else "today's highlights"
         )
-        caption = (
-            f"{request.cloud_cover} day, {request.owner_persona} mood. "
-            f"How about sharing {keyword_phrase} with your audience today?"
-        )
+        weather_context = _build_weather_context(request.weather_tags)
+        if weather_context != "특별한 날씨 포인트 없음":
+            caption = (
+                f"{weather_context} 분위기와 {request.owner_persona} 무드로 "
+                f"{keyword_phrase}를 소개해보세요."
+            )
+        else:
+            caption = (
+                f"{request.owner_persona} 무드로 {keyword_phrase}를 소개해보세요."
+            )
         hashtags = [f"#{kw.replace(' ', '')}" for kw in request.keywords[:5]]
-        if request.cloud_cover:
-            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
+        hashtags.extend(
+            hashtag for hashtag in _build_weather_hashtags(request.weather_tags)
+            if hashtag not in hashtags
+        )
+        if not hashtags:
+            hashtags.append("#오늘기록")
         return caption, hashtags
 
     def _build_fallback_guide_text(self, request: CaptionGenerationRequest) -> str:
