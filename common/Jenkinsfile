@@ -338,7 +338,8 @@ pipeline {
                           MODEL_LABEL="keyword-model"
                           DEFAULT_MODEL_HOST_DIR="./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
                           DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2-1.5B-Instruct-GGUF"
-                          DEFAULT_MODEL_HF_FILENAME="qwen2-1.5b-instruct-q3_k_m.gguf"
+                          DEFAULT_MODEL_HF_FILENAME="qwen2-1_5b-instruct-q3_k_m.gguf"
+                          LEGACY_MODEL_HF_FILENAME="qwen2-1.5b-instruct-q3_k_m.gguf"
                           MODEL_CONTAINER_DIR="/models/qwen2-1.5b-instruct/q3_k_m"
                           ;;
                         CAPTION)
@@ -346,6 +347,7 @@ pipeline {
                           DEFAULT_MODEL_HOST_DIR="./.models/caption/qwen2.5-7b-instruct/q3_k_m"
                           DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
                           DEFAULT_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
+                          LEGACY_MODEL_HF_FILENAME=""
                           MODEL_CONTAINER_DIR="/models/qwen2.5-7b-instruct/q3_k_m"
                           ;;
                         *)
@@ -369,6 +371,12 @@ pipeline {
                       fi
 
                       if [ -z "$MODEL_HF_FILENAME_VALUE" ]; then
+                        MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
+                      fi
+
+                      if [ -n "$LEGACY_MODEL_HF_FILENAME" ] && [ "$MODEL_HF_FILENAME_VALUE" = "$LEGACY_MODEL_HF_FILENAME" ]; then
+                        echo "[${MODEL_LABEL}] WARN: legacy MODEL_HF_FILENAME detected in .env: ${MODEL_HF_FILENAME_VALUE}"
+                        echo "[${MODEL_LABEL}] WARN: rewriting to current filename: ${DEFAULT_MODEL_HF_FILENAME}"
                         MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
                       fi
 
