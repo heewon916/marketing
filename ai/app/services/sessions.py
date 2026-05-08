@@ -10,6 +10,7 @@ from app.services.keyword_extraction import (
     KeywordExtractionService,
 )
 from app.services.caption_generation import (
+    CaptionGenerationRequest,
     CaptionGenerationResult,
     CaptionGenerationService,
     CaptionGenerationUnavailableError,
@@ -422,6 +423,13 @@ async def process_utterance(
         session_id=session_id,
     )
     caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    caption_request = CaptionGenerationRequest(
+        purpose=purpose,
+        keywords=caption_keywords,
+        owner_persona=payload.owner_persona,
+        cloud_cover=payload.weather.cloud_cover,
+        weather_tags=weather_tags,
+    )
     fallback_source: str | None = None
     if not caption_keywords:
         (
@@ -461,12 +469,7 @@ async def process_utterance(
                 stored_caption,
                 fallback_source,
             ) = _result_from_caption_generation(
-                await caption_service.generate_text(
-                    keywords=caption_keywords,
-                    owner_persona=payload.owner_persona,
-                    cloud_cover=payload.weather.cloud_cover,
-                    weather_tags=weather_tags,
-                )
+                await caption_service.generate_text(caption_request)
             )
             logger.info(
                 "Built text generation result from caption model.",

@@ -5,7 +5,7 @@ import logging
 import re
 import threading
 import time
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import Request
 import httpx
@@ -14,6 +14,10 @@ from app.core.config import (
     settings,
 )
 from app.logging import build_log_extra, preview_text
+from app.services.content_purpose import (
+    ALLOWED_CONTENT_PURPOSES,
+    ContentPurpose,
+)
 # Legacy local GGUF bootstrap is intentionally disabled during llama-server migration.
 # from app.keyword_model_download import ensure_keyword_model_available
 
@@ -172,12 +176,8 @@ Input: {utterance}
 Output:
 """
 
-_ALLOWED_PURPOSES = (
-    "메뉴 홍보",
-    "영업 공지",
-    "일상 공유",
-)
-KeywordPurpose = Literal["메뉴 홍보", "영업 공지", "일상 공유"]
+_ALLOWED_PURPOSES = ALLOWED_CONTENT_PURPOSES
+KeywordPurpose = ContentPurpose
 
 _PROMPT_TEMPLATE = """You classify the purpose of a Korean shop-owner utterance and extract 1 to 3 reusable keyword candidates.
 
@@ -215,7 +215,7 @@ class KeywordExtractionUnavailableError(RuntimeError):
 
 @dataclass
 class KeywordExtractionResult:
-    purpose: KeywordPurpose
+    purpose: ContentPurpose
     draft_keywords: list[str]
     final_keywords: list[str] = field(default_factory=list)
 
@@ -363,7 +363,7 @@ class KeywordExtractionService:
                     "properties": {
                         "purpose": {
                             "type": "string",
-                            "enum": list(_ALLOWED_PURPOSES),
+                            "enum": list(ALLOWED_CONTENT_PURPOSES),
                         },
                         "keywords": {
                             "type": "array",
@@ -634,8 +634,8 @@ class KeywordExtractionService:
         return None, payload
 
     @staticmethod
-    def _validate_purpose_payload(payload: Any) -> KeywordPurpose:
-        if not isinstance(payload, str) or payload not in _ALLOWED_PURPOSES:
+    def _validate_purpose_payload(payload: Any) -> ContentPurpose:
+        if not isinstance(payload, str) or payload not in ALLOWED_CONTENT_PURPOSES:
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction returned an invalid purpose."
             )

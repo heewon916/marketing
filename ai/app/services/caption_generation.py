@@ -12,6 +12,7 @@ import httpx
 
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
+from app.services.content_purpose import ContentPurpose
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,15 @@ class CaptionGenerationResult:
         )
 
 
+@dataclass
+class CaptionGenerationRequest:
+    purpose: ContentPurpose
+    keywords: list[str]
+    owner_persona: str
+    cloud_cover: str
+    weather_tags: list[str] = field(default_factory=list)
+
+
 class CaptionGenerationService:
     def __init__(
         self,
@@ -80,11 +90,7 @@ class CaptionGenerationService:
 
     async def generate_text(
         self,
-        *,
-        keywords: list[str],
-        owner_persona: str,
-        cloud_cover: str,
-        weather_tags: list[str],
+        request: CaptionGenerationRequest,
     ) -> CaptionGenerationResult:
         if not self.enabled:
             raise CaptionGenerationUnavailableError(
@@ -92,10 +98,12 @@ class CaptionGenerationService:
             )
 
         prompt = _PROMPT_TEMPLATE.format(
-            owner_persona=owner_persona.strip(),
-            cloud_cover=cloud_cover.strip(),
-            keywords=", ".join(keywords) if keywords else "none",
-            weather_tags=", ".join(weather_tags) if weather_tags else "none",
+            owner_persona=request.owner_persona.strip(),
+            cloud_cover=request.cloud_cover.strip(),
+            keywords=", ".join(request.keywords) if request.keywords else "none",
+            weather_tags=", ".join(request.weather_tags)
+            if request.weather_tags
+            else "none",
         )
         started_at = time.perf_counter()
 
@@ -110,9 +118,10 @@ class CaptionGenerationService:
                 caption_model_base_url=self.base_url,
                 caption_chat_endpoint=self.chat_endpoint,
                 caption_health_endpoint=self.health_endpoint,
-                caption_keyword_count=len(keywords),
-                caption_keywords_preview=", ".join(keywords[:3]),
-                owner_persona=owner_persona,
+                caption_keyword_count=len(request.keywords),
+                caption_keywords_preview=", ".join(request.keywords[:3]),
+                owner_persona=request.owner_persona,
+                purpose=request.purpose,
             ),
         )
 
@@ -141,6 +150,7 @@ class CaptionGenerationService:
                 guide_text_length=len(result.guide_text),
                 draft_caption_length=len(result.draft_caption),
                 hashtag_count=len(result.draft_hashtags),
+                purpose=request.purpose,
             ),
         )
         return result

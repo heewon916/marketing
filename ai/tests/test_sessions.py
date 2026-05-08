@@ -12,6 +12,7 @@ from app.main import app
 from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.caption_generation import (
+    CaptionGenerationRequest,
     CaptionGenerationResult,
     CaptionGenerationUnavailableError,
 )
@@ -213,18 +214,15 @@ class FakeCaptionGenerationService:
 
     async def generate_text(
         self,
-        *,
-        keywords: list[str],
-        owner_persona: str,
-        cloud_cover: str,
-        weather_tags: list[str],
+        request: CaptionGenerationRequest,
     ) -> CaptionGenerationResult:
         self.calls.append(
             {
-                "keywords": list(keywords),
-                "owner_persona": owner_persona,
-                "cloud_cover": cloud_cover,
-                "weather_tags": list(weather_tags),
+                "purpose": request.purpose,
+                "keywords": list(request.keywords),
+                "owner_persona": request.owner_persona,
+                "cloud_cover": request.cloud_cover,
+                "weather_tags": list(request.weather_tags),
             }
         )
         if self.error is not None:

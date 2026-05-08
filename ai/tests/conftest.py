@@ -12,7 +12,10 @@ from app.services.canonical_keyword_resolver import (
     CanonicalKeywordMatch,
     CanonicalKeywordResolution,
 )
-from app.services.caption_generation import CaptionGenerationResult
+from app.services.caption_generation import (
+    CaptionGenerationRequest,
+    CaptionGenerationResult,
+)
 from app.services.keyword_extraction import KeywordExtractionResult
 
 class DefaultKeywordExtractionService:
@@ -52,20 +55,18 @@ class DefaultCanonicalKeywordResolverService:
 class DefaultCaptionGenerationService:
     async def generate_text(
         self,
-        *,
-        keywords: list[str],
-        owner_persona: str,
-        cloud_cover: str,
-        weather_tags: list[str],
+        request: CaptionGenerationRequest,
     ) -> CaptionGenerationResult:
-        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in keywords[:3]]
-        if cloud_cover:
-            hashtags.append(f"#{cloud_cover.replace(' ', '')}")
+        hashtags = [
+            f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:3]
+        ]
+        if request.cloud_cover:
+            hashtags.append(f"#{request.cloud_cover.replace(' ', '')}")
         return CaptionGenerationResult(
             guide_text="사장님의 예쁜 가게를 한 번 자랑해볼까요?",
             draft_caption=(
-                f"{cloud_cover} 분위기와 {owner_persona} 무드로 "
-                f"{', '.join(keywords) if keywords else '오늘의 매장'}를 소개해보세요."
+                f"{request.cloud_cover} 분위기와 {request.owner_persona} 무드로 "
+                f"{', '.join(request.keywords) if request.keywords else '오늘의 매장'}를 소개해보세요."
             ),
             draft_hashtags=hashtags or ["#today"],
         )

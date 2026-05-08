@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from app.services.caption_generation import (
+    CaptionGenerationRequest,
     CaptionGenerationService,
     CaptionGenerationUnavailableError,
 )
@@ -58,10 +59,13 @@ def test_caption_generation_service_calls_remote_server_successfully(
 
     result = _run_immediate(
         service.generate_text(
-            keywords=["signature menu"],
-            owner_persona="aesthetic",
-            cloud_cover="clear",
-            weather_tags=["PRECIP_CLEAR"],
+            CaptionGenerationRequest(
+                purpose="메뉴 홍보",
+                keywords=["signature menu"],
+                owner_persona="aesthetic",
+                cloud_cover="clear",
+                weather_tags=["PRECIP_CLEAR"],
+            )
         )
     )
 
@@ -101,10 +105,13 @@ def test_caption_generation_service_retries_without_response_format(
 
     result = _run_immediate(
         service.generate_text(
-            keywords=["막걸리"],
-            owner_persona="warm",
-            cloud_cover="rainy",
-            weather_tags=["PRECIP_RAIN"],
+            CaptionGenerationRequest(
+                purpose="메뉴 홍보",
+                keywords=["막걸리"],
+                owner_persona="warm",
+                cloud_cover="rainy",
+                weather_tags=["PRECIP_RAIN"],
+            )
         )
     )
 
