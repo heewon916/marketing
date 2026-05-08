@@ -39,10 +39,10 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/users/instagram", "/api/v1/users/instagram/callback", "/api/v1/users/token/refresh", "/api/v1/onboarding/pin/**").permitAll()
+                .requestMatchers("/api/v1/oauth2/authorization/**", "/api/v1/oauth2/callback/**", "/api/v1/users/token/refresh", "/api/v1/onboarding/pin/**").permitAll()
                 .requestMatchers(
-                        "/api/v1/users/instagram",
-                        "/api/v1/users/instagram/callback",
+                        "/api/v1/oauth2/authorization/**",
+                        "/api/v1/oauth2/callback/**",
                         "/api/v1/users/token/refresh",
                         "/api/v3/api-docs",
                         "/api/v3/api-docs/**",
@@ -58,10 +58,10 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthenticationFilter, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
             .oauth2Login(oauth2 -> oauth2
                 .authorizationEndpoint(authEndpoint -> authEndpoint
-                    .baseUri("/api/v1/users")
+                    .baseUri("/api/v1/oauth2/authorization")
                 )
                 .redirectionEndpoint(redirectionEndpoint -> redirectionEndpoint
-                    .baseUri("/api/v1/users/*/callback")
+                    .baseUri("/api/v1/oauth2/callback/*")
                 )
                 .tokenEndpoint(tokenEndpoint -> tokenEndpoint
                     .accessTokenResponseClient(accessTokenResponseClient())
