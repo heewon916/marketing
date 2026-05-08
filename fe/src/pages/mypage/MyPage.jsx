@@ -34,7 +34,7 @@ export default function MyPage() {
 
       <MyPageTabSwitcher activeTab={activeTab} onChange={setActiveTab} />
 
-      <main className="mx-auto flex w-full max-w-[430px] flex-1 flex-col gap-2 overflow-y-auto px-5 pt-4 pb-[100px]">
+      <main className="mx-auto flex min-h-0 w-full max-w-[430px] flex-1 flex-col gap-2 overflow-y-auto px-5 pt-4 pb-5">
         {activeTab === 'stats' && (
           <MyPageStatsSection
             weeklyPostAchievementRate={myPageMockData.weeklyPostAchievementRate}
@@ -50,7 +50,7 @@ export default function MyPage() {
         {activeTab === 'hours' && <OperatingHoursSection />}
       </main>
 
-      <BottomTab />
+      <BottomTab fixed={false} />
     </div>
   );
 }
