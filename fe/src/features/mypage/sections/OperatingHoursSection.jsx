@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import OperatingHoursEdit from '../components/OperatingHoursEdit';
 import OperatingHoursList from '../components/OperatingHoursList';
-import Button from '@/components/common/Button';
 
 const initialOperatingHours = [
   { day: '월', isOpen: true, startTime: '11:00', endTime: '20:30' },
@@ -37,42 +36,14 @@ export default function OperatingHoursSection() {
         <OperatingHoursEdit
           hours={operatingHours}
           onChange={setOperatingHours}
+          onCancel={handleCancelClick}
+          onSave={handleSaveClick}
         />
       ) : (
-        <OperatingHoursList hours={operatingHours} />
-      )}
-
-      {isEditing ? (
-        <div className="mt-2 flex justify-center gap-3">
-          <Button
-            size="sm"
-            variant="white"
-            onClick={handleCancelClick}
-            className="text-[18px] font-bold"
-          >
-            취소
-          </Button>
-
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={handleSaveClick}
-            className="text-[18px] font-bold"
-          >
-            저장하기
-          </Button>
-        </div>
-      ) : (
-        <div className="mt-2 flex justify-center">
-          <Button
-            size="lg"
-            variant="primary"
-            onClick={handleEditClick}
-            className="w-full text-[18px] font-bold"
-          >
-            수정하기
-          </Button>
-        </div>
+        <OperatingHoursList
+          hours={operatingHours}
+          onEdit={handleEditClick}
+        />
       )}
     </section>
   );

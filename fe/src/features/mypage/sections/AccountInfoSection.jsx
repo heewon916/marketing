@@ -35,46 +35,29 @@ export default function AccountInfoSection() {
   return (
     <section className="flex flex-col gap-4">
       {isEditing ? (
-        <AccountInfoEdit formData={formData} onChange={setFormData} />
+        <AccountInfoEdit
+          formData={formData}
+          onChange={setFormData}
+          onCancel={handleCancelClick}
+          onSave={handleSaveClick}
+        />
       ) : (
-        <CardShell as="dl" className="flex flex-col gap-7 px-7 py-8">
-          <InfoItem label="상호명" value={businessName} />
-          <InfoItem label="업종" value={category} />
-          <InfoItem label="위치" value={address} />
-        </CardShell>
-      )}
+        <CardShell as="div" className="flex flex-col px-7 py-8">
+          <dl className="flex flex-col">
+            <InfoItem label="상호명" value={businessName} />
+            <InfoItem label="업종" value={category} />
+            <InfoItem label="위치" value={address} />
+          </dl>
 
-      {isEditing ? (
-        <div className="mt-2 flex justify-center gap-3">
-          <Button
-            size="sm"
-            variant="white"
-            onClick={handleCancelClick}
-            className="text-[18px] font-bold"
-          >
-            취소
-          </Button>
-
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={handleSaveClick}
-            className="text-[18px] font-bold"
-          >
-            저장하기
-          </Button>
-        </div>
-      ) : (
-        <div className="mt-2 flex justify-center">
           <Button
             size="lg"
             variant="primary"
             onClick={handleEditClick}
-            className="w-full text-[18px] font-bold"
+            className="mt-6 w-full text-[18px] font-bold"
           >
             수정하기
           </Button>
-        </div>
+        </CardShell>
       )}
     </section>
   );

@@ -1,7 +1,13 @@
 import DayTimeRow from '@/features/auth/onboarding/components/DayTimeRow';
+import Button from '@/components/common/Button';
 import CardShell from './CardShell';
 
-export default function OperatingHoursEdit({ hours, onChange }) {
+export default function OperatingHoursEdit({
+  hours,
+  onChange,
+  onCancel,
+  onSave,
+}) {
   const updateDay = (index, key, value) => {
     const updatedHours = hours.map((item, currentIndex) => {
       if (currentIndex !== index) return item;
@@ -32,6 +38,26 @@ export default function OperatingHoursEdit({ hours, onChange }) {
             onEndTimeChange={(value) => updateDay(index, 'endTime', value)}
           />
         ))}
+      </div>
+
+      <div className="mt-2 flex justify-center gap-3">
+        <Button
+          size="sm"
+          variant="white"
+          onClick={onCancel}
+          className="text-[18px] font-bold"
+        >
+          취소
+        </Button>
+
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={onSave}
+          className="text-[18px] font-bold"
+        >
+          저장하기
+        </Button>
       </div>
     </CardShell>
   );
