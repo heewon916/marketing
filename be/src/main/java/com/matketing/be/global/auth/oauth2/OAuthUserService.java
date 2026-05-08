@@ -30,13 +30,14 @@ public class OAuthUserService extends DefaultOAuth2UserService {
         
         String instagramUserId = attributes.get("id") != null ? attributes.get("id").toString() : null;
         String instagramUsername = attributes.get("username") != null ? attributes.get("username").toString() : "instagram_user";
+        String profileImageUrl = null; // Graph API doesn't always return this by default without extra request
         
         String accessToken = userRequest.getAccessToken().getTokenValue();
-        OffsetDateTime tokenExpiresAt = userRequest.getAccessToken().getExpiresAt() != null ? 
-                userRequest.getAccessToken().getExpiresAt().atOffset(ZoneOffset.UTC) : null;
+        java.time.Instant expiresAt = userRequest.getAccessToken().getExpiresAt();
+        OffsetDateTime tokenExpiresAt = expiresAt != null ? expiresAt.atOffset(ZoneOffset.UTC) : null;
 
         // DB 확인 후 신규 유저 등록 또는 기존 유저 업데이트
-        User user = saveOrUpdate(instagramUserId, instagramUsername, accessToken, tokenExpiresAt);
+        saveOrUpdate(instagramUserId, instagramUsername, profileImageUrl, accessToken, tokenExpiresAt);
 
         return new DefaultOAuth2User(
                 Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")),
@@ -45,12 +46,13 @@ public class OAuthUserService extends DefaultOAuth2UserService {
         );
     }
 
-    private User saveOrUpdate(String instagramUserId, String instagramUsername, String accessToken, OffsetDateTime tokenExpiresAt) {
+    private User saveOrUpdate(String instagramUserId, String instagramUsername, String profileImageUrl, String accessToken, OffsetDateTime tokenExpiresAt) {
         User user = userRepository.findByInstagramUserId(instagramUserId)
                 .map(entity -> entity.update(instagramUsername, accessToken, tokenExpiresAt)) // 기존 유저면 정보 업데이트
                 .orElse(User.builder()
                         .instagramUserId(instagramUserId)
                         .instagramUsername(instagramUsername)
+                        .profileImageUrl(profileImageUrl)
                         .accessToken(accessToken)
                         .tokenExpiresAt(tokenExpiresAt)
                         .cameraMicGranted(false)

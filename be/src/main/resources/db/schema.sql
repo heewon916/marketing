@@ -281,7 +281,7 @@ CREATE TABLE maketing.canonical_keywords (
     "id"            BIGINT        NOT NULL,
     "code"          VARCHAR(100)  NULL,
     "display_name"  VARCHAR(200)  NOT NULL,
-    "embedding"     VECTOR(1536)  NOT NULL,
+    "embedding"     VECTOR(384)   NULL,
     "created_at"    TIMESTAMPTZ   NOT NULL,
     CONSTRAINT "PK_CANONICAL_KEYWORDS" PRIMARY KEY ("id")
 );

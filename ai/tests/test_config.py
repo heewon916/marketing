@@ -1,9 +1,22 @@
 import pytest
 
 from app.core.config import (
+    DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT,
+    DEFAULT_CAPTION_MODEL_HF_FILENAME,
+    DEFAULT_CAPTION_MODEL_HF_REPO_ID,
+    DEFAULT_CAPTION_MODEL_HOST_DIR,
+    DEFAULT_CAPTION_MODEL_PATH,
+    DEFAULT_CAPTION_MODEL_SERVER_PORT,
+    DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS,
+    DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM,
+    DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR,
+    DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+    DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT,
     DEFAULT_KEYWORD_MODEL_HF_FILENAME,
     DEFAULT_KEYWORD_MODEL_HF_REPO_ID,
+    DEFAULT_KEYWORD_MODEL_HOST_DIR,
     DEFAULT_KEYWORD_MODEL_PATH,
+    DEFAULT_KEYWORD_MODEL_SERVER_PORT,
     DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
     DEFAULT_ORIENTATION_MODEL_NAME,
     DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
@@ -24,13 +37,46 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_BUCKET_NAME", "bucket")
     monkeypatch.setenv("S3_REGION", "ap-northeast-2")
     monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
-    monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "4096")
+    monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://keyword-server:8001")
+    monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("KEYWORD_MODEL_HEALTH_ENDPOINT", "/ready")
+    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "32")
     monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.2")
     monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.85")
-    monkeypatch.setenv("KEYWORD_MODEL_THREADS", "6")
-    monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "12")
     monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "true")
+    monkeypatch.setenv("KEYWORD_MODEL_HOST_DIR", "./.models/custom-keyword")
+    monkeypatch.setenv("KEYWORD_MODEL_HF_REPO_ID", "Qwen/custom-keyword")
+    monkeypatch.setenv("KEYWORD_MODEL_HF_FILENAME", "keyword.gguf")
+    monkeypatch.setenv("KEYWORD_MODEL_SERVER_PORT", "8101")
+    monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "3072")
+    monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "16")
+    monkeypatch.setenv("CAPTION_MODEL_BASE_URL", "http://caption-server:8002")
+    monkeypatch.setenv("CAPTION_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("CAPTION_MODEL_HEALTH_ENDPOINT", "/readyz")
+    monkeypatch.setenv("CAPTION_MODEL_TIMEOUT_SECONDS", "75")
+    monkeypatch.setenv("CAPTION_MODEL_MAX_TOKENS", "96")
+    monkeypatch.setenv("CAPTION_MODEL_TEMPERATURE", "0.6")
+    monkeypatch.setenv("CAPTION_MODEL_TOP_P", "0.88")
+    monkeypatch.setenv("CAPTION_MODEL_ENABLED", "true")
+    monkeypatch.setenv("CAPTION_MODEL_HOST_DIR", "./.models/custom-caption")
+    monkeypatch.setenv("CAPTION_MODEL_HF_REPO_ID", "Qwen/custom-caption")
+    monkeypatch.setenv("CAPTION_MODEL_HF_FILENAME", "caption.gguf")
+    monkeypatch.setenv("CAPTION_MODEL_SERVER_PORT", "8102")
+    monkeypatch.setenv("CAPTION_MODEL_CTX_SIZE", "4096")
+    monkeypatch.setenv("CAPTION_MODEL_GPU_LAYERS", "24")
+    monkeypatch.setenv("CANONICAL_KEYWORD_RESOLVER_ENABLED", "true")
+    monkeypatch.setenv(
+        "CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME",
+        "intfloat/multilingual-e5-small",
+    )
+    monkeypatch.setenv("CANONICAL_KEYWORD_EMBEDDING_DIM", "384")
+
+
+def _set_required_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("POSTGRES_DB", "db")
+    monkeypatch.setenv("POSTGRES_USER", "u")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "p")
 
 
 def test_settings_parses_infra_fields(env_setup: None) -> None:
@@ -45,16 +91,45 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.DEBUG is True
     assert settings.LOG_INCLUDE_RAW_IDENTIFIERS is True
     assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 200
-    assert settings.KEYWORD_MODEL_CTX_SIZE == 4096
-    assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
-    assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
-    assert settings.KEYWORD_MODEL_MAX_TOKENS == 32
-    assert settings.KEYWORD_MODEL_TEMPERATURE == 0.2
-    assert settings.KEYWORD_MODEL_TOP_P == 0.85
-    assert settings.KEYWORD_MODEL_THREADS == 6
-    assert settings.KEYWORD_MODEL_GPU_LAYERS == 12
-    assert settings.KEYWORD_MODEL_ENABLED is True
-    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+
+    assert settings.keyword_model_client.base_url == "http://keyword-server:8001"
+    assert settings.keyword_model_client.chat_endpoint == "/v1/chat/completions"
+    assert settings.keyword_model_client.health_endpoint == "/ready"
+    assert settings.keyword_model_client.timeout_seconds == 45
+    assert settings.keyword_model_client.max_tokens == 32
+    assert settings.keyword_model_client.temperature == 0.2
+    assert settings.keyword_model_client.top_p == 0.85
+    assert settings.keyword_model_client.enabled is True
+
+    assert settings.keyword_model_server.host_dir == "./.models/custom-keyword"
+    assert settings.keyword_model_server.hf_repo_id == "Qwen/custom-keyword"
+    assert settings.keyword_model_server.hf_filename == "keyword.gguf"
+    assert settings.keyword_model_server.server_port == 8101
+    assert settings.keyword_model_server.ctx_size == 3072
+    assert settings.keyword_model_server.gpu_layers == 16
+
+    assert settings.caption_model_client.base_url == "http://caption-server:8002"
+    assert settings.caption_model_client.chat_endpoint == "/v1/chat/completions"
+    assert settings.caption_model_client.health_endpoint == "/readyz"
+    assert settings.caption_model_client.timeout_seconds == 75
+    assert settings.caption_model_client.max_tokens == 96
+    assert settings.caption_model_client.temperature == 0.6
+    assert settings.caption_model_client.top_p == 0.88
+    assert settings.caption_model_client.enabled is True
+
+    assert settings.caption_model_server.host_dir == "./.models/custom-caption"
+    assert settings.caption_model_server.hf_repo_id == "Qwen/custom-caption"
+    assert settings.caption_model_server.hf_filename == "caption.gguf"
+    assert settings.caption_model_server.server_port == 8102
+    assert settings.caption_model_server.ctx_size == 4096
+    assert settings.caption_model_server.gpu_layers == 24
+
+    assert settings.CANONICAL_KEYWORD_RESOLVER_ENABLED is True
+    assert (
+        settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME
+        == "intfloat/multilingual-e5-small"
+    )
+    assert settings.CANONICAL_KEYWORD_EMBEDDING_DIM == 384
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -69,12 +144,6 @@ def test_redis_url_with_password(env_setup: None) -> None:
     settings = Settings(_env_file=None)
 
     assert settings.redis_url == "redis://:rsecret@project-redis:6379/0"
-
-
-def _set_required_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("POSTGRES_DB", "db")
-    monkeypatch.setenv("POSTGRES_USER", "u")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "p")
 
 
 def test_redis_url_without_password(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -164,30 +233,110 @@ def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
 
 
 def test_model_defaults_resolve_without_env(env_setup: None) -> None:
-    settings = Settings(_env_file=None)
+    assert DEFAULT_ORIENTATION_MODEL_NAME == "vit"
+    assert DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH.name == "model-vit-ang-loss.h5"
 
-    assert settings.ORIENTATION_MODEL_NAME == DEFAULT_ORIENTATION_MODEL_NAME
-    assert settings.orientation_model_weights_path == DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-    assert settings.keyword_model_path == DEFAULT_KEYWORD_MODEL_PATH
+    assert DEFAULT_KEYWORD_MODEL_PATH.name == "model.gguf"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q3_k_m"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "qwen2-1.5b-instruct"
+    assert DEFAULT_KEYWORD_MODEL_HOST_DIR == "./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
+    assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2-1.5B-Instruct-GGUF"
+    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2-1_5b-instruct-q3_k_m.gguf"
+    assert DEFAULT_KEYWORD_MODEL_SERVER_PORT == 8001
+    assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 60.0
+    assert DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT == "/health"
+
+    assert DEFAULT_CAPTION_MODEL_PATH.name == "model.gguf"
+    assert DEFAULT_CAPTION_MODEL_PATH.parent.name == "q3_k_m"
+    assert DEFAULT_CAPTION_MODEL_PATH.parent.parent.name == "qwen2.5-7b-instruct"
+    assert DEFAULT_CAPTION_MODEL_HOST_DIR == "./.models/caption/qwen2.5-7b-instruct/q3_k_m"
+    assert DEFAULT_CAPTION_MODEL_HF_REPO_ID == "Qwen/Qwen2.5-7B-Instruct-GGUF"
+    assert DEFAULT_CAPTION_MODEL_HF_FILENAME == "qwen2.5-7b-instruct-q3_k_m.gguf"
+    assert DEFAULT_CAPTION_MODEL_SERVER_PORT == 8002
+    assert DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS == 120.0
+    assert DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT == "/health"
+
+    assert (
+        DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME
+        == "intfloat/multilingual-e5-small"
+    )
+    assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR.name == "canonical-keywords"
+    assert DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM == 384
 
 
-def test_model_env_vars_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_model_client_defaults_apply_when_env_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _set_required_postgres(monkeypatch)
-    monkeypatch.setenv("ORIENTATION_MODEL_NAME", "resnet")
-    monkeypatch.setenv("ORIENTATION_MODEL_WEIGHTS_PATH", "custom/weights.h5")
-    monkeypatch.setenv("KEYWORD_MODEL_PATH", "custom/model.gguf")
-    monkeypatch.setenv("KEYWORD_MODEL_HF_REPO_ID", "custom/repo")
-    monkeypatch.setenv("KEYWORD_MODEL_HF_FILENAME", "custom.gguf")
-    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "5")
+    monkeypatch.delenv("KEYWORD_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_CHAT_ENDPOINT", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_HEALTH_ENDPOINT", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("CAPTION_MODEL_BASE_URL", raising=False)
+    monkeypatch.delenv("CAPTION_MODEL_CHAT_ENDPOINT", raising=False)
+    monkeypatch.delenv("CAPTION_MODEL_HEALTH_ENDPOINT", raising=False)
+    monkeypatch.delenv("CAPTION_MODEL_TIMEOUT_SECONDS", raising=False)
 
     settings = Settings(_env_file=None)
 
-    assert settings.ORIENTATION_MODEL_NAME == DEFAULT_ORIENTATION_MODEL_NAME
-    assert settings.orientation_model_weights_path == DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-    assert settings.keyword_model_path == DEFAULT_KEYWORD_MODEL_PATH
-    assert settings.KEYWORD_MODEL_HF_REPO_ID == DEFAULT_KEYWORD_MODEL_HF_REPO_ID
-    assert settings.KEYWORD_MODEL_HF_FILENAME == DEFAULT_KEYWORD_MODEL_HF_FILENAME
-    assert settings.KEYWORD_MODEL_TIMEOUT_SECONDS == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+    assert settings.keyword_model_client.base_url == "http://keyword-server:8001"
+    assert settings.keyword_model_client.chat_endpoint == "/v1/chat/completions"
+    assert (
+        settings.keyword_model_client.health_endpoint
+        == DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT
+    )
+    assert (
+        settings.keyword_model_client.timeout_seconds
+        == DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS
+    )
+
+    assert settings.caption_model_client.base_url == "http://caption-server:8002"
+    assert settings.caption_model_client.chat_endpoint == "/v1/chat/completions"
+    assert (
+        settings.caption_model_client.health_endpoint
+        == DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT
+    )
+    assert (
+        settings.caption_model_client.timeout_seconds
+        == DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
+    )
+
+
+def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://host.docker.internal:8080")
+    monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
+    monkeypatch.setenv("KEYWORD_MODEL_HEALTH_ENDPOINT", "/healthz")
+    monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "15")
+    monkeypatch.setenv("KEYWORD_MODEL_MAX_TOKENS", "16")
+    monkeypatch.setenv("KEYWORD_MODEL_TEMPERATURE", "0.3")
+    monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.75")
+    monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "false")
+    monkeypatch.setenv("CAPTION_MODEL_BASE_URL", "http://host.docker.internal:9090")
+    monkeypatch.setenv("CAPTION_MODEL_HEALTH_ENDPOINT", "/caption-health")
+    monkeypatch.setenv("CAPTION_MODEL_TIMEOUT_SECONDS", "25")
+    monkeypatch.setenv("CAPTION_MODEL_MAX_TOKENS", "120")
+    monkeypatch.setenv("CAPTION_MODEL_TEMPERATURE", "0.55")
+    monkeypatch.setenv("CAPTION_MODEL_TOP_P", "0.82")
+    monkeypatch.setenv("CAPTION_MODEL_ENABLED", "false")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.keyword_model_client.base_url == "http://host.docker.internal:8080"
+    assert settings.keyword_model_client.health_endpoint == "/healthz"
+    assert settings.keyword_model_client.timeout_seconds == 15
+    assert settings.keyword_model_client.max_tokens == 16
+    assert settings.keyword_model_client.temperature == 0.3
+    assert settings.keyword_model_client.top_p == 0.75
+    assert settings.keyword_model_client.enabled is False
+
+    assert settings.caption_model_client.base_url == "http://host.docker.internal:9090"
+    assert settings.caption_model_client.health_endpoint == "/caption-health"
+    assert settings.caption_model_client.timeout_seconds == 25
+    assert settings.caption_model_client.max_tokens == 120
+    assert settings.caption_model_client.temperature == 0.55
+    assert settings.caption_model_client.top_p == 0.82
+    assert settings.caption_model_client.enabled is False
 
 
 def test_s3_not_configured_when_bucket_missing(monkeypatch: pytest.MonkeyPatch) -> None:

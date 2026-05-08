@@ -7,15 +7,10 @@ ARG BUILD_COMMIT=unknown
 LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 
 ENV UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1 \
-    CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS"
+    UV_COMPILE_BYTECODE=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        build-essential \
-        cmake \
-        pkg-config \
-        libopenblas-dev \
         libglib2.0-0 \
         libgomp1 \
     && rm -rf /var/lib/apt/lists/*

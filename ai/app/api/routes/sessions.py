@@ -21,7 +21,10 @@ from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     get_keyword_extraction_service,
 )
-from app.services.menu_fallback import get_menu_keyword_fallback_service
+from app.services.caption_generation import get_caption_generation_service
+from app.services.canonical_keyword_resolver import (
+    get_canonical_keyword_resolver_service,
+)
 from app.services.sessions import process_utterance
 
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
@@ -41,7 +44,8 @@ async def process_utterance_endpoint(
     redis: Redis = Depends(get_redis),
 ) -> ProcessUtteranceResponse:
     keyword_service = get_keyword_extraction_service(request)
-    menu_fallback_service = get_menu_keyword_fallback_service(request)
+    caption_service = get_caption_generation_service(request)
+    canonical_keyword_resolver = get_canonical_keyword_resolver_service(request)
     logger.info(
         "process-utterance request received.",
         extra={
@@ -59,7 +63,8 @@ async def process_utterance_endpoint(
             payload,
             redis,
             keyword_service,
-            menu_fallback_service,
+            caption_service,
+            canonical_keyword_resolver,
         )
     except KeywordExtractionUnavailableError as exc:
         cause = exc.__cause__
@@ -78,6 +83,7 @@ async def process_utterance_endpoint(
         "process-utterance completed successfully.",
         extra={
             "session_id": session_id,
+            "weather_tag_count": len(result.weather_tags),
             "draft_keyword_count": len(result.draft_keywords),
             "final_keyword_count": len(result.final_keywords),
         },
