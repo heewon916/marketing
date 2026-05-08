@@ -9,7 +9,7 @@ export default function MyPageStatsSection({
   weeklyVisitIntentScore,
 }) {
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-4">
       <WeeklyStatCard
         percent={weeklyPostAchievementRate}
         plannedCount={targetPostCount}

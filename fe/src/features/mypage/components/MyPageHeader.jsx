@@ -63,9 +63,11 @@ export default function MyPageHeader({
                 href={instagramUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1 text-[15px] text-black transition-colors"
+                className="inline-flex w-fit items-center text-[15px] text-primary-100 transition-colors hover:text-primary-100"
               >
-                {instagramUsername}
+                <span className="border-b border-primary-100">
+                  {instagramUsername}
+                </span>
               </a>
             )}
 
