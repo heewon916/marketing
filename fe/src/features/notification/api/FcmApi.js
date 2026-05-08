@@ -11,11 +11,20 @@ async function sendTokenToBackend(token) {
     return response.data
   } catch (error) {
     console.error("[FCM] 백엔드 토큰 전송 실패:", error)
+    console.log("[FCM] 요청 정보:", {
+      url: error.config?.url,
+      method: error.config?.method,
+      headers: error.config?.headers,
+      body: error.config?.data,
+      status: error.response?.status,
+      responseData: error.response?.data,
+    })
     throw error
   }
 }
 
 export async function registerFcmToken(options = {}) {
+  console.log("hi")
   try {
     const token = await getFcmToken(options)
     if (token) {
@@ -23,7 +32,8 @@ export async function registerFcmToken(options = {}) {
       await sendTokenToBackend(token)
     }
     return token || null
-  } catch {
+  } catch(error) {
+    console.log(error)
     return null
   }
 }
