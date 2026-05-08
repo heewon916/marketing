@@ -41,14 +41,17 @@ _MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 5060 소상공인의 메뉴 홍�
 - 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - 메뉴, 상품, 재료, 또는 매장에서 제공하는 것을 홍보하는 톤으로 작성하세요.
 - 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 반드시 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
+- "guide_text"는 utterance가 있으면 그 메모에 어울리는 장면을 어떻게 촬영할지 안내하세요.
 - 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
 
 아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
 
 예시 1:
 입력:
-- owner_persona: "aesthetic" 
+- owner_persona: "aesthetic"
 - weather_context: "TEMP_HOT
+- utterance: "어제 그 무화과가 처음 들어와서 자랑하고 싶어"
 - keywords: "무화과", "여름"
 출력:
 {{"guide_text":"사장님, 손님들에게 한여름의 무화과를 영상에 담아 보여주세요.",
@@ -62,6 +65,7 @@ _MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 5060 소상공인의 메뉴 홍�
 입력:
 - owner_persona: "aesthetic"
 - weather_context: "PRECIP_CLEAR"
+- utterance: "봄이라 좀 상콤한 거 잘 나갈까 싶어러 레몬 타르트 만들었아ㅓ"
 - keywords: "봄", "레몬 타르트"
 출력:
 {{"guide_text":"사장님, 손님들에게 상큼한 레몬 타르트를 영상에 담아 보여주세요.",
@@ -72,6 +76,7 @@ _MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 5060 소상공인의 메뉴 홍�
 입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
+- utterance: {utterance}
 - keywords: {keywords}
 """
 
@@ -86,13 +91,17 @@ _BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 5060 소상공인의 영업변�
 - 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - 영업, 일정, 운영 가능 여부에 대한 명확한 영업 공지 톤으로 작성하세요.
 - 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 반드시 이 메모의 의도와 공지 내용을 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
+- "guide_text"는 utterance가 있으면 그 메모에 어울리는 장면을 어떻게 촬영할지 안내하세요.
 - 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
+
 아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
 
 예시 1:
 입력:
-- owner_persona: "aesthetic" 
+- owner_persona: "aesthetic"
 - weather_context: "TEMP_FREEZING"
+- utterance: "이번주 화수 이틀 쉬어"
 - keywords: "케이크", "가족"
 출력:
 {{"guide_text":"사장님, 손님들에게 공방의 케익 작업을 영상에 담아 보여주세요.",
@@ -108,22 +117,26 @@ _BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 5060 소상공인의 영업변�
 입력:
 - owner_persona: "aesthetic"
 - weather_context: "TEMP_MILD"
+- utterance: "짧은 휴식 다녀와 오늘부터 다시 문 열어"
 - keywords: "휴식", "시간"
 출력:
-{{"guide_text":"사장님, 보령도를 방문한 휴식 시간을 영상에 담아 보여주세요.",
+{{"guide_text":"사장님, 사장님의 휴식 시간을 영상에 담아 보여주세요.",
 "caption": "오래됐어도 낡지만은 않고, 호수처럼 잔잔하고 순한 시간이 흐르는 곳.. 딱히 내세울 건 없지만 그 자리에서 서로에게 어울리고 전체로서 보기 좋은 동네들 - 일테면 몇 해전까지 후암동, 하동, 울릉도, 타이베이 그리고 이번에 처음 찾은 보령도 그런 느낌.
 
 가게를 하면 의지와 상관없이 긴 시간 지켜보게 되는 손님들이 생기는데 한 분 두 분 자기 업을 차근차근 준비하고 너무나도 훌륭하게 시작하는 모습을 보면 그 시절 나는 그랬던가 늦게나마 분발심이 발동하면서도 무엇보다 기쁩니다. @la_fassona
 
 어제까지 이틀밤 짧은 휴식이었지만 만난 분들 지낸 님들 덕분인지 오랜 시간 자리를 비우고 온 기분. 화요일 되돌아가신 분들께는 송구하옵고, 오늘부터 다시 문 열고 있습니다."}}
 
+이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+
 입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
+- utterance: {utterance}
 - keywords: {keywords}
 """
 
-_DAILY_SHARE_PROMPT_TEMPLATE = """당신은 5060 소상공인을 위한 한국어 인스타그램 게시물 포스팅용 촬영 안내문과 캡션을 작성합니다.
+_DAILY_SHARE_PROMPT_TEMPLATE = """당신은 5060 소상공인의 일상 공유를 위한 한국어 인스타그램 게시물 포스팅용 촬영 안내문과 캡션을 작성합니다.
 
 규칙:
 - 오직 JSON 객체 텍스트만 반환하세요.
@@ -134,12 +147,17 @@ _DAILY_SHARE_PROMPT_TEMPLATE = """당신은 5060 소상공인을 위한 한국�
 - 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - 사장님의 일상, 매장 분위기, 비하인드 순간을 공유하는 톤으로 작성하세요.
 - 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 반드시 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
+- "guide_text"는 utterance가 있으면 그 메모에 어울리는 장면을 어떻게 촬영할지 안내하세요.
 - 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
+
+아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
 
 예시 1:
 입력:
-- owner_persona: "aesthetic" 
+- owner_persona: "aesthetic"
 - weather_context: "SPECIAL_SEASONAL_CHANGE"
+- utterance: "환절기에 좀 힘들었더니 옛날에 회사 다닐 때 생각이 많이 나더라"
 - keywords: "일기", "시간"
 출력:
 {{"guide_text":"사장님, 사장님이 시간을 보내는 순간을 영상에 담아 보여주세요.",
@@ -153,6 +171,7 @@ _DAILY_SHARE_PROMPT_TEMPLATE = """당신은 5060 소상공인을 위한 한국�
 입력:
 - owner_persona: "aesthetic"
 - weather_context: "PRECIP_HEAVY_RAIN"
+- utterance: "가난한 사람들이라는 명작을 읽었는데 딸내미가 가엾더라. 손님들한테 내 감상을 공유하고 싶어"
 - keywords: "독후감", "다정함"
 출력:
 {{"guide_text":"사장님, 사장님이 책을 읽은 공간과 책 표지를 영상에 담아 보여주세요.",
@@ -162,9 +181,12 @@ _DAILY_SHARE_PROMPT_TEMPLATE = """당신은 5060 소상공인을 위한 한국�
 
 몇년째 집 서재방에서 햇볕에 타도록 묵혀둔 도스토옙스키의 #가난한사람들 , 미처 생각치 못한 결말의 프레드 울만 #동급생 . 가게 책모임에서 골라준 두 분과 여름 장마 덕에 그을린 시간에서 건져온."}}
 
+이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+
 입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
+- utterance: {utterance}
 - keywords: {keywords}
 """
 
@@ -285,6 +307,7 @@ class CaptionGenerationRequest:
     purpose: ContentPurpose
     keywords: list[str]
     owner_persona: str
+    utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
 
 
@@ -303,6 +326,7 @@ class CaptionPipeline:
         return self.prompt_template.format(
             owner_persona=request.owner_persona.strip(),
             weather_context=_build_weather_context(request.weather_tags),
+            utterance=request.utterance.strip() or "(없음)",
             keywords=", ".join(request.keywords) if request.keywords else "none",
         )
 
