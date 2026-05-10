@@ -35,13 +35,11 @@ const STEP_NUM = {
 
 export default function PostCreatePage() {
   const navigate = useNavigate()
-  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false)
   const [isNavigationConfirmed, setIsNavigationConfirmed] = useState(false)
   const step = usePostCreateStore((state) => state.step)
   const stepNum = STEP_NUM[step] ?? 1
 
-  const postAnswer = usePostCreateStore((state) => state.postAnswer)
-  const cameraAnswer = usePostCreateStore((state) => state.cameraAnswer)
+  const guideText = usePostCreateStore((state) => state.guideText)
 
   const photos = usePostCreateStore((state) => state.photos)
   const generatedPost = usePostCreateStore((state) => state.generatedPost)
@@ -83,24 +81,15 @@ export default function PostCreatePage() {
       }, 1500)
       return () => clearTimeout(timer)
     }
-  }, [step])
-
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      setIsLeaveModalOpen(true)
-    }
-  }, [blocker])
+  }, [setPhotos, setStep, step])
 
   const handleCancelLeave = () => {
-    setIsLeaveModalOpen(false)
-
     if (blocker.state === "blocked") {
       blocker.reset()
     }
   }
 
   const handleConfirmLeave = () => {
-    setIsLeaveModalOpen(false)
     setIsNavigationConfirmed(true)
     resetPostCreate()
 
@@ -122,7 +111,7 @@ export default function PostCreatePage() {
     setStep(POST_CREATE_STEP.CAMERA)
   }
 
-  const handleVideoRecorded = (videoFile) => {
+  const handleVideoRecorded = () => {
     setStep(POST_CREATE_STEP.EXTRACT_LOADING)
   }
 
@@ -161,7 +150,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.POST_QUESTION) {
     content = (
       <QuestionStep
-        title="이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
+        title={guideText?.trim() || "이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"}
         onNext={handlePostQuestionNext}
         onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
@@ -272,7 +261,7 @@ export default function PostCreatePage() {
       {content}
 
       <PostCreateLeaveHomeModal
-        isOpen={isLeaveModalOpen}
+        isOpen={blocker.state === "blocked"}
         onClose={handleCancelLeave}
         onCancel={handleCancelLeave}
         onConfirm={handleConfirmLeave}
