@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
-import { authApi } from '@/features/auth/api.js';
+import { onboardingApi } from '@/features/auth/onboarding/api.js';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 function CodeInputStep({
   onNext,
@@ -14,7 +15,9 @@ function CodeInputStep({
 }) {
   const inputRefs = useRef([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState([]);
+
+  const setMerchantId = useOnboardingStore((state) => state.setMerchantId);
 
   const handleChange = (e, idx) => {
     const val = e.target.value.replace(/[^0-9]/g, '');
@@ -26,7 +29,7 @@ function CodeInputStep({
     const newValue = newValueArray.join('');
 
     onChange(newValue);
-    setErrorMessage('');
+    setErrorMessage([]);
 
     if (val !== '' && idx < 5) {
       inputRefs.current[idx + 1]?.focus();
@@ -40,31 +43,36 @@ function CodeInputStep({
   };
 
   const handleNext = async () => {
+    if (isLoading) return;
+
     if (value.length !== 6) {
-      setErrorMessage('6자리 인증 코드를 입력해 주세요.');
+      setErrorMessage(['6자리 인증 코드를 입력해 주세요.']);
       return;
     }
 
     try {
       setIsLoading(true);
-      setErrorMessage('');
+      setErrorMessage([]);
 
-      const response = await authApi.verifyPosPin(value);
+      const response = await onboardingApi.verifyPosPin(value);
       const { success, merchantId, message } = response.data;
 
       if (!success || !merchantId) {
-        setErrorMessage(message || '인증 코드 검증에 실패했습니다.');
+        setErrorMessage([message || '인증 코드 검증에 실패했습니다.']);
         return;
       }
 
+      setMerchantId(merchantId);
       onVerified?.(merchantId);
       onNext();
     } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        '인증 코드 검증 중 오류가 발생했습니다. 다시 시도해 주세요.';
+      const message = error.response?.data?.message;
 
-      setErrorMessage(message);
+      setErrorMessage(
+        message
+          ? [message]
+          : ['인증 코드 검증 중 오류가 발생했습니다.', '다시 시도해 주세요.']
+      );
     } finally {
       setIsLoading(false);
     }
@@ -101,6 +109,7 @@ function CodeInputStep({
           onPrev={onPrev}
           onNext={handleNext}
           nextText={isLoading ? '확인 중' : '다음'}
+          nextDisabled={isLoading}
         />
       }
     >
@@ -122,9 +131,13 @@ function CodeInputStep({
           ))}
         </div>
 
-        {errorMessage && (
-          <p className="mt-4 text-sm font-medium text-red-500">
-            {errorMessage}
+        {errorMessage.length > 0 && (
+          <p className="mt-4 text-md font-medium text-red-500 text-center">
+            {errorMessage.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))}
           </p>
         )}
 
@@ -136,6 +149,7 @@ function CodeInputStep({
         >
           QR로 인증하기
         </button>
+
       </div>
     </OnboardingLayout>
   );
