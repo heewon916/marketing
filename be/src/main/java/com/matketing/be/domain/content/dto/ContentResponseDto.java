@@ -5,6 +5,21 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * 최종 발행 이후의 게시물 응답
+ * @param id
+ * @param storeId
+ * @param sessionId
+ * @param caption
+ * @param instagramMediaId
+ * @param instagramPermalink
+ * @param publishedAt
+ * @param isDeleted
+ * @param deletedAt
+ * @param createdAt
+ * @param images
+ * @param videoRecordings
+ */
 public record ContentResponseDto(
         Long id,
         UUID storeId,
