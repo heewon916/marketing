@@ -4,6 +4,7 @@ import com.matketing.be.domain.onboarding.dto.PinVerifyResponse;
 import com.matketing.be.domain.onboarding.dto.SyncResponse;
 import com.matketing.be.domain.onboarding.entity.PosPin;
 import com.matketing.be.domain.onboarding.repository.PosPinRepository;
+import com.matketing.be.domain.store.entity.CategoryEnumType;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.entity.Menu;
 import com.matketing.be.domain.store.entity.StoreHours;
@@ -96,7 +97,7 @@ public class OnboardingService {
         log.info("Starting sync for user: {}, merchant: {}", userId, merchantId);
 
         String storeName = getMerchantNameFromToss(merchantId);
-        String category = "CAFE"; // Toss API에서 category를 주지 않으므로 기본값 또는 추후 연동
+        CategoryEnumType category = CategoryEnumType.카페; // Toss API에서 category를 주지 않으므로 기본값 또는 추후 연동
 
         Map<String, String> placeInfo = fetchPlaceInfo(storeName);
         String placeId = placeInfo.get(KEY_PLACE_ID);

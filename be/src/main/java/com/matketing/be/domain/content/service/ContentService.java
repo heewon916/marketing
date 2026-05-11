@@ -354,7 +354,7 @@ public class ContentService {
      * @return owner_persona
      */
     private String ownerPersona(Store store) {
-        String ownerPersona = store.getOwnerPersona();
+        String ownerPersona = store.getOwnerPersona() != null ? store.getOwnerPersona().name() : null;
         if (ownerPersona == null || ownerPersona.isBlank()) {
             ownerPersona = "aesthetic";
         }

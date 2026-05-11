@@ -22,7 +22,9 @@ CREATE TABLE "users" (
                          "camera_mic_granted"   BOOLEAN        NULL,
                          "created_at"           TIMESTAMPTZ    NULL,
                          "updated_at"           TIMESTAMPTZ    NULL,
-                         CONSTRAINT "PK_USERS" PRIMARY KEY ("id") -- PK 추가
+                         "profile_image_url"    TEXT           NULL,
+                         CONSTRAINT "PK_USERS" PRIMARY KEY ("id"), -- PK 추가
+                         CONSTRAINT "UK_USERS_INSTAGRAM_USER_ID" UNIQUE ("instagram_user_id")
 );
 
 -- =============================================================
@@ -156,12 +158,13 @@ CREATE TABLE "api_token_logs" (
 CREATE TABLE "device_tokens" (
                                  "id"           UUID          NOT NULL,
                                  "user_id"      UUID          NOT NULL,
-                                 "token"        TEXT          NULL,
-                                 "platform"     VARCHAR       NULL,
-                                 "is_active"    BOOLEAN       NULL,
-                                 "created_at"   TIMESTAMPTZ   NULL,
-                                 "updated_at"   TIMESTAMPTZ   NULL,
+                                 "token"        TEXT          NOT NULL,
+                                 "platform"     VARCHAR(255)  NOT NULL,
+                                 "is_active"    BOOLEAN       NOT NULL,
+                                 "created_at"   TIMESTAMPTZ   NOT NULL,
+                                 "updated_at"   TIMESTAMPTZ   NOT NULL,
                                  CONSTRAINT "PK_DEVICE_TOKENS" PRIMARY KEY ("id"),
+                                 CONSTRAINT "UK_DEVICE_TOKENS_TOKEN" UNIQUE ("token"),
                                  CONSTRAINT "FK_users_TO_device_tokens"
                                      FOREIGN KEY ("user_id") REFERENCES "users"("id") -- FK 추가
 );
@@ -327,14 +330,14 @@ CREATE TABLE "menus" (
 CREATE TABLE "notifications" (
                                  "id"               UUID          NOT NULL,
                                  "store_id"         UUID          NOT NULL,
-                                 "notification"     TEXT          NULL,
-                                 "scheduled_at"     TIMESTAMPTZ   NULL,
-                                 "created_at"       TIMESTAMPTZ   NULL,
-                                 "type"             SMALLINT      NULL,
-                                 "status"           SMALLINT      NULL,
+                                 "notification"     TEXT          NOT NULL,
+                                 "scheduled_at"     TIMESTAMPTZ   NOT NULL,
+                                 "created_at"       TIMESTAMPTZ   NOT NULL,
+                                 "type"             SMALLINT      NOT NULL,
+                                 "status"           SMALLINT      NOT NULL,
                                  "sent_at"          TIMESTAMPTZ   NULL,
-                                 "updated_at"       TIMESTAMPTZ   NULL,
-                                 "retry_count"      INTEGER       NULL,
+                                 "updated_at"       TIMESTAMPTZ   NOT NULL,
+                                 "retry_count"      INTEGER       NOT NULL,
                                  "failure_reason"   TEXT          NULL,
                                  "web_url"          TEXT          NULL,
                                  "reference_id"     UUID          NULL,
@@ -428,6 +431,8 @@ CREATE INDEX idx_account_weekly_metrics_store_id ON "account_weekly_metrics" ("s
 CREATE INDEX idx_upload_patterns_store_id ON "upload_patterns" ("store_id");
 CREATE INDEX idx_menus_store_id ON "menus" ("store_id");
 CREATE INDEX idx_notifications_store_id ON "notifications" ("store_id");
+CREATE INDEX idx_notifications_reference_id ON "notifications" ("reference_id");
+CREATE INDEX idx_notifications_status_scheduled_at ON "notifications" ("status", "scheduled_at");
 CREATE INDEX idx_contents_store_id ON "contents" ("store_id");
 
 CREATE INDEX idx_contents_images_contents_id ON "contents_images" ("contents_id");
