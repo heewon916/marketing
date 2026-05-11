@@ -28,6 +28,9 @@ from app.services.canonical_keyword_resolver import (
 from app.services.reference_caption_retriever import (
     get_reference_caption_retriever_service,
 )
+from app.services.menu_promotion_context import (
+    get_menu_promotion_context_service,
+)
 from app.services.sessions import process_utterance
 
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
@@ -50,6 +53,7 @@ async def process_utterance_endpoint(
     caption_service = get_caption_generation_service(request)
     canonical_keyword_resolver = get_canonical_keyword_resolver_service(request)
     reference_caption_retriever = get_reference_caption_retriever_service(request)
+    menu_promotion_context_service = get_menu_promotion_context_service(request)
     logger.info(
         "process-utterance request received.",
         extra={
@@ -70,6 +74,7 @@ async def process_utterance_endpoint(
             caption_service,
             canonical_keyword_resolver,
             reference_caption_retriever,
+            menu_promotion_context_service,
         )
     except KeywordExtractionUnavailableError as exc:
         cause = exc.__cause__

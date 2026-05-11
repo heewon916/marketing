@@ -347,19 +347,17 @@ pipeline {
                       case "$model_role" in
                         KEYWORD)
                           MODEL_LABEL="keyword-model"
-                          DEFAULT_MODEL_HOST_DIR="./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
-                          DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2-1.5B-Instruct-GGUF"
-                          DEFAULT_MODEL_HF_FILENAME="qwen2-1_5b-instruct-q3_k_m.gguf"
-                          LEGACY_MODEL_HF_FILENAME="qwen2-1.5b-instruct-q3_k_m.gguf"
-                          MODEL_CONTAINER_DIR="/models/qwen2-1.5b-instruct/q3_k_m"
+                          DEFAULT_MODEL_HOST_DIR="/home/ubuntu/marketing/models/keyword/exaone-3.5-7.8b-instruct/q4_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
+                          MODEL_CONTAINER_DIR="/models/exaone-3.5-7.8b-instruct/q4_k_m"
                           ;;
                         CAPTION)
                           MODEL_LABEL="caption-model"
-                          DEFAULT_MODEL_HOST_DIR="./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
-                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
-                          DEFAULT_MODEL_HF_FILENAME="EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
-                          LEGACY_MODEL_HF_FILENAME=""
-                          MODEL_CONTAINER_DIR="/models/exaone-3.5-7.8b-instruct/q4_k_m"
+                          DEFAULT_MODEL_HOST_DIR="/home/ubuntu/marketing/models/caption/exaone-4.0-32b/q4_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="EXAONE-4.0-32B-Q4_K_M.gguf"
+                          MODEL_CONTAINER_DIR="/models/exaone-4.0-32b/q4_k_m"
                           ;;
                         *)
                           echo "ERROR: unsupported model role: $model_role"
@@ -382,12 +380,6 @@ pipeline {
                       fi
 
                       if [ -z "$MODEL_HF_FILENAME_VALUE" ]; then
-                        MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
-                      fi
-
-                      if [ -n "$LEGACY_MODEL_HF_FILENAME" ] && [ "$MODEL_HF_FILENAME_VALUE" = "$LEGACY_MODEL_HF_FILENAME" ]; then
-                        echo "[${MODEL_LABEL}] WARN: legacy MODEL_HF_FILENAME detected in .env: ${MODEL_HF_FILENAME_VALUE}"
-                        echo "[${MODEL_LABEL}] WARN: rewriting to current filename: ${DEFAULT_MODEL_HF_FILENAME}"
                         MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
                       fi
 

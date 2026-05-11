@@ -7,6 +7,7 @@ from app.services.caption_generation import (
     CaptionGenerationService,
     CaptionGenerationUnavailableError,
 )
+from app.services.menu_promotion_context import StoreMenuCandidate
 
 
 def _make_chat_response(
@@ -224,10 +225,7 @@ def test_caption_generation_service_selects_prompt_by_purpose(
         prompts.append(prompt)
         return _make_chat_response(
             200,
-            content=(
-                '{"guide_text":"가이드를 확인하세요.",'
-                '"caption":"캡션을 확인하세요."}'
-            ),
+            content='{"guide_text":"가이드를 확인하세요.","caption":"캡션을 확인하세요."}',
         )
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
@@ -245,11 +243,11 @@ def test_caption_generation_service_selects_prompt_by_purpose(
         )
 
     assert '게시물 목적은 "메뉴 홍보"입니다.' in prompts[0]
-    assert "메뉴, 상품, 재료, 또는 매장에서 제공하는 것을 홍보하는 톤" in prompts[0]
+    assert "실제로 판매하는 것만 홍보" in prompts[0]
     assert '게시물 목적은 "영업 공지"입니다.' in prompts[1]
-    assert "영업, 일정, 운영 가능 여부에 대한 명확한 영업 공지 톤" in prompts[1]
+    assert "공지 내용은 명확하고 자연스럽게 전달" in prompts[1]
     assert '게시물 목적은 "일상 공유"입니다.' in prompts[2]
-    assert "사장님의 일상, 매장 분위기, 비하인드 순간을 공유하는 톤" in prompts[2]
+    assert "매장 분위기와 사장님의 일상" in prompts[2]
 
 
 def test_caption_generation_service_uses_korean_fallback_guide_text() -> None:
@@ -473,4 +471,104 @@ def test_caption_generation_prompt_includes_reference_captions() -> None:
     assert "참고용 레퍼런스 캡션" in prompt
     assert "1. 첫 번째 레퍼런스 캡션" in prompt
     assert "2. 두 번째 레퍼런스 캡션" in prompt
-    assert "문장을 그대로 복사" in prompt
+    assert "문장을 그대로 복사하지 말고" in prompt
+
+
+def test_caption_generation_prompt_includes_menu_candidates() -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+
+    prompt = service._get_pipeline("메뉴 홍보").build_prompt(
+        CaptionGenerationRequest(
+            purpose="메뉴 홍보",
+            keywords=["막걸리", "파전"],
+            owner_persona="warm",
+            weather_tags=["PRECIP_RAIN"],
+            menu_candidates=[
+                StoreMenuCandidate(
+                    id="1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+        )
+    )
+
+    assert "selected_menu_name" in prompt
+    assert "메뉴 후보 목록" in prompt
+    assert "메뉴명: 해물파전" in prompt
+    assert "일치한 weather_tags: PRECIP_RAIN" in prompt
+
+
+def test_caption_generation_service_parses_selected_menu_name_from_candidates() -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+    candidates = [
+        StoreMenuCandidate(
+            id="1",
+            name="해물파전",
+            price=18000,
+            description="비 오는 날 잘 나가는 대표 메뉴",
+            weather_tags=["PRECIP_RAIN"],
+            matched_weather_tags=["PRECIP_RAIN"],
+        )
+    ]
+
+    result = service._parse_generation_result(
+        '{"guide_text":"해물파전이 잘 보이도록 접시를 가까이 담아보세요.","caption":"비 오는 날엔 막걸리와 잘 어울리는 해물파전을 따뜻하게 소개해보세요.","selected_menu_name":"해물파전"}',
+        menu_candidates=candidates,
+    )
+
+    assert result.selected_menu_name == "해물파전"
+
+
+def test_caption_generation_service_rejects_selected_menu_outside_candidates() -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+    candidates = [
+        StoreMenuCandidate(
+            id="1",
+            name="해물파전",
+            price=18000,
+            description="비 오는 날 잘 나가는 대표 메뉴",
+            weather_tags=["PRECIP_RAIN"],
+            matched_weather_tags=["PRECIP_RAIN"],
+        )
+    ]
+
+    with pytest.raises(
+        CaptionGenerationUnavailableError,
+        match="outside the provided candidates",
+    ):
+        service._parse_generation_result(
+            '{"guide_text":"메뉴를 가까이 담아보세요.","caption":"오늘은 국물이 좋은 수프를 소개해보세요.","selected_menu_name":"오늘의 수프"}',
+            menu_candidates=candidates,
+        )
+
+
+def test_caption_generation_fallback_prefers_first_menu_candidate() -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+
+    fallback_result = service.build_fallback_result(
+        CaptionGenerationRequest(
+            purpose="메뉴 홍보",
+            keywords=["막걸리"],
+            owner_persona="warm",
+            weather_tags=["PRECIP_RAIN"],
+            menu_candidates=[
+                StoreMenuCandidate(
+                    id="1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+        ),
+        fallback_source="caption_model_fallback",
+    )
+
+    assert fallback_result.result.selected_menu_name == "해물파전"
+    assert "해물파전" in fallback_result.result.guide_text
+    assert "해물파전" in fallback_result.result.draft_caption

@@ -248,21 +248,21 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH.name == "model-vit-ang-loss.h5"
 
     assert DEFAULT_KEYWORD_MODEL_PATH.name == "model.gguf"
-    assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q3_k_m"
-    assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "qwen2-1.5b-instruct"
-    assert DEFAULT_KEYWORD_MODEL_HOST_DIR == "./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
-    assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2-1.5B-Instruct-GGUF"
-    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2-1_5b-instruct-q3_k_m.gguf"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q4_k_m"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "exaone-3.5-7.8b-instruct"
+    assert DEFAULT_KEYWORD_MODEL_HOST_DIR == "./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m"
+    assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
     assert DEFAULT_KEYWORD_MODEL_SERVER_PORT == 8001
     assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 60.0
     assert DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT == "/health"
 
     assert DEFAULT_CAPTION_MODEL_PATH.name == "model.gguf"
     assert DEFAULT_CAPTION_MODEL_PATH.parent.name == "q4_k_m"
-    assert DEFAULT_CAPTION_MODEL_PATH.parent.parent.name == "exaone-3.5-7.8b-instruct"
-    assert DEFAULT_CAPTION_MODEL_HOST_DIR == "./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
-    assert DEFAULT_CAPTION_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
-    assert DEFAULT_CAPTION_MODEL_HF_FILENAME == "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
+    assert DEFAULT_CAPTION_MODEL_PATH.parent.parent.name == "exaone-4.0-32b"
+    assert DEFAULT_CAPTION_MODEL_HOST_DIR == "./.models/caption/exaone-4.0-32b/q4_k_m"
+    assert DEFAULT_CAPTION_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
+    assert DEFAULT_CAPTION_MODEL_HF_FILENAME == "EXAONE-4.0-32B-Q4_K_M.gguf"
     assert DEFAULT_CAPTION_MODEL_SERVER_PORT == 8002
     assert DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS == 120.0
     assert DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT == "/health"

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from dataclasses import dataclass
 
 from redis.asyncio import Redis
@@ -22,6 +23,11 @@ from app.services.canonical_keyword_resolver import (
 )
 from app.services.reference_caption_retriever import (
     ReferenceCaptionRetrieverService,
+    RetrievedReferenceCaption,
+)
+from app.services.menu_promotion_context import (
+    MenuPromotionContext,
+    MenuPromotionContextService,
 )
 from app.services.weather_tags import evaluate_weather_tags
 
@@ -48,13 +54,28 @@ def resolve_caption_keywords(
 
 def _result_from_caption_generation(
     result: CaptionGenerationResult,
-) -> tuple[str, str, str, None]:
+) -> tuple[str, str, str, str | None]:
     return (
         result.draft_caption,
         result.guide_text,
         result.stored_caption,
-        None,
+        result.selected_menu_name,
     )
+
+
+def _build_reference_caption_log_details(
+    references: list[RetrievedReferenceCaption],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": reference.caption_id,
+            "score": (
+                round(reference.score, 4) if reference.score is not None else None
+            ),
+            "content": reference.caption_content,
+        }
+        for reference in references
+    ]
 
 
 def session_key(session_id: str) -> str:
@@ -267,12 +288,25 @@ def _build_final_keyword_state(
 def _build_process_utterance_debug_fields(
     purpose: ContentPurpose,
     canonical_resolution: CanonicalKeywordResolution,
+    menu_promotion_context: MenuPromotionContext | None = None,
+    selected_menu_name: str | None = None,
 ) -> dict[str, str]:
-    return {
+    debug_fields = {
         "debug:purpose": purpose,
         "debug:canonical_match_count": str(canonical_resolution.match_count),
         "debug:canonical_fallback_count": str(canonical_resolution.fallback_count),
     }
+    if menu_promotion_context is not None:
+        debug_fields["debug:menu_candidate_source"] = menu_promotion_context.source
+        debug_fields["debug:menu_candidate_count"] = str(
+            len(menu_promotion_context.candidates)
+        )
+        debug_fields["debug:weather_matched_menu_count"] = str(
+            menu_promotion_context.weather_matched_count
+        )
+    if selected_menu_name is not None:
+        debug_fields["debug:selected_menu_name"] = selected_menu_name
+    return debug_fields
 
 
 async def _persist_process_utterance_result(
@@ -330,6 +364,7 @@ async def process_utterance(
     caption_service: CaptionGenerationService,
     canonical_keyword_resolver: CanonicalKeywordResolverService,
     reference_caption_retriever: ReferenceCaptionRetrieverService,
+    menu_promotion_context_service: MenuPromotionContextService,
 ) -> ProcessUtteranceResult:
     weather_tags = evaluate_weather_tags(
         payload.weather,
@@ -383,6 +418,30 @@ async def process_utterance(
         utterance=payload.utterance,
         weather_tags=weather_tags,
     )
+    menu_promotion_context: MenuPromotionContext | None = None
+    if purpose == "메뉴 홍보":
+        menu_promotion_context = await menu_promotion_context_service.fetch_context(
+            store_id=payload.store_id,
+            weather_tags=weather_tags,
+        )
+        caption_request.menu_candidates = list(menu_promotion_context.candidates)
+        logger.info(
+            "Menu promotion context retrieval completed.",
+            extra=build_log_extra(
+                "session.process_utterance.menu_promotion_context.completed",
+                component="session",
+                stage="menu_promotion_context",
+                session_id=session_id,
+                outcome=(
+                    "succeeded"
+                    if menu_promotion_context.candidates
+                    else "skipped"
+                ),
+                menu_candidate_source=menu_promotion_context.source,
+                menu_candidate_count=len(menu_promotion_context.candidates),
+                weather_matched_menu_count=menu_promotion_context.weather_matched_count,
+            ),
+        )
     try:
         reference_caption_result = await reference_caption_retriever.retrieve(
             owner_persona=payload.owner_persona,
@@ -426,10 +485,18 @@ async def process_utterance(
                     for caption_id in reference_caption_result.selected_caption_ids
                 )
                 or None,
+                reference_caption_selected_details=(
+                    _build_reference_caption_log_details(
+                        reference_caption_result.references
+                    )
+                    if reference_caption_result.references
+                    else None
+                ),
                 reference_caption_fallback_reason=reference_caption_result.fallback_reason,
             ),
         )
     fallback_source: str | None = None
+    selected_menu_name: str | None = None
     if not caption_keywords:
         fallback_result = caption_service.build_fallback_result(
             caption_request,
@@ -440,25 +507,28 @@ async def process_utterance(
             guide_text,
             stored_caption,
             fallback_source,
+            selected_menu_name,
         ) = (
             fallback_result.result.draft_caption,
             fallback_result.result.guide_text,
             fallback_result.result.stored_caption,
             fallback_result.fallback_source,
+            fallback_result.result.selected_menu_name,
         )
         logger.info(
             "Built text generation result from default guide fallback.",
             extra=build_log_extra(
-                "session.process_utterance.text_generation.completed",
-                component="session",
-                stage="text_generation",
-                session_id=session_id,
-                outcome="fallback",
-                text_generation_source="default_guide",
-                purpose=purpose,
-                weather_tag_count=len(weather_tags),
-                weather_tags_preview=", ".join(weather_tags[:3]),
-                draft_caption_length=len(draft_caption),
+                    "session.process_utterance.text_generation.completed",
+                    component="session",
+                    stage="text_generation",
+                    session_id=session_id,
+                    outcome="fallback",
+                    text_generation_source="default_guide",
+                    purpose=purpose,
+                    selected_menu_name=selected_menu_name,
+                    weather_tag_count=len(weather_tags),
+                    weather_tags_preview=", ".join(weather_tags[:3]),
+                    draft_caption_length=len(draft_caption),
                 guide_text_length=len(guide_text),
             ),
         )
@@ -482,6 +552,7 @@ async def process_utterance(
                     outcome="succeeded",
                     text_generation_source="caption_model",
                     purpose=purpose,
+                    selected_menu_name=selected_menu_name,
                     weather_tag_count=len(weather_tags),
                     weather_tags_preview=", ".join(weather_tags[:3]),
                     draft_caption_length=len(draft_caption),
@@ -498,11 +569,13 @@ async def process_utterance(
                 guide_text,
                 stored_caption,
                 fallback_source,
+                selected_menu_name,
             ) = (
                 fallback_result.result.draft_caption,
                 fallback_result.result.guide_text,
                 fallback_result.result.stored_caption,
                 fallback_result.fallback_source,
+                fallback_result.result.selected_menu_name,
             )
             logger.warning(
                 "Caption model generation failed; falling back to rule-based text generation: %s",
@@ -517,6 +590,7 @@ async def process_utterance(
                     text_generation_source="rule_based_fallback",
                     error_type=exc.__class__.__name__,
                     purpose=purpose,
+                    selected_menu_name=selected_menu_name,
                     weather_tag_count=len(weather_tags),
                     weather_tags_preview=", ".join(weather_tags[:3]),
                     draft_caption_length=len(draft_caption),
@@ -526,6 +600,8 @@ async def process_utterance(
     debug_fields = _build_process_utterance_debug_fields(
         purpose=purpose,
         canonical_resolution=canonical_resolution,
+        menu_promotion_context=menu_promotion_context,
+        selected_menu_name=selected_menu_name,
     )
     if fallback_source is not None:
         debug_fields["debug:text_generation_fallback_source"] = fallback_source

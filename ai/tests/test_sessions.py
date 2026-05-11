@@ -1,6 +1,7 @@
-import asyncio
-from uuid import uuid4
 from collections.abc import Awaitable
+import asyncio
+import logging
+from uuid import uuid4
 
 import fakeredis
 import httpx
@@ -33,6 +34,10 @@ from app.services.keyword_extraction import (
 from app.services.reference_caption_retriever import (
     ReferenceCaptionRetrievalResult,
     RetrievedReferenceCaption,
+)
+from app.services.menu_promotion_context import (
+    MenuPromotionContext,
+    StoreMenuCandidate,
 )
 from app.services.sessions import (
     resolve_caption_keywords,
@@ -264,6 +269,7 @@ class FakeCaptionGenerationService:
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
                 "reference_captions": list(request.reference_captions),
+                "menu_candidates": list(request.menu_candidates),
             }
         )
         if self.error is not None:
@@ -282,6 +288,7 @@ class FakeCaptionGenerationService:
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
                 "reference_captions": list(request.reference_captions),
+                "menu_candidates": list(request.menu_candidates),
                 "fallback_source": fallback_source,
             }
         )
@@ -305,6 +312,9 @@ class FakeCaptionGenerationService:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=caption,
+                selected_menu_name=(
+                    request.menu_candidates[0].name if request.menu_candidates else None
+                ),
             ),
             fallback_source=effective_fallback_source,
         )
@@ -341,6 +351,29 @@ class FakeReferenceCaptionRetrieverService:
         return self.result
 
 
+class FakeMenuPromotionContextService:
+    def __init__(
+        self,
+        result: MenuPromotionContext | None = None,
+    ) -> None:
+        self.result = result or MenuPromotionContext()
+        self.calls: list[dict[str, object]] = []
+
+    async def fetch_context(
+        self,
+        *,
+        store_id,
+        weather_tags: list[str],
+    ) -> MenuPromotionContext:
+        self.calls.append(
+            {
+                "store_id": str(store_id),
+                "weather_tags": list(weather_tags),
+            }
+        )
+        return self.result
+
+
 class StubDraftDownloader:
     is_configured = True
 
@@ -374,6 +407,17 @@ class FailingUploader:
 
     async def delete_final(self, uploaded_path: str) -> None:
         self.deleted.append(uploaded_path)
+
+
+def _find_reference_caption_log_record(
+    caplog: pytest.LogCaptureFixture,
+) -> logging.LogRecord:
+    return next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "session.process_utterance.reference_caption_retrieval.completed"
+    )
 
 
 def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> None:
@@ -636,6 +680,135 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
     assert fake_service.calls[0]["keywords"] == ["signature menu", "evening notice"]
 
 
+def test_process_utterance_fetches_menu_candidates_for_menu_promotion(
+    client: TestClient,
+) -> None:
+    session_id = "sess-menu-candidates-1"
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    assert fake_menu_service.calls[0]["store_id"] == VALID_PAYLOAD["store_id"]
+    assert fake_caption_service.calls[0]["menu_candidates"][0].name == "해물파전"
+
+
+def test_process_utterance_skips_menu_candidates_for_non_menu_purpose(
+    client: TestClient,
+) -> None:
+    session_id = "sess-menu-candidates-2"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="영업 공지",
+        draft_keywords=["임시 휴무"],
+    )
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    assert fake_menu_service.calls == []
+    assert fake_caption_service.calls[0]["menu_candidates"] == []
+
+
+def test_process_utterance_stores_menu_context_debug_fields(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-menu-candidates-debug-1"
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:menu_candidate_source"] == "weather_tag_menu"
+    assert saved["debug:menu_candidate_count"] == "1"
+    assert saved["debug:weather_matched_menu_count"] == "1"
+
+
 def test_process_utterance_passes_reference_captions_to_caption_request(
     client: TestClient,
 ) -> None:
@@ -680,6 +853,61 @@ def test_process_utterance_passes_reference_captions_to_caption_request(
     assert fake_retriever_service.calls[0]["owner_persona"] == VALID_PAYLOAD["owner_persona"]
 
 
+def test_process_utterance_logs_selected_reference_caption_details(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-1"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[
+                RetrievedReferenceCaption(
+                    caption_id=1,
+                    caption_content="reference caption body one",
+                    score=0.91234,
+                ),
+                RetrievedReferenceCaption(
+                    caption_id=2,
+                    caption_content="reference caption body two",
+                    score=0.88,
+                ),
+            ],
+            candidate_count=2,
+        )
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.reference_caption_selected_ids == "1,2"
+    assert record.reference_caption_selected_count == 2
+    assert record.reference_caption_selected_details == [
+        {
+            "id": 1,
+            "score": 0.9123,
+            "content": "reference caption body one",
+        },
+        {
+            "id": 2,
+            "score": 0.88,
+            "content": "reference caption body two",
+        },
+    ]
+
+
 def test_process_utterance_skips_reference_captions_when_retriever_returns_no_matches(
     client: TestClient,
 ) -> None:
@@ -710,6 +938,40 @@ def test_process_utterance_skips_reference_captions_when_retriever_returns_no_ma
     assert fake_caption_service.calls[0]["reference_captions"] == []
 
 
+def test_process_utterance_omits_reference_caption_details_when_no_matches(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-2"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[],
+            fallback_reason="no_reference_candidates",
+            candidate_count=0,
+        )
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.reference_caption_candidate_count == 0
+    assert record.reference_caption_fallback_reason == "no_reference_candidates"
+    assert not hasattr(record, "reference_caption_selected_details")
+
+
 def test_process_utterance_skips_reference_captions_when_retriever_fails(
     client: TestClient,
 ) -> None:
@@ -734,6 +996,36 @@ def test_process_utterance_skips_reference_captions_when_retriever_fails(
 
     assert response.status_code == 200
     assert fake_caption_service.calls[0]["reference_captions"] == []
+
+
+def test_process_utterance_omits_reference_caption_details_when_retriever_fails(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-3"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        error=RuntimeError("retriever unavailable")
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.outcome == "failed"
+    assert record.error_type == "RuntimeError"
+    assert not hasattr(record, "reference_caption_selected_details")
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:

@@ -61,6 +61,9 @@ from app.services.canonical_keyword_resolver import (
 from app.services.reference_caption_retriever import (
     build_reference_caption_retriever_service,
 )
+from app.services.menu_promotion_context import (
+    build_menu_promotion_context_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +243,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
         )
     )
+    app.state.menu_promotion_context_service = (
+        build_menu_promotion_context_service()
+    )
     logger.info(
         "Keyword extraction configured.",
         extra=build_log_extra(
@@ -281,6 +287,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             component="startup",
             reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
             reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+        ),
+    )
+    logger.info(
+        "Menu promotion context service configured.",
+        extra=build_log_extra(
+            "app.startup.menu_promotion_context_configured",
+            component="startup",
         ),
     )
 
@@ -429,6 +442,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 error_type=exc.__class__.__name__,
                 reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
                 reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+            ),
+        )
+
+    try:
+        await app.state.menu_promotion_context_service.preload()
+        logger.info(
+            "Menu promotion context service preload completed.",
+            extra=build_log_extra(
+                "app.startup.menu_promotion_context_preload",
+                component="startup",
+                stage="menu_promotion_context_preload",
+                outcome="succeeded",
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Menu promotion context service is unavailable at startup: %s. "
+            "The app will continue and skip menu candidate lookup until the database is reachable.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.menu_promotion_context_preload",
+                component="startup",
+                stage="menu_promotion_context_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
             ),
         )
 
