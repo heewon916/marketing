@@ -13,7 +13,7 @@
 - Default port: `8001`
 - Container model dir: `/models/exaone-3.5-7.8b-instruct/q4_k_m`
 - Container model path: `/models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf`
-- Default host cache dir: `./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m`
+- Default host cache dir: `/home/ubuntu/marketing/models/keyword/exaone-3.5-7.8b-instruct/q4_k_m`
 - Default source: `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF`
 - Default filename: `EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf`
 
@@ -22,7 +22,7 @@
 - Default port: `8002`
 - Container model dir: `/models/exaone-4.0-32b/q4_k_m`
 - Container model path: `/models/exaone-4.0-32b/q4_k_m/model.gguf`
-- Default host cache dir: `./.models/caption/exaone-4.0-32b/q4_k_m`
+- Default host cache dir: `/home/ubuntu/marketing/models/caption/exaone-4.0-32b/q4_k_m`
 - Default source: `LGAI-EXAONE/EXAONE-4.0-32B-GGUF`
 - Default filename: `EXAONE-4.0-32B-Q4_K_M.gguf`
 
@@ -70,11 +70,12 @@
 
 ## First Deploy
 1. Fill out `.env`.
-2. Set model overrides only if the defaults are not suitable.
-3. Run the Jenkins pipeline.
-4. Jenkins provisions keyword and caption GGUF artifacts if `model.gguf` is missing in either host cache directory.
-5. Jenkins starts `postgres`, `redis`, `keyword-server`, and `caption-server`.
-6. `fastapi` starts after both llama servers are reachable from the Docker network.
+2. By default, model caches are stored on absolute host paths outside `DEPLOY_DIR`.
+3. Override `KEYWORD_MODEL_HOST_DIR` or `CAPTION_MODEL_HOST_DIR` only if your deployment server uses different cache locations.
+4. Run the Jenkins pipeline.
+5. Jenkins provisions keyword and caption GGUF artifacts if `model.gguf` is missing in either host cache directory.
+6. Jenkins starts `postgres`, `redis`, `keyword-server`, and `caption-server`.
+7. `fastapi` starts after both llama servers are reachable from the Docker network.
 
 ## First Deploy Checks
 1. Run `docker compose config` with the deploy `.env` and confirm the keyword path resolves to `/models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf`.
@@ -83,6 +84,7 @@
    - `keyword-model source: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF/EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf`
    - `caption-model source: LGAI-EXAONE/EXAONE-4.0-32B-GGUF/EXAONE-4.0-32B-Q4_K_M.gguf`
 4. Verify both model host cache directories contain `model.gguf` after provisioning.
+5. Confirm the host cache directories are outside `/home/ubuntu/deploy/S14P31A401` so deploy cleanup does not delete the cached models.
 
 ## Runtime Behavior
 - If `keyword-server` is unavailable, `process-utterance` can return `503`.
@@ -98,6 +100,8 @@
 ## Troubleshooting
 - Model file missing:
   Confirm the resolved host cache directory contains `model.gguf` for the affected role.
+- Model re-downloads every deploy:
+  Check whether `KEYWORD_MODEL_HOST_DIR` or `CAPTION_MODEL_HOST_DIR` was overridden to a path inside `DEPLOY_DIR`.
 - Download failed:
   Check the Jenkins logs for the role-specific `repo_id`, `filename`, and target path.
 - Health check failed:

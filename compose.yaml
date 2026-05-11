@@ -145,7 +145,7 @@ services:
       - "${KEYWORD_MODEL_GPU_LAYERS:-0}"
     volumes:
       # Provision the GGUF model from the host without baking it into the image.
-      - ${KEYWORD_MODEL_HOST_DIR:-./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m}:/models/exaone-3.5-7.8b-instruct/q4_k_m:ro
+      - ${KEYWORD_MODEL_HOST_DIR:-/home/ubuntu/marketing/models/keyword/exaone-3.5-7.8b-instruct/q4_k_m}:/models/exaone-3.5-7.8b-instruct/q4_k_m:ro
     expose:
       - "${KEYWORD_MODEL_SERVER_PORT:-8001}"
     networks:
@@ -167,7 +167,7 @@ services:
       - --n-gpu-layers
       - "${CAPTION_MODEL_GPU_LAYERS:-0}"
     volumes:
-      - ${CAPTION_MODEL_HOST_DIR:-./.models/caption/exaone-4.0-32b/q4_k_m}:/models/exaone-4.0-32b/q4_k_m:ro
+      - ${CAPTION_MODEL_HOST_DIR:-/home/ubuntu/marketing/models/caption/exaone-4.0-32b/q4_k_m}:/models/exaone-4.0-32b/q4_k_m:ro
     expose:
       - "${CAPTION_MODEL_SERVER_PORT:-8002}"
     networks:
