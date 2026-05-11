@@ -202,7 +202,7 @@ function OnboardingPage() {
         return <TimeStep {...commonProps} />;
 
       case 15:
-        return <CompleteStep />;
+        return <CompleteStep {...commonProps} />;
 
       default:
         return <div>잘못된 접근입니다</div>;

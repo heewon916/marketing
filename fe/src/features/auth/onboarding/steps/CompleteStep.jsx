@@ -3,11 +3,32 @@ import { useNavigate } from 'react-router-dom';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
-import Character from '@/assets/character/CharacterLove.png';
+import CharacterLove from '@/assets/character/CharacterLove.png';
+import CharacterRun from '@/assets/character/CharacterRun.png';
+import CharacterFail from '@/assets/character/CharacterFail.png';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function CompleteStep() {
+const MIN_SAVING_TIME = 2000;
+
+const ONBOARDING_SAVE_ERROR_MESSAGE =
+  '온보딩 정보를 저장하는 중 오류가 발생했습니다.\n다시 시도해 주세요.';
+
+const wait = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const waitRemainingTime = async (startedAt) => {
+  const elapsedTime = Date.now() - startedAt;
+  const remainingTime = Math.max(MIN_SAVING_TIME - elapsedTime, 0);
+
+  if (remainingTime > 0) {
+    await wait(remainingTime);
+  }
+};
+
+function CompleteStep({ onPrev }) {
   const navigate = useNavigate();
   const hasSubmittedRef = useRef(false);
 
@@ -26,12 +47,14 @@ function CompleteStep() {
 
   const displayErrorMessage =
     errorMessage ||
-    (!storeId ? '가게 정보가 없습니다. POS 연결부터 다시 진행해 주세요.' : '');
+    (!storeId ? '가게 정보가 없습니다.\nPOS 연결부터 다시 진행해 주세요.' : '');
 
   useEffect(() => {
     if (!storeId || hasSubmittedRef.current) return;
 
     const completeOnboarding = async () => {
+      const startedAt = Date.now();
+
       try {
         hasSubmittedRef.current = true;
 
@@ -43,18 +66,21 @@ function CompleteStep() {
 
         const { success, message } = response.data;
 
+        await waitRemainingTime(startedAt);
+
         if (!success) {
           setStatus('error');
-          setErrorMessage(message || '온보딩 최종 저장에 실패했습니다.');
+          setErrorMessage(message || ONBOARDING_SAVE_ERROR_MESSAGE);
           return;
         }
 
         setStatus('success');
         setErrorMessage('');
       } catch (error) {
+        await waitRemainingTime(startedAt);
+
         const message =
-          error.response?.data?.message ||
-          '온보딩 정보를 저장하는 중 오류가 발생했습니다. 다시 시도해 주세요.';
+          error.response?.data?.message || ONBOARDING_SAVE_ERROR_MESSAGE;
 
         setStatus('error');
         setErrorMessage(message);
@@ -88,8 +114,20 @@ function CompleteStep() {
     setRetryCount((prev) => prev + 1);
   };
 
+  const handleGoPrev = () => {
+    setErrorMessage('');
+    onPrev?.();
+  };
+
+  const isSaving = status === 'saving';
   const isSuccess = status === 'success';
   const isError = !!displayErrorMessage || status === 'error';
+
+  const characterImage = isSuccess
+    ? CharacterLove
+    : isError
+      ? CharacterFail
+      : CharacterRun;
 
   return (
     <OnboardingLayout
@@ -108,6 +146,14 @@ function CompleteStep() {
                     완료되었어요!
                   </span>
                 </>
+              ) : isError ? (
+                <>
+                  온보딩 정보를
+                  <br />
+                  <span className="text-primary-100 font-extrabold">
+                    저장하지 못했어요
+                  </span>
+                </>
               ) : (
                 <>
                   온보딩 정보를
@@ -122,23 +168,25 @@ function CompleteStep() {
           subtitle={
             isSuccess
               ? '잠시 후 메인 페이지로 이동합니다'
-              : '잠시만 기다려 주세요'
+              : isError
+                ? '다시 시도하거나 이전 단계로 돌아갈 수 있어요'
+                : '잠시만 기다려 주세요'
           }
         />
       }
       footer={
         isError ? (
           <OnboardingFooterButtons
-            onPrev={() => navigate('/auth/onboarding', { replace: true })}
-            onNext={storeId ? handleRetry : () => navigate('/auth/onboarding', { replace: true })}
-            nextText={storeId ? '다시 시도' : '처음부터 다시 하기'}
+            onPrev={handleGoPrev}
+            onNext={storeId ? handleRetry : handleGoPrev}
+            nextText={storeId ? '다시 시도' : '이전 단계로 돌아가기'}
           />
         ) : null
       }
     >
       <div className="w-full flex justify-center mt-10">
         <img
-          src={Character}
+          src={characterImage}
           alt="character"
           className="w-full max-w-[320px]"
         />
@@ -150,9 +198,9 @@ function CompleteStep() {
         </div>
       )}
 
-      {displayErrorMessage && (
-        <p className="mt-6 text-sm font-medium text-red-500 text-center whitespace-pre-line">
-          {displayErrorMessage}
+      {isSaving && (
+        <p className="mt-8 text-base font-medium text-gray-400">
+          거의 다 끝났어요.
         </p>
       )}
     </OnboardingLayout>

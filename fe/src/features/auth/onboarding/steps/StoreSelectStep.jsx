@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
+import Modal from '@/components/common/Modal.jsx';
+import Button from '@/components/common/Button.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
@@ -24,14 +26,18 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
   const [isLoading, setIsLoading] = useState(() => !!storeName?.trim());
   const [isModalClosed, setIsModalClosed] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   const keyword = storeName?.trim() ?? '';
+  const isErrorModalOpen = !!errorMessage && !isLoading;
 
   useEffect(() => {
     if (!keyword) return;
 
     const searchStores = async () => {
       try {
+        setIsLoading(true);
+
         const response = await onboardingApi.searchStores(keyword);
         const result = response.data?.data ?? [];
 
@@ -43,21 +49,23 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
         }));
 
         setStores(normalizedStores);
+        setSelectedId('');
         setErrorMessage('');
       } catch (error) {
-        const message =
-          error.response?.data?.message ||
-          '가게 목록을 불러오지 못했습니다. 다시 시도해 주세요.';
+        const message = error.response?.data?.message;
 
         setStores([]);
-        setErrorMessage(message);
+        setSelectedId('');
+        setErrorMessage(
+          message || '잠시 후 다시 시도하거나,\n직접 입력으로 계속 진행해 주세요.'
+        );
       } finally {
         setIsLoading(false);
       }
     };
 
     void searchStores();
-  }, [keyword]);
+  }, [keyword, retryCount]);
 
   const isModalOpen =
     !!keyword &&
@@ -81,8 +89,20 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
     onNext?.();
   };
 
+  const handleRetry = () => {
+    if (!keyword) return;
+
+    setStores([]);
+    setSelectedId('');
+    setErrorMessage('');
+    setIsModalClosed(false);
+    setIsLoading(true);
+    setRetryCount((prev) => prev + 1);
+  };
+
   const handleManualInput = () => {
     setIsModalClosed(true);
+    setErrorMessage('');
     onManualInput?.();
   };
 
@@ -124,15 +144,19 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
             )}
 
             {!keyword && (
-              <p className="px-1 pt-2 text-sm font-medium text-gray-400">
-                상호명 정보가 없어 직접 입력이 필요해요.
-              </p>
-            )}
+              <div className="px-1 pt-2">
+                <p className="text-sm font-medium text-gray-400">
+                  상호명 정보가 없어 직접 입력이 필요해요.
+                </p>
 
-            {errorMessage && (
-              <p className="px-1 pt-2 text-sm font-medium text-red-500">
-                {errorMessage}
-              </p>
+                <button
+                  type="button"
+                  onClick={handleManualInput}
+                  className="mt-4 w-full rounded-xl bg-primary-100 py-3 text-sm font-bold text-white"
+                >
+                  직접 입력하기
+                </button>
+              </div>
             )}
 
             {!isLoading && !errorMessage && stores.length > 0 && (
@@ -161,6 +185,42 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
         onManualInput={handleManualInput}
         onGoHome={handleManualInput}
       />
+
+    <Modal
+      isOpen={isErrorModalOpen}
+      onClose={() => setErrorMessage('')}
+      showClose={false}
+      closeOnBackdrop={false}
+    >
+      <div className="text-center">
+        <h3 className="text-xl font-bold text-gray-900">
+          가게 목록을 불러올 수 없어요
+        </h3>
+
+        <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
+          {errorMessage}
+        </p>
+
+        <div className="mt-8 flex gap-3">
+          <Button
+            variant="white"
+            size="sm"
+            onClick={handleManualInput}
+            className="flex-1"
+          >
+            직접 입력
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={handleRetry}
+            className="flex-1"
+          >
+            다시 시도
+          </Button>
+        </div>
+      </div>
+    </Modal>
     </>
   );
 }

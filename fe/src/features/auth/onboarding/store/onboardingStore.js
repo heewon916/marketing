@@ -23,42 +23,76 @@ const initialState = {
 export const useOnboardingStore = create((set, get) => ({
   ...initialState,
 
-  setMerchantId: (merchantId) => set({ merchantId }),
+  setMerchantId: (merchantId) => {
+    console.log('[onboardingStore] merchantId:', merchantId);
+    set({ merchantId });
+  },
 
-  setStoreId: (storeId) => set({ storeId }),
+  setStoreId: (storeId) => {
+    console.log('[onboardingStore] storeId:', storeId);
+    set({ storeId });
+  },
 
   setPosSyncResult: ({
     storeId,
     storeName,
     suggestedCategory,
     menus,
-  }) =>
-    set({
+  }) => {
+    const nextState = {
       storeId: storeId ?? '',
       storeName: storeName ?? '',
       suggestedCategory: suggestedCategory ?? '',
       category: suggestedCategory ?? '',
       menus: menus ?? [],
-    }),
+    };
 
-  setStoreName: (storeName) => set({ storeName }),
+    console.log('[onboardingStore] POS sync result:', nextState);
 
-  setSuggestedCategory: (suggestedCategory) => set({ suggestedCategory }),
+    set(nextState);
+  },
 
-  setCategory: (category) => set({ category }),
+  setStoreName: (storeName) => {
+    console.log('[onboardingStore] storeName:', storeName);
+    set({ storeName });
+  },
 
-  setOwnerPersona: (ownerPersona) => set({ ownerPersona }),
+  setSuggestedCategory: (suggestedCategory) => {
+    console.log('[onboardingStore] suggestedCategory:', suggestedCategory);
+    set({ suggestedCategory });
+  },
 
-  setSelectedPlaceId: (selectedPlaceId) => set({ selectedPlaceId }),
+  setCategory: (category) => {
+    console.log('[onboardingStore] category:', category);
+    set({ category });
+  },
 
-  setLocation: ({ address, latitude, longitude }) =>
-    set({
+  setOwnerPersona: (ownerPersona) => {
+    console.log('[onboardingStore] ownerPersona:', ownerPersona);
+    set({ ownerPersona });
+  },
+
+  setSelectedPlaceId: (selectedPlaceId) => {
+    console.log('[onboardingStore] selectedPlaceId:', selectedPlaceId);
+    set({ selectedPlaceId });
+  },
+
+  setLocation: ({ address, latitude, longitude }) => {
+    const nextState = {
       address: address ?? '',
       latitude: latitude ?? null,
       longitude: longitude ?? null,
-    }),
+    };
 
-  setOperatingHours: (operatingHours) => set({ operatingHours }),
+    console.log('[onboardingStore] location:', nextState);
+
+    set(nextState);
+  },
+
+  setOperatingHours: (operatingHours) => {
+    console.log('[onboardingStore] operatingHours:', operatingHours);
+    set({ operatingHours });
+  },
 
   getOnboardingPayload: () => {
     const {
@@ -71,7 +105,7 @@ export const useOnboardingStore = create((set, get) => ({
       operatingHours,
     } = get();
 
-    return {
+    const payload = {
       storeName,
       category,
       ownerPersona,
@@ -80,7 +114,18 @@ export const useOnboardingStore = create((set, get) => ({
       longitude,
       operatingHours: JSON.stringify(operatingHours),
     };
+
+    console.log('[onboardingStore] final payload:', payload);
+    console.log(
+      '[onboardingStore] operatingHours type:',
+      typeof payload.operatingHours
+    );
+
+    return payload;
   },
 
-  resetOnboarding: () => set(initialState),
+  resetOnboarding: () => {
+    console.log('[onboardingStore] reset');
+    set(initialState);
+  },
 }));
