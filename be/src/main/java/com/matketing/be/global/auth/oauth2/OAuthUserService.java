@@ -21,6 +21,7 @@ import java.util.Map;
 public class OAuthUserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
+    private final InstagramApiClient instagramApiClient;
 
     @Override
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
@@ -32,12 +33,24 @@ public class OAuthUserService extends DefaultOAuth2UserService {
         String instagramUsername = attributes.get("username") != null ? attributes.get("username").toString() : "instagram_user";
         String profileImageUrl = null; // Graph API doesn't always return this by default without extra request
         
-        String accessToken = userRequest.getAccessToken().getTokenValue();
+        String shortLivedToken = userRequest.getAccessToken().getTokenValue();
         java.time.Instant expiresAt = userRequest.getAccessToken().getExpiresAt();
         OffsetDateTime tokenExpiresAt = expiresAt != null ? expiresAt.atOffset(ZoneOffset.UTC) : null;
 
+        // 장기 토큰 교환 요청
+        Map<String, Object> tokenData = instagramApiClient.exchangeForLongLivedToken(shortLivedToken);
+        String finalAccessToken = shortLivedToken; // 기본값은 단기 토큰으로 유지
+
+        if (tokenData != null && tokenData.containsKey("access_token")) {
+            finalAccessToken = (String) tokenData.get("access_token");
+            Object expiresInObj = tokenData.get("expires_in");
+            if (expiresInObj instanceof Number) {
+                tokenExpiresAt = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(((Number) expiresInObj).longValue());
+            }
+        }
+
         // DB 확인 후 신규 유저 등록 또는 기존 유저 업데이트
-        saveOrUpdate(instagramUserId, instagramUsername, profileImageUrl, accessToken, tokenExpiresAt);
+        saveOrUpdate(instagramUserId, instagramUsername, profileImageUrl, finalAccessToken, tokenExpiresAt);
 
         return new DefaultOAuth2User(
                 Collections.singleton(new SimpleGrantedAuthority("ROLE_USER")),
