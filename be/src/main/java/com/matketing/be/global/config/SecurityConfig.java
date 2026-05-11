@@ -83,7 +83,9 @@ public class SecurityConfig {
                 "https://localhost:5173",
                 "http://k14a401.p.ssafy.io",
                 "https://k14a401.p.ssafy.io",
-                "https://www.maketing.co.kr"
+                "https://www.maketing.co.kr",
+                "https://*.tossplace.com",
+                "https://*.toss.im"
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
