@@ -51,7 +51,11 @@ class ReferenceCaptionRetrieverService:
         self._max_references = max_references
 
     async def preload(self) -> None:
-        return None
+        if not self._enabled:
+            return
+        query = text("SELECT 1")
+        async with self._session_factory() as session:
+            await session.execute(query)
 
     async def retrieve(
         self,
@@ -222,10 +226,15 @@ class ReferenceCaptionRetrieverService:
 
 def build_reference_caption_retriever_service(
     embedder: CanonicalKeywordResolverService,
+    *,
+    enabled: bool = True,
+    max_references: int = 2,
 ) -> ReferenceCaptionRetrieverService:
     return ReferenceCaptionRetrieverService(
         session_factory=get_session_factory(),
         embedder=embedder,
+        enabled=enabled,
+        max_references=max_references,
     )
 
 

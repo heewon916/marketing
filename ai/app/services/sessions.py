@@ -383,13 +383,52 @@ async def process_utterance(
         utterance=payload.utterance,
         weather_tags=weather_tags,
     )
-    reference_caption_result = await reference_caption_retriever.retrieve(
-        owner_persona=payload.owner_persona,
-        utterance=payload.utterance,
-        canonical_matches=canonical_resolution.matches,
-    )
-    if reference_caption_result.captions:
-        caption_request.reference_captions = reference_caption_result.captions
+    try:
+        reference_caption_result = await reference_caption_retriever.retrieve(
+            owner_persona=payload.owner_persona,
+            utterance=payload.utterance,
+            canonical_matches=canonical_resolution.matches,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Reference caption retrieval failed; continuing without caption RAG.",
+            exc_info=True,
+            extra=build_log_extra(
+                "session.process_utterance.reference_caption_retrieval.completed",
+                component="session",
+                stage="reference_caption_retrieval",
+                session_id=session_id,
+                outcome="failed",
+                error_type=exc.__class__.__name__,
+            ),
+        )
+    else:
+        if reference_caption_result.captions:
+            caption_request.reference_captions = reference_caption_result.captions
+        logger.info(
+            "Reference caption retrieval completed.",
+            extra=build_log_extra(
+                "session.process_utterance.reference_caption_retrieval.completed",
+                component="session",
+                stage="reference_caption_retrieval",
+                session_id=session_id,
+                outcome=(
+                    "succeeded"
+                    if reference_caption_result.captions
+                    else "skipped"
+                ),
+                reference_caption_candidate_count=reference_caption_result.candidate_count,
+                reference_caption_selected_count=len(
+                    reference_caption_result.captions
+                ),
+                reference_caption_selected_ids=",".join(
+                    str(caption_id)
+                    for caption_id in reference_caption_result.selected_caption_ids
+                )
+                or None,
+                reference_caption_fallback_reason=reference_caption_result.fallback_reason,
+            ),
+        )
     fallback_source: str | None = None
     if not caption_keywords:
         fallback_result = caption_service.build_fallback_result(

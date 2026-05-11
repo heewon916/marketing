@@ -149,6 +149,8 @@ class Settings(BaseSettings):
     CANONICAL_KEYWORD_EMBEDDING_DIM: int = (
         DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM
     )
+    REFERENCE_CAPTION_RAG_ENABLED: bool = True
+    REFERENCE_CAPTION_MAX_REFERENCES: int = 2
 
     @field_validator("DEBUG", mode="before")
     @classmethod

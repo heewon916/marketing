@@ -235,7 +235,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     app.state.reference_caption_retriever_service = (
         build_reference_caption_retriever_service(
-            app.state.canonical_keyword_resolver_service
+            app.state.canonical_keyword_resolver_service,
+            enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+            max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
         )
     )
     logger.info(
@@ -270,6 +272,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             canonical_embedding_cache_dir=str(
                 settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR
             ),
+        ),
+    )
+    logger.info(
+        "Reference caption retriever configured.",
+        extra=build_log_extra(
+            "app.startup.reference_caption_retriever_configured",
+            component="startup",
+            reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+            reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
         ),
     )
 
@@ -388,6 +399,36 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 outcome="failed",
                 error_type=exc.__class__.__name__,
                 canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+            ),
+        )
+
+    try:
+        await app.state.reference_caption_retriever_service.preload()
+        logger.info(
+            "Reference caption retriever preload completed.",
+            extra=build_log_extra(
+                "app.startup.reference_caption_retriever_preload",
+                component="startup",
+                stage="reference_caption_retriever_preload",
+                outcome="succeeded",
+                reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+                reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Reference caption retriever is unavailable at startup: %s. "
+            "The app will continue and skip caption RAG until the retriever is reachable.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.reference_caption_retriever_preload",
+                component="startup",
+                stage="reference_caption_retriever_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
+                reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+                reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
             ),
         )
 
