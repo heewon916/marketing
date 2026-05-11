@@ -24,12 +24,12 @@ DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 60.0
 DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT = "/health"
 
 DEFAULT_CAPTION_MODEL_SERVER_PORT = 8002
-DEFAULT_CAPTION_MODEL_HOST_DIR = "./.models/caption/qwen2.5-7b-instruct/q3_k_m"
+DEFAULT_CAPTION_MODEL_HOST_DIR = "./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
 DEFAULT_CAPTION_MODEL_PATH = (
-    ROOT_DIR / "models" / "qwen2.5-7b-instruct" / "q3_k_m" / "model.gguf"
+    ROOT_DIR / "models" / "exaone-3.5-7.8b-instruct" / "q4_k_m" / "model.gguf"
 )
-DEFAULT_CAPTION_MODEL_HF_REPO_ID = "Qwen/Qwen2.5-7B-Instruct-GGUF"
-DEFAULT_CAPTION_MODEL_HF_FILENAME = "qwen2.5-7b-instruct-q3_k_m.gguf"
+DEFAULT_CAPTION_MODEL_HF_REPO_ID = "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+DEFAULT_CAPTION_MODEL_HF_FILENAME = "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
 DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS = 120.0
 DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT = "/health"
 
