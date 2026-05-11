@@ -7,6 +7,7 @@ export default function MyPageHeader({
   title,
   storeName,
   instagramUsername,
+  profileImageUrl,
   onInstagramUpdate,
   showBackButton = false,
   onBack,
@@ -103,9 +104,12 @@ export default function MyPageHeader({
 
             <div className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full border border-gray-300 bg-surface-100">
               <img
-                src={CharacterLove}
-                alt="프로필 캐릭터"
+                src={profileImageUrl || CharacterLove}
+                alt="프로필"
                 className="h-full w-full object-cover"
+                onError={(event) => {
+                event.currentTarget.src = CharacterLove;
+              }}
               />
             </div>
           </div>

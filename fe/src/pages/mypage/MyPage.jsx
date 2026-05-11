@@ -102,6 +102,26 @@ export default function MyPage() {
     navigate('/', { replace: true });
   };
 
+  const handleInstagramUpdate = async () => {
+    try {
+      const response = await mypageApi.syncInstagramProfile();
+      const syncedProfile = response.data.data;
+
+      setMyInfo((prev) => ({
+        ...prev,
+        user: {
+          ...prev.user,
+          instagramUserId: syncedProfile.instagramUserId,
+          instagramUsername: syncedProfile.instagramUsername,
+          profileImageUrl: syncedProfile.profileImageUrl,
+        },
+      }));
+    } catch (error) {
+      console.error('인스타그램 프로필 동기화 실패:', error);
+      throw error;
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#f4f4f6] text-base text-gray-500">
@@ -115,6 +135,8 @@ export default function MyPage() {
       <MyPageHeader
         storeName={storeName}
         instagramUsername={instagramUsername}
+        profileImageUrl={user?.profileImageUrl}
+        onInstagramUpdate={handleInstagramUpdate}
       />
 
       <MyPageTabSwitcher activeTab={activeTab} onChange={setActiveTab} />
