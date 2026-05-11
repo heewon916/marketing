@@ -30,6 +30,23 @@ from app.services.weather_tags import (
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_SYSTEM_INSTRUCTION = (
+    "guide_text와 caption만 담은 JSON 객체 한 개만 한국어로 반환하세요."
+)
+_STRICT_KOREAN_SYSTEM_INSTRUCTION = (
+    "guide_text와 caption만 담은 JSON 객체 한 개만 반환하세요. "
+    "guide_text와 caption은 반드시 자연스러운 한국어로만 작성하고, "
+    "영어 문장이나 영어 설명은 쓰지 마세요. "
+    "브랜드명, 메뉴명, 고유명사, 해시태그처럼 꼭 필요한 짧은 표기만 예외로 허용합니다."
+)
+_STRICT_KOREAN_USER_SUFFIX = """
+
+중요:
+- guide_text와 caption은 반드시 한국어 문장으로 작성하세요.
+- 영어 문장, 영어 설명, 영어 위주의 표현은 금지합니다.
+- 브랜드명, 메뉴명, 고유명사처럼 꼭 필요한 짧은 영어만 제한적으로 허용합니다.
+"""
+
 _MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 5060 소상공인의 메뉴 홍보를 위한 한국어 인스타그램 게시물 포스팅용 촬영 안내문과 캡션을 작성합니다.
 
 규칙:
@@ -261,6 +278,10 @@ class CaptionGenerationUnavailableError(RuntimeError):
     """Raised when caption generation is unavailable."""
 
 
+class CaptionGenerationLanguageError(CaptionGenerationUnavailableError):
+    """Raised when caption generation returns text that is not sufficiently Korean."""
+
+
 @dataclass
 class CaptionGenerationResult:
     guide_text: str
@@ -296,7 +317,7 @@ class CaptionPipeline:
             owner_persona=request.owner_persona.strip(),
             weather_context=_build_weather_context(request.weather_tags),
             utterance=request.utterance.strip() or "(없음)",
-            keywords=", ".join(request.keywords) if request.keywords else "none",
+            keywords=", ".join(request.keywords) if request.keywords else "(없음)",
         )
 
     def build_fallback(
@@ -336,8 +357,8 @@ class CaptionPipeline:
     def _build_fallback_guide_text(self, request: CaptionGenerationRequest) -> str:
         keyword_phrase = ", ".join(request.keywords)
         return (
-            f"Make sure {keyword_phrase} is clearly visible in the shot. "
-            "Check the framing and subject emphasis before shooting."
+            f"사장님, {keyword_phrase}이(가) 화면에서 잘 보이도록 구도와 초점을 먼저 맞춰보세요. "
+            "촬영 전에는 주제가 또렷하게 드러나는지 한 번 더 확인해주세요."
         )
 
 
@@ -409,7 +430,7 @@ class CaptionGenerationService:
         )
 
         try:
-            raw_output = await self._generate(prompt, purpose=request.purpose)
+            result = await self._generate_korean_result(prompt, purpose=request.purpose)
         except TimeoutError as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation timed out."
@@ -421,7 +442,6 @@ class CaptionGenerationService:
                 "Caption generation inference failed."
             ) from exc
 
-        result = self._parse_generation_result(raw_output)
         logger.info(
             "Caption generation inference finished.",
             extra=build_log_extra(
@@ -451,16 +471,24 @@ class CaptionGenerationService:
         self,
         prompt: str,
         include_response_format: bool,
+        *,
+        strict_language: bool,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "guide_text와 caption만 담은 JSON 객체 한 개만 한국어로 반환하세요."
+                    "content": self._build_system_instruction(
+                        strict_language=strict_language
                     ),
                 },
-                {"role": "user", "content": prompt},
+                {
+                    "role": "user",
+                    "content": self._build_user_prompt(
+                        prompt,
+                        strict_language=strict_language,
+                    ),
+                },
             ],
             "temperature": self.temperature,
             "top_p": self.top_p,
@@ -499,8 +527,13 @@ class CaptionGenerationService:
         prompt: str,
         *,
         include_response_format: bool,
+        strict_language: bool,
     ) -> httpx.Response:
-        payload = self._build_request_payload(prompt, include_response_format)
+        payload = self._build_request_payload(
+            prompt,
+            include_response_format,
+            strict_language=strict_language,
+        )
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             return await client.post(
                 self._chat_url,
@@ -569,7 +602,13 @@ class CaptionGenerationService:
             )
         return pipeline
 
-    async def _generate(self, prompt: str, *, purpose: ContentPurpose) -> str:
+    async def _generate(
+        self,
+        prompt: str,
+        *,
+        purpose: ContentPurpose,
+        strict_language: bool,
+    ) -> str:
         if not self.base_url:
             raise CaptionGenerationUnavailableError(
                 "Caption generation server base URL is not configured."
@@ -581,6 +620,7 @@ class CaptionGenerationService:
             response = await self._post_chat_completion(
                 prompt,
                 include_response_format=self._response_format_supported,
+                strict_language=strict_language,
             )
             if (
                 self._response_format_supported
@@ -603,6 +643,7 @@ class CaptionGenerationService:
                 response = await self._post_chat_completion(
                     prompt,
                     include_response_format=False,
+                    strict_language=strict_language,
                 )
             response.raise_for_status()
         except httpx.TimeoutException as exc:
@@ -637,6 +678,9 @@ class CaptionGenerationService:
                 stage="generate",
                 outcome="succeeded",
                 purpose=purpose,
+                caption_language_mode=(
+                    "strict_korean_retry" if strict_language else "default"
+                ),
                 caption_model_base_url=self.base_url,
                 caption_chat_endpoint=self.chat_endpoint,
                 caption_http_status=response.status_code if response is not None else None,
@@ -647,6 +691,56 @@ class CaptionGenerationService:
             ),
         )
         return raw_output
+
+    async def _generate_korean_result(
+        self,
+        prompt: str,
+        *,
+        purpose: ContentPurpose,
+    ) -> CaptionGenerationResult:
+        raw_output = await self._generate(
+            prompt,
+            purpose=purpose,
+            strict_language=False,
+        )
+        try:
+            return self._parse_generation_result(raw_output)
+        except CaptionGenerationLanguageError:
+            logger.warning(
+                "Caption generation returned non-Korean text; retrying with stricter language guidance.",
+                extra=build_log_extra(
+                    "caption_generation.language_retry.attempted",
+                    component="caption_generation",
+                    stage="language_validation",
+                    outcome="retrying",
+                    purpose=purpose,
+                    non_korean_detected=True,
+                    language_retry_attempted=True,
+                ),
+            )
+
+        raw_output = await self._generate(
+            prompt,
+            purpose=purpose,
+            strict_language=True,
+        )
+        try:
+            return self._parse_generation_result(raw_output)
+        except CaptionGenerationLanguageError as exc:
+            logger.warning(
+                "Caption generation retry still returned non-Korean text.",
+                extra=build_log_extra(
+                    "caption_generation.language_retry.failed",
+                    component="caption_generation",
+                    stage="language_validation",
+                    outcome="failed",
+                    purpose=purpose,
+                    non_korean_detected=True,
+                    language_retry_attempted=True,
+                    language_retry_failed=True,
+                ),
+            )
+            raise exc
 
     @staticmethod
     def _extract_json_payload(raw_output: str) -> str:
@@ -678,6 +772,8 @@ class CaptionGenerationService:
                 "Caption generation returned incomplete text fields."
             )
 
+        self._validate_korean_output(guide_text, draft_caption)
+
         return CaptionGenerationResult(
             guide_text=guide_text,
             draft_caption=draft_caption,
@@ -688,6 +784,34 @@ class CaptionGenerationService:
         if not isinstance(value, str):
             return ""
         return value.strip()
+
+    @staticmethod
+    def _build_system_instruction(*, strict_language: bool) -> str:
+        if strict_language:
+            return _STRICT_KOREAN_SYSTEM_INSTRUCTION
+        return _DEFAULT_SYSTEM_INSTRUCTION
+
+    @staticmethod
+    def _build_user_prompt(prompt: str, *, strict_language: bool) -> str:
+        if strict_language:
+            return f"{prompt}{_STRICT_KOREAN_USER_SUFFIX}"
+        return prompt
+
+    def _validate_korean_output(self, guide_text: str, draft_caption: str) -> None:
+        if self._looks_non_korean(guide_text) or self._looks_non_korean(draft_caption):
+            raise CaptionGenerationLanguageError(
+                "Caption generation returned text that is not sufficiently Korean."
+            )
+
+    @staticmethod
+    def _looks_non_korean(text: str) -> bool:
+        hangul_count = len(re.findall(r"[가-힣]", text))
+        ascii_count = len(re.findall(r"[A-Za-z]", text))
+        if hangul_count == 0:
+            return True
+        if ascii_count == 0:
+            return False
+        return ascii_count > hangul_count * 1.5
 
 
 def build_caption_generation_service() -> CaptionGenerationService:
