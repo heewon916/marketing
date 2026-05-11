@@ -30,65 +30,185 @@ from app.services.weather_tags import (
 
 logger = logging.getLogger(__name__)
 
-_MENU_PROMOTION_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_DEFAULT_SYSTEM_INSTRUCTION = (
+    "guide_text와 caption만 담은 JSON 객체 한 개만 한국어로 반환하세요."
+)
+_STRICT_KOREAN_SYSTEM_INSTRUCTION = (
+    "guide_text와 caption만 담은 JSON 객체 한 개만 반환하세요. "
+    "guide_text와 caption은 반드시 자연스러운 한국어로만 작성하고, "
+    "영어 문장이나 영어 설명은 쓰지 마세요. "
+    "브랜드명, 메뉴명, 고유명사, 해시태그처럼 꼭 필요한 짧은 표기만 예외로 허용합니다."
+)
+_STRICT_KOREAN_USER_SUFFIX = """
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
-- The post purpose is "메뉴 홍보".
-- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
-- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
-- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
-- Use the provided keywords naturally. Do not invent unrelated products.
-- Frame the copy like a menu, product, ingredient, or store offering promotion.
-- Keep the output suitable for an Instagram post by a local store owner.
+중요:
+- guide_text와 caption은 반드시 한국어 문장으로 작성하세요.
+- 영어 문장, 영어 설명, 영어 위주의 표현은 금지합니다.
+- 브랜드명, 메뉴명, 고유명사처럼 꼭 필요한 짧은 영어만 제한적으로 허용합니다.
+"""
 
-Input:
+_MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 5060 소상공인의 메뉴 홍보를 위한 한국어 인스타그램 게시물 포스팅용 촬영 안내문과 캡션을 작성합니다.
+
+규칙:
+- 오직 JSON 객체 텍스트만 반환하세요.
+- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
+- 게시물 목적은 "메뉴 홍보"입니다.
+- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1~2문장의 한국어 문장이어야 합니다.
+- "caption"은 1~3개의 짧은 문장으로 구성된 따뜻한 한국어 인스타그램 캡션이어야 합니다.
+- 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
+- 메뉴, 상품, 재료, 또는 매장에서 제공하는 것을 홍보하는 톤으로 작성하세요.
+- 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 반드시 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
+- "guide_text"는 utterance가 있으면 그 메모에 어울리는 장면을 어떻게 촬영할지 안내하세요.
+- 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
+
+아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
+
+예시 1:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "TEMP_HOT
+- utterance: "어제 그 무화과가 처음 들어와서 자랑하고 싶어"
+- keywords: "무화과", "여름"
+출력:
+{{"guide_text":"사장님, 손님들에게 한여름의 무화과를 영상에 담아 보여주세요.",
+"caption": "늦여름의 맛 무화과 fig!
+
+집에서도 밖에서도 먹은 무화과. 오묘한 생김새와 달큰한 맛이 매력적이다. 여름이 지나갈 때면 무화과를 꼭 챙겨 먹는다. 그냥 지나치면 아쉬운 마음. 속살은 분홍색과 상아색, 껍질은 연두색부터 짙은 자주색까지. 한입 앙 베어 물면 느껴지는 씨의 식감도 좋다!
+
+#무화과 #fig #소월길밀영 #후암동 #후암동카페 #홈카페"}}
+
+예시 2:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "PRECIP_CLEAR"
+- utterance: "봄이라 좀 상콤한 거 잘 나갈까 싶어러 레몬 타르트 만들었아ㅓ"
+- keywords: "봄", "레몬 타르트"
+출력:
+{{"guide_text":"사장님, 손님들에게 상큼한 레몬 타르트를 영상에 담아 보여주세요.",
+"caption": "어디든 뭐든 좋은, 봄이로소이다 #lemontart"}}
+
+이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+
+입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
+- utterance: {utterance}
 - keywords: {keywords}
 """
 
-_BUSINESS_NOTICE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 5060 소상공인의 영업변경 공지를 위한 한국어 인스타그램 게시물 포스팅용 촬영 안내문과 캡션을 작성합니다.
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
-- The post purpose is "영업 공지".
-- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
-- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
-- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
-- Use the provided keywords naturally. Do not invent unrelated products.
-- Frame the copy like a clear business notice about operation, schedule, or availability.
-- Keep the output suitable for an Instagram post by a local store owner.
+규칙:
+- 오직 JSON 객체 텍스트만 반환하세요.
+- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
+- 게시물 목적은 "영업 공지"입니다.
+- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1~2문장의 한국어 문장이어야 합니다.
+- "caption"은 1~3개의 짧은 문장으로 구성된 따뜻한 한국어 인스타그램 캡션이어야 합니다.
+- 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
+- 영업, 일정, 운영 가능 여부에 대한 명확한 영업 공지 톤으로 작성하세요.
+- 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 반드시 이 메모의 의도와 공지 내용을 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
+- "guide_text"는 utterance가 있으면 그 메모에 어울리는 장면을 어떻게 촬영할지 안내하세요.
+- 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
 
-Input:
+아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
+
+예시 1:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "TEMP_FREEZING"
+- utterance: "이번주 화수 이틀 쉬어"
+- keywords: "케이크", "가족"
+출력:
+{{"guide_text":"사장님, 손님들에게 공방의 케익 작업을 영상에 담아 보여주세요.",
+"caption": "아드님이 원하는 학교에 합격해서인가? 홀가분하고 개운한 얼굴로 등장한 또래의 지인 손님 한 분, 학생 때부터 봐오고 있는 모 양은 직장생활의 분투 속에서 내년엔 독립을 예정하고 있다니 그 새로운 장(章)에 나도 설레네. 어떻게 지내시나 궁금했던 한 분은 마음이 통했나? 마침 크리스마스 카드같은 긴 문자를 보내어 다시 새로운 남자친구와 교제중이라니 더 좋은 사람 나올 때까지 계속 만나자! 다행인 일일세.13월이란 없으니 그래서 12월의 안부는 각별한.
+
+지난 며칠 밤샘에 가까운 부인의 케익 작업을 옆에서 거들면서 내년엔 공방일에 더 힘을 보태야겠다는 의무와 같은 생각이 드는게.. 계속해서 발전하는 생활은 못되더라도 갱신하려는 생활, 적어도 시간에 그저 흘러가지 않게끔 영점조정은 매번 필요한 것같다.
+
+크리스마스 케익 분출까지 무탈히 마치고, 최고의 케익은 아니지만 올해도 밀영이 할 수 있는 최선에 가까운 충실함은 다하려 했으니 알아주시는 분들 있다면 깊은 감사를.
+
+제품들도 떨어지고 밀영도 쉴 겸 이번주는 내일(화)과 모레(수) 이틀 쉬고 마지막 남은 며칠 잘 마무리해보겠습니다"}}
+
+예시 2:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "TEMP_MILD"
+- utterance: "짧은 휴식 다녀와 오늘부터 다시 문 열어"
+- keywords: "휴식", "시간"
+출력:
+{{"guide_text":"사장님, 사장님의 휴식 시간을 영상에 담아 보여주세요.",
+"caption": "오래됐어도 낡지만은 않고, 호수처럼 잔잔하고 순한 시간이 흐르는 곳.. 딱히 내세울 건 없지만 그 자리에서 서로에게 어울리고 전체로서 보기 좋은 동네들 - 일테면 몇 해전까지 후암동, 하동, 울릉도, 타이베이 그리고 이번에 처음 찾은 보령도 그런 느낌.
+
+가게를 하면 의지와 상관없이 긴 시간 지켜보게 되는 손님들이 생기는데 한 분 두 분 자기 업을 차근차근 준비하고 너무나도 훌륭하게 시작하는 모습을 보면 그 시절 나는 그랬던가 늦게나마 분발심이 발동하면서도 무엇보다 기쁩니다. @la_fassona
+
+어제까지 이틀밤 짧은 휴식이었지만 만난 분들 지낸 님들 덕분인지 오랜 시간 자리를 비우고 온 기분. 화요일 되돌아가신 분들께는 송구하옵고, 오늘부터 다시 문 열고 있습니다."}}
+
+이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+
+입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
+- utterance: {utterance}
 - keywords: {keywords}
 """
 
-_DAILY_SHARE_PROMPT_TEMPLATE = """You generate short Korean Instagram marketing copy for a small shop owner.
+_DAILY_SHARE_PROMPT_TEMPLATE = """당신은 5060 소상공인의 일상 공유를 위한 한국어 인스타그램 게시물 포스팅용 촬영 안내문과 캡션을 작성합니다.
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"guide_text": "...", "caption": "...", "hashtags": ["#..."]}}.
-- The post purpose is "일상 공유".
-- "guide_text" should be 1 to 2 Korean sentences telling the owner what to emphasize in the photo.
-- "caption" should be a warm Korean Instagram caption of 1 to 3 short sentences.
-- "hashtags" should contain 1 to 5 concise hashtags including the leading # symbol.
-- Use the provided keywords naturally. Do not invent unrelated products.
-- Frame the copy like a daily share about the owner's routine, store atmosphere, or behind-the-scenes moment.
-- Keep the output suitable for an Instagram post by a local store owner.
+규칙:
+- 오직 JSON 객체 텍스트만 반환하세요.
+- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
+- 게시물 목적은 "일상 공유"입니다.
+- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1~2문장의 한국어 문장이어야 합니다.
+- "caption"은 1~3개의 짧은 문장으로 구성된 따뜻한 한국어 인스타그램 캡션이어야 합니다.
+- 제공된 키워드를 자연스럽게 활용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
+- 사장님의 일상, 매장 분위기, 비하인드 순간을 공유하는 톤으로 작성하세요.
+- 결과물은 동네 가게 사장님의 인스타그램 게시물에 어울리도록 작성하세요.
+- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 반드시 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
+- "guide_text"는 utterance가 있으면 그 메모에 어울리는 장면을 어떻게 촬영할지 안내하세요.
+- 모든 출력 값(guide_text, caption)은 반드시 한국어로 작성하세요.
 
-Input:
+아래 예시들의 톤과 형식을 참고하되, 문장은 그대로 베끼지 말고 입력에 맞게 새로 작성하세요.
+
+예시 1:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "SPECIAL_SEASONAL_CHANGE"
+- utterance: "환절기에 좀 힘들었더니 옛날에 회사 다닐 때 생각이 많이 나더라"
+- keywords: "일기", "시간"
+출력:
+{{"guide_text":"사장님, 사장님이 시간을 보내는 순간을 영상에 담아 보여주세요.",
+"caption": "세상이 빙글빙글 몸은 기우뚱거리고. 나의 달팽이관이 자리를 잡지 못하고 방황했던 지난 며칠. 생경한 경험을 지나고 오늘에서야 기운을 내니 그새 이침 저녁 서늘한 바람이 부는 걸 이제서야 알아챈.
+
+아파서 가게를 열지 못한 날이 없던 십년은 30대 회사원 시절에도 못그랬으니 참 신기한 일이면서도 "이젠 오늘이 가장 젊은 날" 엊그제 진찰을 하면서 던진 김 교수님 한 마디를 떠올려야 할 나이다.
+
+이야기도 많고 참 길었던 이번 여름, 가게에서 익히 보았던 몇 분들에게선 새로운 면모이거나 조금은 더 살가워지거나.. 지난 일들도 가게 어딘가 차곡차곡 쌓여 있을 듯 싶다. 나도 모르게. 2023.9.1(금) 가을 첫날?"}}
+
+예시 2:
+입력:
+- owner_persona: "aesthetic"
+- weather_context: "PRECIP_HEAVY_RAIN"
+- utterance: "가난한 사람들이라는 명작을 읽었는데 딸내미가 가엾더라. 손님들한테 내 감상을 공유하고 싶어"
+- keywords: "독후감", "다정함"
+출력:
+{{"guide_text":"사장님, 사장님이 책을 읽은 공간과 책 표지를 영상에 담아 보여주세요.",
+"caption": ""그의 어린 딸아이는 관에 기대어 있었는데 너무 가엾고 우울해 보였습니다. 깊은 생각에 잠겨 있늗 것 같았습니다! 바렌까, 저는 어린애가 생각에 잠기는 것이 정말 싫습니다. 기분이 안 좋아져요! ... "
+
+가난이란 사람을 눅눅하게 만든다. 원래 그런 사람이 아닌 것을. 햇볕을 쬐면 잘 마른 빨래처럼 얼마든 다시 포송포송해질 수 있을텐데.
+
+몇년째 집 서재방에서 햇볕에 타도록 묵혀둔 도스토옙스키의 #가난한사람들 , 미처 생각치 못한 결말의 프레드 울만 #동급생 . 가게 책모임에서 골라준 두 분과 여름 장마 덕에 그을린 시간에서 건져온."}}
+
+이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+
+입력:
 - owner_persona: {owner_persona}
 - weather_context: {weather_context}
+- utterance: {utterance}
 - keywords: {keywords}
 """
 
 DEFAULT_FALLBACK_GUIDE_TEXT = (
-    "Capture the store atmosphere clearly so the main subject stands out."
+    "사장님, 가게 전경이 잘 나오도록 영상을 촬영해보세요."
 )
 
 _PRIMARY_WEATHER_TAG_PRIORITY = (
@@ -124,22 +244,6 @@ _WEATHER_CONTEXT_BY_TAG = {
     TEMP_MILD: "선선한 날",
 }
 
-_WEATHER_HASHTAG_BY_TAG = {
-    PRECIP_HEAVY_RAIN: "#폭우",
-    PRECIP_RAIN: "#비오는날",
-    PRECIP_CLEAR: "#맑은날",
-    PRECIP_CLOUDY: "#흐린날",
-    SPECIAL_TYPHOON: "#강풍주의",
-    SPECIAL_FINE_DUST: "#미세먼지주의",
-    SPECIAL_SEASONAL_CHANGE: "#환절기",
-    TEMP_SCORCHING: "#무더위",
-    TEMP_HOT: "#더운날",
-    TEMP_COLD: "#쌀쌀한날",
-    TEMP_FREEZING: "#한파",
-    TEMP_MILD: "#선선한날",
-}
-
-
 def _select_weather_copy_tags(weather_tags: list[str]) -> list[str]:
     selected: list[str] = []
 
@@ -170,33 +274,22 @@ def _build_weather_context(weather_tags: list[str]) -> str:
     return ", ".join(_WEATHER_CONTEXT_BY_TAG[tag] for tag in selected_tags)
 
 
-def _build_weather_hashtags(weather_tags: list[str], limit: int = 2) -> list[str]:
-    hashtags: list[str] = []
-    for tag in _select_weather_copy_tags(weather_tags):
-        hashtag = _WEATHER_HASHTAG_BY_TAG.get(tag)
-        if hashtag is None or hashtag in hashtags:
-            continue
-        hashtags.append(hashtag)
-        if len(hashtags) == limit:
-            break
-    return hashtags
-
-
 class CaptionGenerationUnavailableError(RuntimeError):
     """Raised when caption generation is unavailable."""
+
+
+class CaptionGenerationLanguageError(CaptionGenerationUnavailableError):
+    """Raised when caption generation returns text that is not sufficiently Korean."""
 
 
 @dataclass
 class CaptionGenerationResult:
     guide_text: str
     draft_caption: str
-    draft_hashtags: list[str] = field(default_factory=list)
 
     @property
     def stored_caption(self) -> str:
-        return " ".join(
-            part for part in [self.draft_caption, *self.draft_hashtags] if part
-        )
+        return self.draft_caption
 
 
 @dataclass
@@ -204,6 +297,7 @@ class CaptionGenerationRequest:
     purpose: ContentPurpose
     keywords: list[str]
     owner_persona: str
+    utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
 
 
@@ -222,7 +316,8 @@ class CaptionPipeline:
         return self.prompt_template.format(
             owner_persona=request.owner_persona.strip(),
             weather_context=_build_weather_context(request.weather_tags),
-            keywords=", ".join(request.keywords) if request.keywords else "none",
+            utterance=request.utterance.strip() or "(없음)",
+            keywords=", ".join(request.keywords) if request.keywords else "(없음)",
         )
 
     def build_fallback(
@@ -230,7 +325,7 @@ class CaptionPipeline:
         request: CaptionGenerationRequest,
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
-        draft_caption, draft_hashtags = self._build_fallback_caption(request)
+        draft_caption = self._build_fallback_caption(request)
         guide_text = (
             self._build_fallback_guide_text(request)
             if request.keywords
@@ -243,42 +338,27 @@ class CaptionPipeline:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=draft_caption,
-                draft_hashtags=draft_hashtags,
             ),
             fallback_source=effective_fallback_source,
         )
 
-    def _build_fallback_caption(
-        self,
-        request: CaptionGenerationRequest,
-    ) -> tuple[str, list[str]]:
+    def _build_fallback_caption(self, request: CaptionGenerationRequest) -> str:
         keyword_phrase = (
-            ", ".join(request.keywords) if request.keywords else "today's highlights"
+            ", ".join(request.keywords) if request.keywords else "오늘의 매장"
         )
         weather_context = _build_weather_context(request.weather_tags)
         if weather_context != "특별한 날씨 포인트 없음":
-            caption = (
+            return (
                 f"{weather_context} 분위기와 {request.owner_persona} 무드로 "
                 f"{keyword_phrase}를 소개해보세요."
             )
-        else:
-            caption = (
-                f"{request.owner_persona} 무드로 {keyword_phrase}를 소개해보세요."
-            )
-        hashtags = [f"#{kw.replace(' ', '')}" for kw in request.keywords[:5]]
-        hashtags.extend(
-            hashtag for hashtag in _build_weather_hashtags(request.weather_tags)
-            if hashtag not in hashtags
-        )
-        if not hashtags:
-            hashtags.append("#오늘기록")
-        return caption, hashtags
+        return f"{request.owner_persona} 무드로 {keyword_phrase}를 소개해보세요."
 
     def _build_fallback_guide_text(self, request: CaptionGenerationRequest) -> str:
         keyword_phrase = ", ".join(request.keywords)
         return (
-            f"Make sure {keyword_phrase} is clearly visible in the shot. "
-            "Check the framing and subject emphasis before shooting."
+            f"사장님, {keyword_phrase}이(가) 화면에서 잘 보이도록 구도와 초점을 먼저 맞춰보세요. "
+            "촬영 전에는 주제가 또렷하게 드러나는지 한 번 더 확인해주세요."
         )
 
 
@@ -294,7 +374,7 @@ class CaptionGenerationService:
     def __init__(
         self,
         enabled: bool = True,
-        max_tokens: int = 128,
+        max_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.9,
         timeout_seconds: float = 30.0,
@@ -313,6 +393,7 @@ class CaptionGenerationService:
         self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
         self._server_checked = False
+        self._response_format_supported: bool = True
         self._pipelines = _build_caption_pipeline_registry()
 
     async def preload(self) -> None:
@@ -349,7 +430,7 @@ class CaptionGenerationService:
         )
 
         try:
-            raw_output = await self._generate(prompt, purpose=request.purpose)
+            result = await self._generate_korean_result(prompt, purpose=request.purpose)
         except TimeoutError as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation timed out."
@@ -361,7 +442,6 @@ class CaptionGenerationService:
                 "Caption generation inference failed."
             ) from exc
 
-        result = self._parse_generation_result(raw_output)
         logger.info(
             "Caption generation inference finished.",
             extra=build_log_extra(
@@ -372,7 +452,6 @@ class CaptionGenerationService:
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                 guide_text_length=len(result.guide_text),
                 draft_caption_length=len(result.draft_caption),
-                hashtag_count=len(result.draft_hashtags),
                 purpose=request.purpose,
             ),
         )
@@ -392,16 +471,24 @@ class CaptionGenerationService:
         self,
         prompt: str,
         include_response_format: bool,
+        *,
+        strict_language: bool,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "Return only a JSON object with guide_text, caption, and hashtags."
+                    "content": self._build_system_instruction(
+                        strict_language=strict_language
                     ),
                 },
-                {"role": "user", "content": prompt},
+                {
+                    "role": "user",
+                    "content": self._build_user_prompt(
+                        prompt,
+                        strict_language=strict_language,
+                    ),
+                },
             ],
             "temperature": self.temperature,
             "top_p": self.top_p,
@@ -415,14 +502,8 @@ class CaptionGenerationService:
                     "properties": {
                         "guide_text": {"type": "string"},
                         "caption": {"type": "string"},
-                        "hashtags": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "minItems": 1,
-                            "maxItems": 5,
-                        },
                     },
-                    "required": ["guide_text", "caption", "hashtags"],
+                    "required": ["guide_text", "caption"],
                 },
             }
         return payload
@@ -446,8 +527,13 @@ class CaptionGenerationService:
         prompt: str,
         *,
         include_response_format: bool,
+        strict_language: bool,
     ) -> httpx.Response:
-        payload = self._build_request_payload(prompt, include_response_format)
+        payload = self._build_request_payload(
+            prompt,
+            include_response_format,
+            strict_language=strict_language,
+        )
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             return await client.post(
                 self._chat_url,
@@ -495,10 +581,18 @@ class CaptionGenerationService:
 
     @staticmethod
     def _is_response_format_unsupported(response: httpx.Response) -> bool:
-        if response.status_code < 400:
+        if response.status_code != 400:
             return False
         body = response.text.lower()
-        return "response_format" in body or "json_object" in body or "schema" in body
+        if "response_format" not in body:
+            return False
+        unsupported_markers = (
+            "unsupported",
+            "not supported",
+            "unknown",
+            "invalid",
+        )
+        return any(marker in body for marker in unsupported_markers)
 
     def _get_pipeline(self, purpose: ContentPurpose) -> CaptionPipeline:
         pipeline = self._pipelines.get(purpose)
@@ -508,30 +602,62 @@ class CaptionGenerationService:
             )
         return pipeline
 
-    async def _generate(self, prompt: str, *, purpose: ContentPurpose) -> str:
+    async def _generate(
+        self,
+        prompt: str,
+        *,
+        purpose: ContentPurpose,
+        strict_language: bool,
+    ) -> str:
         if not self.base_url:
             raise CaptionGenerationUnavailableError(
                 "Caption generation server base URL is not configured."
             )
 
         response: httpx.Response | None = None
+        first_unsupported_status: int | None = None
         try:
             response = await self._post_chat_completion(
                 prompt,
-                include_response_format=True,
+                include_response_format=self._response_format_supported,
+                strict_language=strict_language,
             )
-            if self._is_response_format_unsupported(response):
+            if (
+                self._response_format_supported
+                and self._is_response_format_unsupported(response)
+            ):
+                first_unsupported_status = response.status_code
+                self._response_format_supported = False
+                logger.warning(
+                    "Caption server reports response_format unsupported; "
+                    "disabling for subsequent requests.",
+                    extra=build_log_extra(
+                        "caption_generation.response_format.disabled",
+                        component="caption_generation",
+                        stage="generate",
+                        outcome="degraded",
+                        purpose=purpose,
+                        caption_http_status=first_unsupported_status,
+                    ),
+                )
                 response = await self._post_chat_completion(
                     prompt,
                     include_response_format=False,
+                    strict_language=strict_language,
                 )
             response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise TimeoutError from exc
         except httpx.HTTPStatusError as exc:
-            raise CaptionGenerationUnavailableError(
+            detail = (
                 f"Caption generation server returned HTTP {exc.response.status_code}."
-            ) from exc
+            )
+            if first_unsupported_status is not None:
+                detail += (
+                    f" Initial response_format request returned HTTP "
+                    f"{first_unsupported_status}."
+                )
+            raise CaptionGenerationUnavailableError(detail) from exc
         except httpx.HTTPError as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation server request failed."
@@ -552,6 +678,9 @@ class CaptionGenerationService:
                 stage="generate",
                 outcome="succeeded",
                 purpose=purpose,
+                caption_language_mode=(
+                    "strict_korean_retry" if strict_language else "default"
+                ),
                 caption_model_base_url=self.base_url,
                 caption_chat_endpoint=self.chat_endpoint,
                 caption_http_status=response.status_code if response is not None else None,
@@ -562,6 +691,56 @@ class CaptionGenerationService:
             ),
         )
         return raw_output
+
+    async def _generate_korean_result(
+        self,
+        prompt: str,
+        *,
+        purpose: ContentPurpose,
+    ) -> CaptionGenerationResult:
+        raw_output = await self._generate(
+            prompt,
+            purpose=purpose,
+            strict_language=False,
+        )
+        try:
+            return self._parse_generation_result(raw_output)
+        except CaptionGenerationLanguageError:
+            logger.warning(
+                "Caption generation returned non-Korean text; retrying with stricter language guidance.",
+                extra=build_log_extra(
+                    "caption_generation.language_retry.attempted",
+                    component="caption_generation",
+                    stage="language_validation",
+                    outcome="retrying",
+                    purpose=purpose,
+                    non_korean_detected=True,
+                    language_retry_attempted=True,
+                ),
+            )
+
+        raw_output = await self._generate(
+            prompt,
+            purpose=purpose,
+            strict_language=True,
+        )
+        try:
+            return self._parse_generation_result(raw_output)
+        except CaptionGenerationLanguageError as exc:
+            logger.warning(
+                "Caption generation retry still returned non-Korean text.",
+                extra=build_log_extra(
+                    "caption_generation.language_retry.failed",
+                    component="caption_generation",
+                    stage="language_validation",
+                    outcome="failed",
+                    purpose=purpose,
+                    non_korean_detected=True,
+                    language_retry_attempted=True,
+                    language_retry_failed=True,
+                ),
+            )
+            raise exc
 
     @staticmethod
     def _extract_json_payload(raw_output: str) -> str:
@@ -587,47 +766,52 @@ class CaptionGenerationService:
 
         guide_text = self._normalize_text(payload.get("guide_text"))
         draft_caption = self._normalize_text(payload.get("caption"))
-        draft_hashtags = self._normalize_hashtags(payload.get("hashtags"))
 
-        if not guide_text or not draft_caption or not draft_hashtags:
+        if not guide_text or not draft_caption:
             raise CaptionGenerationUnavailableError(
                 "Caption generation returned incomplete text fields."
             )
 
+        self._validate_korean_output(guide_text, draft_caption)
+
         return CaptionGenerationResult(
             guide_text=guide_text,
             draft_caption=draft_caption,
-            draft_hashtags=draft_hashtags,
         )
 
     @staticmethod
     def _normalize_text(value: Any) -> str:
         if not isinstance(value, str):
             return ""
-        return re.sub(r"\s+", " ", value.strip())
+        return value.strip()
 
     @staticmethod
-    def _normalize_hashtags(value: Any) -> list[str]:
-        if not isinstance(value, list):
-            return []
+    def _build_system_instruction(*, strict_language: bool) -> str:
+        if strict_language:
+            return _STRICT_KOREAN_SYSTEM_INSTRUCTION
+        return _DEFAULT_SYSTEM_INSTRUCTION
 
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for item in value:
-            if not isinstance(item, str):
-                continue
-            hashtag = re.sub(r"\s+", "", item.strip())
-            if not hashtag:
-                continue
-            if not hashtag.startswith("#"):
-                hashtag = f"#{hashtag.lstrip('#')}"
-            if len(hashtag) < 2 or hashtag in seen:
-                continue
-            seen.add(hashtag)
-            normalized.append(hashtag)
-            if len(normalized) == 5:
-                break
-        return normalized
+    @staticmethod
+    def _build_user_prompt(prompt: str, *, strict_language: bool) -> str:
+        if strict_language:
+            return f"{prompt}{_STRICT_KOREAN_USER_SUFFIX}"
+        return prompt
+
+    def _validate_korean_output(self, guide_text: str, draft_caption: str) -> None:
+        if self._looks_non_korean(guide_text) or self._looks_non_korean(draft_caption):
+            raise CaptionGenerationLanguageError(
+                "Caption generation returned text that is not sufficiently Korean."
+            )
+
+    @staticmethod
+    def _looks_non_korean(text: str) -> bool:
+        hangul_count = len(re.findall(r"[가-힣]", text))
+        ascii_count = len(re.findall(r"[A-Za-z]", text))
+        if hangul_count == 0:
+            return True
+        if ascii_count == 0:
+            return False
+        return ascii_count > hangul_count * 1.5
 
 
 def build_caption_generation_service() -> CaptionGenerationService:

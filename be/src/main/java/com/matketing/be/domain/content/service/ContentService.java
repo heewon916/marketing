@@ -8,6 +8,8 @@ import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
 import com.matketing.be.domain.content.dto.AiWeatherRequest;
 import com.matketing.be.domain.content.dto.ChatRequest;
 import com.matketing.be.domain.content.dto.ChatResponse;
+import com.matketing.be.domain.content.dto.ContentRequest;
+import com.matketing.be.domain.content.dto.ContentResponse;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
@@ -27,6 +29,7 @@ import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -66,6 +69,7 @@ public class ContentService {
     private final ContentRedisRepository contentRedisRepository;
     private final ContentProperties contentProperties;
     private final StoreRepository storeRepository;
+    private final WeatherContextProvider weatherService;
 
 
     /**
@@ -86,15 +90,82 @@ public class ContentService {
 
     /**
      * [게시물 생성 로직] api/v1/contents/{sessionId}/caption 핵심 비즈니스 로직
+     * - 기존 ChatRequest를 신규 ContentRequest로 변환해 실제 처리 메서드로 위임한다.
+     * - 기존 프론트/테스트 코드와의 호환성을 유지하기 위한 어댑터 역할이다.
      * @param request request_id, 최종 utterance
-     * @param userId // TODO 체크 필요한 값
-     * @return
+     * @param userId 인증 사용자 식별자
+     * @return AI 캡션 생성 응답
      */
     public ChatResponse createTextContent(ChatRequest request, String userId) {
+        return createTextContent(new ContentRequest(request.requestId(), null, request.utterance()), userId);
+    }
+
+    /**
+     * [게시물 캡션 요청 분기]
+     * - request_id가 있으면 기존 캡션 생성 플로우를 실행한다.
+     * - request_id가 없으면 FastAPI 호출 없이 AI 게시글 생성에 필요한 참고 JSON만 생성한다.
+     * @param request store_id, request_id(선택), utterance
+     * @param userId 인증 사용자 식별자
+     * @return ChatResponse 또는 ContentResponse
+     */
+    public Object createCaption(ContentRequest request, String userId) {
+        // request_id는 멱등성 키이므로, 값이 있는 요청은 기존 캡션 생성 트리거로 판단한다.
+        if (request.requestId() != null && !request.requestId().isBlank()) {
+            return createTextContent(request, userId);
+        }
+        return createCaptionContext(request, userId);
+    }
+
+    /**
+     * [AI 게시글 생성 참고정보 생성]
+     * - store_id 또는 인증 사용자 기준으로 매장을 조회한다.
+     * - 매장의 owner_persona, 좌표, 주소를 사용해 날씨/대기질/특보 정보를 조합한다.
+     * - FastAPI를 호출하지 않고, /ai/sessions/{session_id}/process-utterance 요청 바디와 같은 참고 JSON을 반환한다.
+     * @param request store_id, utterance
+     * @param userId 인증 사용자 식별자
+     * @return store, utterance, persona, date, weather가 포함된 참고정보 응답
+     */
+    public ContentResponse createCaptionContext(ContentRequest request, String userId) {
+        // utterance는 AI 게시글 생성의 핵심 입력이므로 빈 값이면 즉시 차단한다.
+        if (request.utterance() == null || request.utterance().isBlank()) {
+            throw new BusinessException(ErrorCode.EMPTY_UTTERANCE);
+        }
+
+        // store_id가 있으면 해당 매장을 우선 사용하고, 없으면 인증 사용자에게 연결된 매장을 사용한다.
+        Store store = getStore(request.storeId(), userId);
+        String ownerPersona = ownerPersona(store);
+        String date = LocalDate.now().toString();
+
+        // WeatherService 내부에서 Redis 캐시 조회 후, miss일 때만 외부 날씨/대기질 API를 호출한다.
+        AiWeatherRequest weather = weatherService.getWeatherContext(store, LocalDateTime.now());
+
+        return new ContentResponse(
+                store.getId().toString(),
+                request.utterance(),
+                ownerPersona,
+                date,
+                weather
+        );
+    }
+
+    /**
+     * [AI 캡션 생성 실행]
+     * - request_id 기반 Redis 멱등성 키를 생성한다.
+     * - 최초 요청이면 store/weather 컨텍스트를 만든 뒤 FastAPI process-utterance를 호출한다.
+     * - 중복 요청이면 FastAPI를 재호출하지 않고 Redis에 저장된 기존 처리 결과를 반환한다.
+     * @param request store_id(선택), request_id, utterance
+     * @param userId 인증 사용자 식별자
+     * @return FastAPI 캡션 생성 결과
+     */
+    public ChatResponse createTextContent(ContentRequest request, String userId) {
         // 1. utterance empty 검사
         if (request.utterance() == null || request.utterance().isBlank()) {
             throw new BusinessException(ErrorCode.EMPTY_UTTERANCE);
         }
+        if (request.requestId() == null || request.requestId().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+        parseUuid(request.requestId()).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST));
 
         // 2. request_id + session_id 기준으로 Redis 멱등성 key 생성
         String requestId = request.requestId();
@@ -128,22 +199,24 @@ public class ContentService {
         contentRedisRepository.createStartedContent(sessionId, request.utterance());
 
         // 5. store 정보를 들고 온다
-        StoreContext storeContext = getStoreContext(userId);
+        Store store = getStore(request.storeId(), userId);
+        String ownerPersona = ownerPersona(store);
 
-        // 6. TODO 날씨 API로부터 필요한 데이터를 들고 온다
+        // 6. 매장 좌표/주소 기반 날씨 참고정보를 생성한다. 외부 API 실패 시 가능한 필드는 null로 채워진다.
+        AiWeatherRequest weather = weatherService.getWeatherContext(store, LocalDateTime.now());
 
-        // 7. ai/sessions/{session_id}/process_utterance API를 호출하는 곳이다
+        // 7. ai/sessions/{session_id}/process_utterance API를 호출하는 곳이다.
+        // FastAPI가 게시글 생성에 사용할 store/persona/date/weather 컨텍스트를 request body에 포함한다.
         AiProcessUtteranceResponse aiResponse = aiContentClient.processUtterance(new AiProcessUtteranceRequest(
                 sessionId,
-                storeContext.storeId(),
+                store.getId().toString(),
                 request.utterance(),
-                storeContext.ownerPersona(),
+                ownerPersona,
                 LocalDate.now().toString(),
-                // TODO: 날씨 Open API 완료 후 실제 temperature/precipitation/cloud_cover 등으로 채운다.
-                AiWeatherRequest.empty()
+                weather
         ));
 
-        // 8. AI서버의 응답을 파싱해서 프론트에 응답함과 동시에, putIfAbsent패턴으로 Redis를 갱신한다
+        // 8. AI서버의 응답을 파싱해서 프론트에 응답함과 동시에, putIfAbsent패턴으로 Redis를 갱신한다.
         ContentStatus status = parseAiStatus(aiResponse.status());
         contentRedisRepository.updateTextGeneratedResult(
                 sessionId,
@@ -156,13 +229,13 @@ public class ContentService {
     }
 
     /**
-     * [게시물 이미지 조회] /api/v1/contents/{content_id}/images 핵심 비즈니스 로직
-     * @param contentId
+     * [게시물 이미지 조회] /api/v1/contents/{sessionId}/images 핵심 비즈니스 로직
+     * @param sessionId
      * @return
      */
     @Transactional(readOnly = true)
-    public ContentImageUrlsResponseDto getContentImages(Long contentId) {
-        Content content = getContentWithRelations(contentId);
+    public ContentImageUrlsResponseDto getContentImages(UUID sessionId) {
+        Content content = getContentWithRelations(sessionId);
 
         return new ContentImageUrlsResponseDto(
                 content.getImages().stream()
@@ -172,44 +245,50 @@ public class ContentService {
     }
 
     /**
-     * [게시물 이미지 삭제] /api/v1/contents/{content_id}/images/{image_id} 핵심 비즈니스 로직
-     * @param contentId
-     * @param imageId
+     * [게시물 이미지 삭제] /api/v1/contents/{sessionId}/images/delete 핵심 비즈니스 로직
+     * @param sessionId
+     * @param imageUrl
      * @return
      */
     @Transactional
-    public ContentImageDeleteResponseDto deleteContentImage(Long contentId, UUID imageId) {
-        // TODO 이미지 정보 삭제는 redis에서 이루어진다. 이때 contentId가 필요한 것이 맞는지 sessionId가 필요한 것이 맞는지 확인이 필요하다
-        findContentById(contentId);
+    public ContentImageDeleteResponseDto deleteContentImage(UUID sessionId, String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
 
-        ContentImage contentImage = contentImageRepository.findByIdAndContent_Id(imageId, contentId)
+        ContentImage contentImage = contentImageRepository.findByContent_SessionIdAndS3Key(sessionId, imageUrl)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_IMAGE_NOT_FOUND));
 
         contentImageRepository.delete(contentImage);
 
-        long remainingImages = contentImageRepository.countByContent_Id(contentId);
+        long remainingImages = contentImageRepository.countByContent_SessionId(sessionId);
         return new ContentImageDeleteResponseDto(true, remainingImages);
     }
 
     /**
-     * [게시물 내용 조회] /api/v1/contents/{content_id} 핵심 비즈니스 로직
-     * @param contentId
+     * [게시물 내용 조회] /api/v1/contents/{sessionId} 핵심 비즈니스 로직
+     * @param sessionId
      * @return
      */
     @Transactional(readOnly = true)
-    public ContentResponseDto getContent(Long contentId) {
+    public ContentResponseDto getContent(UUID sessionId) {
+        return ContentResponseDto.from(getContentWithRelations(sessionId));
+    }
+
+    @Transactional(readOnly = true)
+    public ContentResponseDto getPublishedContent(Long contentId) {
         return ContentResponseDto.from(getContentWithRelations(contentId));
     }
 
     /**
-     * [게시물 텍스트 갱신] /api/v1/contents/{content_id}/edit 핵심 비즈니스 로직
-     * @param contentId
+     * [게시물 텍스트 갱신] /api/v1/contents/{sessionId}/edit 핵심 비즈니스 로직
+     * @param sessionId
      * @param requestDto 캡션만 수정 가능하다.
      * @return 수정된
      */
     @Transactional
-    public ContentEditResponseDto updateContent(Long contentId, ContentEditRequestDto requestDto) {
-        Content content = findContentById(contentId);
+    public ContentEditResponseDto updateContent(UUID sessionId, ContentEditRequestDto requestDto) {
+        Content content = getContentWithRelations(sessionId);
 
         // 현재 스키마에는 status/hashtags/updatedAt이 없어 caption만 수정한다.
         content.updateCaption(requestDto.caption());
@@ -220,13 +299,13 @@ public class ContentService {
     //============================================
     // 여기서부터는 부가 로직이다.
     //============================================
-    private Content findContentById(Long contentId) {
-        return contentRepository.findById(contentId)
+    private Content getContentWithRelations(Long contentId) {
+        return contentRepository.findWithImagesAndVideoRecordingsById(contentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
     }
 
-    private Content getContentWithRelations(Long contentId) {
-        return contentRepository.findWithImagesAndVideoRecordingsById(contentId)
+    private Content getContentWithRelations(UUID sessionId) {
+        return contentRepository.findWithImagesAndVideoRecordingsBySessionId(sessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
     }
 
@@ -259,29 +338,45 @@ public class ContentService {
     }
 
     /**
-     * 캡션 생성 시, store 정보 조회에 사용된다.
-     * TODO userId 값에 따라 store 정보를 제대로 들고 오는지 확인해야 한다
-     * @param userId
-     * @return
+     * 캡션/참고정보 생성 시 store 정보 조회에 사용된다.
+     * - 요청에 store_id가 있으면 해당 store를 우선 조회한다.
+     * - store_id가 없거나 UUID가 아니면 인증 사용자 기준으로 1개의 store를 조회한다.
+     * - 둘 다 실패하면 게시글 생성에 필요한 매장 컨텍스트가 없으므로 STORE_NOT_FOUND를 반환한다.
+     * @param storeId 요청으로 전달된 매장 UUID
+     * @param userId 인증 사용자 UUID
+     * @return 게시글 생성에 사용할 Store
      */
-    private StoreContext getStoreContext(String userId) {
-        Optional<Store> store = parseUuid(userId)
-                .flatMap(storeRepository::findFirstByUserId);
+    private Store getStore(String storeId, String userId) {
+        Optional<Store> store = parseUuid(storeId)
+                .flatMap(storeRepository::findById)
+                .or(() -> parseUuid(userId).flatMap(storeRepository::findFirstByUserId));
+        return store.orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+    }
 
-        if (store.isEmpty()) {
-            // TODO: 실제 인증 적용 후 매장 미등록 사용자를 어떤 에러로 처리할지 정책화한다.
-            return new StoreContext("00000000-0000-0000-0000-000000000000", "aesthetic");
-        }
-
-        Store foundStore = store.get();
-        String ownerPersona = foundStore.getOwnerPersona();
+    /**
+     * 매장 owner_persona를 반환한다.
+     * - DB 값이 없을 때는 AI 서버 기본 기대값인 aesthetic을 사용한다.
+     * @param store 매장 엔티티
+     * @return owner_persona
+     */
+    private String ownerPersona(Store store) {
+        String ownerPersona = store.getOwnerPersona() != null ? store.getOwnerPersona().name() : null;
         if (ownerPersona == null || ownerPersona.isBlank()) {
             ownerPersona = "aesthetic";
         }
-        return new StoreContext(foundStore.getId().toString(), ownerPersona);
+        return ownerPersona;
     }
 
+    /**
+     * 문자열 UUID 파싱 헬퍼.
+     * - store_id/user_id가 비어 있거나 UUID 형식이 아니면 Optional.empty()로 반환해 fallback 조회가 가능하게 한다.
+     * @param value UUID 문자열
+     * @return 파싱된 UUID
+     */
     private Optional<UUID> parseUuid(String value) {
+        if (value == null || value.isBlank()) {
+            return Optional.empty();
+        }
         try {
             return Optional.of(UUID.fromString(value));
         } catch (IllegalArgumentException exception) {
@@ -300,9 +395,4 @@ public class ContentService {
         }
     }
 
-    private record StoreContext(
-            String storeId,
-            String ownerPersona
-    ) {
-    }
 }

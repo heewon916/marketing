@@ -29,17 +29,25 @@ logger = logging.getLogger(__name__)
 
 def resolve_caption_keywords(
     draft_keywords: list[str],
-    final_keywords: list[str],
+    canonical_resolution: CanonicalKeywordResolution,
 ) -> list[str]:
-    return final_keywords or draft_keywords
+    if not canonical_resolution.matches:
+        return draft_keywords
+
+    caption_keywords: list[str] = []
+    for match in canonical_resolution.matches:
+        if match.matched and match.display_name:
+            caption_keywords.append(match.display_name)
+        else:
+            caption_keywords.append(match.draft_keyword)
+    return caption_keywords or draft_keywords
 
 
 def _result_from_caption_generation(
     result: CaptionGenerationResult,
-) -> tuple[str, list[str], str, str, None]:
+) -> tuple[str, str, str, None]:
     return (
         result.draft_caption,
-        result.draft_hashtags,
         result.guide_text,
         result.stored_caption,
         None,
@@ -170,7 +178,6 @@ class ProcessUtteranceResult:
     draft_keywords: list[str]
     final_keywords: list[str]
     draft_caption: str
-    draft_hashtags: list[str]
     guide_text: str
     caption: str
 
@@ -364,11 +371,12 @@ async def process_utterance(
         resolution=canonical_resolution,
         session_id=session_id,
     )
-    caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    caption_keywords = resolve_caption_keywords(draft_keywords, canonical_resolution)
     caption_request = CaptionGenerationRequest(
         purpose=purpose,
         keywords=caption_keywords,
         owner_persona=payload.owner_persona,
+        utterance=payload.utterance,
         weather_tags=weather_tags,
     )
     fallback_source: str | None = None
@@ -379,13 +387,11 @@ async def process_utterance(
         )
         (
             draft_caption,
-            draft_hashtags,
             guide_text,
             stored_caption,
             fallback_source,
         ) = (
             fallback_result.result.draft_caption,
-            fallback_result.result.draft_hashtags,
             fallback_result.result.guide_text,
             fallback_result.result.stored_caption,
             fallback_result.fallback_source,
@@ -410,7 +416,6 @@ async def process_utterance(
         try:
             (
                 draft_caption,
-                draft_hashtags,
                 guide_text,
                 stored_caption,
                 fallback_source,
@@ -440,13 +445,11 @@ async def process_utterance(
             )
             (
                 draft_caption,
-                draft_hashtags,
                 guide_text,
                 stored_caption,
                 fallback_source,
             ) = (
                 fallback_result.result.draft_caption,
-                fallback_result.result.draft_hashtags,
                 fallback_result.result.guide_text,
                 fallback_result.result.stored_caption,
                 fallback_result.fallback_source,
@@ -493,7 +496,6 @@ async def process_utterance(
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
         draft_caption=draft_caption,
-        draft_hashtags=draft_hashtags,
         guide_text=guide_text,
         caption=stored_caption,
     )
