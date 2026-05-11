@@ -5,6 +5,10 @@ import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import DayTimeRow from '../components/DayTimeRow.jsx';
 import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
+import {
+  convertApiCloseTimeToDisplayTime,
+  convertDisplayCloseTimeToApiTime,
+} from '@/utils/operatingHours.js';
 
 const days = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -48,7 +52,7 @@ const convertOperatingHoursToTimeData = (operatingHours) => {
       day,
       isOpen: savedTime.isOpen ?? true,
       startTime: savedTime.open ?? '09:00',
-      endTime: savedTime.close ?? '18:00',
+      endTime: convertApiCloseTimeToDisplayTime(savedTime.close),
     };
   });
 };
@@ -60,7 +64,9 @@ const convertTimeDataToOperatingHours = (timeData) =>
     acc[dayKey] = {
       isOpen: item.isOpen,
       open: item.isOpen ? item.startTime : null,
-      close: item.isOpen ? item.endTime : null,
+      close: item.isOpen
+        ? convertDisplayCloseTimeToApiTime(item.startTime, item.endTime)
+        : null,
     };
 
     return acc;
