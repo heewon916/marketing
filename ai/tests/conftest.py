@@ -48,22 +48,29 @@ class DefaultCanonicalKeywordResolverService:
         self,
         draft_keywords: list[str],
     ) -> CanonicalKeywordResolution:
-        code_map = {
-            "signature menu": "CANONICAL_SIGNATURE_MENU",
-            "cozy table": "CANONICAL_COZY_TABLE",
+        keyword_map = {
+            "signature menu": (1042, "signature menu"),
+            "cozy table": (2051, "cozy table"),
         }
         matches = [
             CanonicalKeywordMatch(
                 draft_keyword=keyword,
-                final_keyword=code_map.get(keyword, keyword),
-                display_name=keyword if keyword in code_map else None,
-                score=0.99 if keyword in code_map else None,
-                matched=keyword in code_map,
+                canonical_keyword_id=(
+                    keyword_map[keyword][0] if keyword in keyword_map else None
+                ),
+                final_keyword=(
+                    f"{keyword_map[keyword][0]}:{keyword_map[keyword][1]}"
+                    if keyword in keyword_map
+                    else keyword
+                ),
+                display_name=keyword_map[keyword][1] if keyword in keyword_map else None,
+                score=0.99 if keyword in keyword_map else None,
+                matched=keyword in keyword_map,
             )
             for keyword in draft_keywords
         ]
         return CanonicalKeywordResolution(
-            final_keywords=[match.final_keyword for match in matches],
+            final_keywords=[match.stored_final_keyword for match in matches],
             matches=matches,
         )
 

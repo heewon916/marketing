@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
+    POSTGRES_SCHEMA: str = "public"
 
     REDIS_HOST: str = "project-redis"
     REDIS_PORT: int = 6379
@@ -167,6 +168,14 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @computed_field
+    @property
+    def postgres_search_path(self) -> str:
+        normalized_schema = self.POSTGRES_SCHEMA.strip() or "public"
+        if normalized_schema == "public":
+            return "public"
+        return f"{normalized_schema},public"
 
     @computed_field
     @property

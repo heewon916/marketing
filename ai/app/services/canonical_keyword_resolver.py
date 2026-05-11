@@ -22,10 +22,17 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CanonicalKeywordMatch:
     draft_keyword: str
+    canonical_keyword_id: int | None
     final_keyword: str
     display_name: str | None
     score: float | None
     matched: bool
+
+    @property
+    def stored_final_keyword(self) -> str:
+        if self.matched and self.canonical_keyword_id is not None and self.display_name:
+            return f"{self.canonical_keyword_id}:{self.display_name}"
+        return self.draft_keyword
 
 
 @dataclass
@@ -117,12 +124,14 @@ class CanonicalKeywordResolverService:
             if (
                 best_match is None
                 or not best_match.matched
-                or not best_match.final_keyword
+                or best_match.canonical_keyword_id is None
+                or not best_match.display_name
             ):
                 matches.append(
                     CanonicalKeywordMatch(
                         draft_keyword=draft_keyword,
                         final_keyword=draft_keyword,
+                        canonical_keyword_id=None,
                         display_name=(
                             None if best_match is None else best_match.display_name
                         ),
@@ -135,7 +144,8 @@ class CanonicalKeywordResolverService:
             matches.append(
                 CanonicalKeywordMatch(
                     draft_keyword=draft_keyword,
-                    final_keyword=best_match.final_keyword,
+                    canonical_keyword_id=best_match.canonical_keyword_id,
+                    final_keyword=best_match.stored_final_keyword,
                     display_name=best_match.display_name,
                     score=best_match.score,
                     matched=best_match.matched,
@@ -143,7 +153,7 @@ class CanonicalKeywordResolverService:
             )
 
         return CanonicalKeywordResolution(
-            final_keywords=[match.final_keyword for match in matches],
+            final_keywords=[match.stored_final_keyword for match in matches],
             matches=matches,
         )
 
@@ -208,11 +218,10 @@ class CanonicalKeywordResolverService:
         query = text(
             """
             SELECT
-                code,
+                id,
                 display_name,
                 1 - (embedding <=> CAST(:embedding AS vector)) AS score
-            FROM maketing.canonical_keywords
-            WHERE code IS NOT NULL
+            FROM canonical_keywords
             ORDER BY embedding <=> CAST(:embedding AS vector) ASC
             LIMIT 1
             """
@@ -227,10 +236,11 @@ class CanonicalKeywordResolverService:
 
         return CanonicalKeywordMatch(
             draft_keyword="",
-            final_keyword=row["code"],
+            canonical_keyword_id=int(row["id"]) if row["id"] is not None else None,
+            final_keyword="",
             display_name=row["display_name"],
             score=float(row["score"]) if row["score"] is not None else None,
-            matched=bool(row["code"]),
+            matched=bool(row["id"]) and bool(row["display_name"]),
         )
 
     @staticmethod
@@ -245,6 +255,7 @@ class CanonicalKeywordResolverService:
             CanonicalKeywordMatch(
                 draft_keyword=keyword,
                 final_keyword=keyword,
+                canonical_keyword_id=None,
                 display_name=None,
                 score=None,
                 matched=False,
@@ -252,7 +263,7 @@ class CanonicalKeywordResolverService:
             for keyword in draft_keywords
         ]
         return CanonicalKeywordResolution(
-            final_keywords=[match.final_keyword for match in matches],
+            final_keywords=[match.stored_final_keyword for match in matches],
             matches=matches,
         )
 

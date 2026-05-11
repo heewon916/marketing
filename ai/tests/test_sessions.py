@@ -173,6 +173,16 @@ class FakeCanonicalKeywordResolverService:
         self.matched_indexes = matched_indexes
         self.calls: list[list[str]] = []
 
+    @staticmethod
+    def _parse_stored_final_keyword(value: str) -> tuple[int | None, str | None]:
+        keyword_id, separator, display_name = value.partition(":")
+        if not separator:
+            return None, None
+        try:
+            return int(keyword_id), display_name or None
+        except ValueError:
+            return None, None
+
     async def resolve_keywords(
         self,
         draft_keywords: list[str],
@@ -181,12 +191,17 @@ class FakeCanonicalKeywordResolverService:
         final_keywords = (
             list(self.final_keywords)
             if self.final_keywords is not None
-            else [f"CODE_{keyword.replace(' ', '_').upper()}" for keyword in draft_keywords]
+            else [f"{1000 + index}:{keyword}" for index, keyword in enumerate(draft_keywords)]
         )
         display_names = (
             list(self.display_names)
             if self.display_names is not None
-            else list(draft_keywords)
+            else [
+                self._parse_stored_final_keyword(final_keyword)[1] or draft_keyword
+                for draft_keyword, final_keyword in zip(
+                    draft_keywords, final_keywords, strict=True
+                )
+            ]
         )
         matched_indexes = (
             set(self.matched_indexes)
@@ -196,20 +211,26 @@ class FakeCanonicalKeywordResolverService:
         matches = []
         for index, draft_keyword in enumerate(draft_keywords):
             matched = index in matched_indexes
-            final_keyword = (
-                final_keywords[index] if matched else draft_keyword
+            stored_final_keyword = final_keywords[index] if matched else draft_keyword
+            canonical_keyword_id, parsed_display_name = self._parse_stored_final_keyword(
+                stored_final_keyword
             )
             matches.append(
                 CanonicalKeywordMatch(
                     draft_keyword=draft_keyword,
-                    final_keyword=final_keyword,
-                    display_name=display_names[index] if matched else None,
+                    canonical_keyword_id=canonical_keyword_id if matched else None,
+                    final_keyword=stored_final_keyword,
+                    display_name=(
+                        display_names[index] if matched else parsed_display_name
+                    )
+                    if matched
+                    else None,
                     score=0.99 if matched else None,
                     matched=matched,
                 )
             )
         return CanonicalKeywordResolution(
-            final_keywords=[match.final_keyword for match in matches],
+            final_keywords=[match.stored_final_keyword for match in matches],
             matches=matches,
         )
 
@@ -366,17 +387,19 @@ def test_keywords_not_exposed_even_when_debug_on(
 
 def test_resolve_caption_keywords_prefers_display_names() -> None:
     resolution = CanonicalKeywordResolution(
-        final_keywords=["CANONICAL_SIGNATURE_MENU", "draft notice"],
+        final_keywords=["1042:signature menu", "draft notice"],
         matches=[
             CanonicalKeywordMatch(
                 draft_keyword="draft menu",
-                final_keyword="CANONICAL_SIGNATURE_MENU",
-                display_name="시그니처 메뉴",
+                canonical_keyword_id=1042,
+                final_keyword="1042:signature menu",
+                display_name="signature menu",
                 score=0.99,
                 matched=True,
             ),
             CanonicalKeywordMatch(
                 draft_keyword="draft notice",
+                canonical_keyword_id=None,
                 final_keyword="draft notice",
                 display_name=None,
                 score=None,
@@ -386,7 +409,7 @@ def test_resolve_caption_keywords_prefers_display_names() -> None:
     )
 
     assert resolve_caption_keywords(["draft menu", "draft notice"], resolution) == [
-        "시그니처 메뉴",
+        "signature menu",
         "draft notice",
     ]
 
@@ -555,8 +578,8 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
         draft_keywords=["signature menu", "evening notice"],
     )
     app.state.canonical_keyword_resolver_service = FakeCanonicalKeywordResolverService(
-        final_keywords=["CANONICAL_SIGNATURE_MENU", "CANONICAL_EVENING_NOTICE"],
-        display_names=["시그니처 메뉴", "저녁 안내"],
+        final_keywords=["1042:signature menu", "2051:evening notice"],
+        display_names=["signature menu", "evening notice"],
         matched_indexes={0, 1},
     )
     fake_service = FakeCaptionGenerationService()
@@ -573,7 +596,7 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
         app.state.canonical_keyword_resolver_service = original_canonical_service
 
     assert response.status_code == 200
-    assert fake_service.calls[0]["keywords"] == ["시그니처 메뉴", "저녁 안내"]
+    assert fake_service.calls[0]["keywords"] == ["signature menu", "evening notice"]
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -653,8 +676,8 @@ def test_redis_payload_persisted(
     assert 1 <= len(draft_keyword_fields) <= 3
     assert len(draft_keyword_fields) == len(final_keyword_fields)
     assert saved["draft_keyword:1"] == "signature menu"
-    assert saved["final_keyword:1"] == "CANONICAL_SIGNATURE_MENU"
-    assert saved["final_keyword:2"] == "CANONICAL_COZY_TABLE"
+    assert saved["final_keyword:1"] == "1042:signature menu"
+    assert saved["final_keyword:2"] == "2051:cozy table"
     weather_tag_fields = [
         field for field in saved if field.startswith("weather_tag:")
     ]
@@ -822,6 +845,40 @@ def test_extract_frames_returns_success_and_persists_result(
     assert saved["video"] == payload["video"]
 
 
+def test_extract_frames_preserves_existing_final_keywords(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
+    fake_service = FakeFrameExtractionService(
+        ExtractFramesResult(
+            status="FRAME_EXTRACTED",
+            drafts=["/ai-drafts/session-123/draft-001.jpg"],
+        )
+    )
+    app.state.frame_extraction_service = fake_service
+
+    try:
+        process_response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+        assert process_response.status_code == 200
+
+        extract_response = client.post(
+            f"/ai/sessions/{session_id}/extract-frames",
+            json={"session_id": session_id, "video": "/inputs/test-session/test-video.mp4"},
+        )
+    finally:
+        app.state.frame_extraction_service = original_service
+
+    assert extract_response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["final_keyword:1"] == "1042:signature menu"
+    assert saved["final_keyword:2"] == "2051:cozy table"
+
+
 def test_extract_frames_returns_fail_when_service_fails(
     client: TestClient,
     fake_redis_sync: fakeredis.FakeStrictRedis,
@@ -916,6 +973,43 @@ def test_final_edit_returns_success_and_persists_result(
     assert saved["status"] == "PHOTO_EDITED"
     assert saved["photo:1"] == "/ai-finals/session-123/final-001.jpg"
     assert saved["photo:2"] == "/ai-finals/session-123/final-002.jpg"
+
+
+def test_final_edit_preserves_existing_final_keywords(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.final_edit_service
+    session_id = str(uuid4())
+    fake_service = FakeFinalEditService(
+        FinalEditResult(
+            status="PHOTO_EDITED",
+            results=["/ai-finals/session-123/final-001.jpg"],
+        )
+    )
+    app.state.final_edit_service = fake_service
+
+    try:
+        process_response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+        assert process_response.status_code == 200
+
+        edit_response = client.post(
+            f"/ai/sessions/{session_id}/final-edit",
+            json={
+                "session_id": session_id,
+                "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+            },
+        )
+    finally:
+        app.state.final_edit_service = original_service
+
+    assert edit_response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["final_keyword:1"] == "1042:signature menu"
+    assert saved["final_keyword:2"] == "2051:cozy table"
 
 
 def test_final_edit_returns_fail_and_clears_photo_results(

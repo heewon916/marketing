@@ -9,7 +9,7 @@ from app.services.canonical_keyword_resolver import (
 
 
 @pytest.mark.asyncio
-async def test_canonical_keyword_resolver_returns_codes_for_matches(
+async def test_canonical_keyword_resolver_returns_stored_keywords_for_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = CanonicalKeywordResolverService(
@@ -27,8 +27,9 @@ async def test_canonical_keyword_resolver_returns_codes_for_matches(
     async def fake_find_best_match(embedding: list[float]) -> CanonicalKeywordMatch | None:
         return CanonicalKeywordMatch(
             draft_keyword="",
-            final_keyword="CANONICAL_SOUP",
-            display_name="seasonal soup",
+            canonical_keyword_id=1042,
+            final_keyword="",
+            display_name="ginger",
             score=0.97,
             matched=True,
         )
@@ -37,7 +38,7 @@ async def test_canonical_keyword_resolver_returns_codes_for_matches(
 
     resolution = await service.resolve_keywords(["seasonal soup"])
 
-    assert resolution.final_keywords == ["CANONICAL_SOUP"]
+    assert resolution.final_keywords == ["1042:ginger"]
     assert resolution.match_count == 1
     assert resolution.fallback_count == 0
 
@@ -89,8 +90,9 @@ async def test_canonical_keyword_resolver_falls_back_when_lookup_returns_unmatch
     async def fake_find_best_match(embedding: list[float]) -> CanonicalKeywordMatch | None:
         return CanonicalKeywordMatch(
             draft_keyword="",
+            canonical_keyword_id=None,
             final_keyword="",
-            display_name="seasonal soup",
+            display_name="ginger",
             score=0.4,
             matched=False,
         )
