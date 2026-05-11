@@ -12,13 +12,25 @@ const createFormDataFromStore = (store) => ({
   address: store?.address ?? '',
 });
 
-export default function AccountInfoSection({ store, onLogout, onRefresh }) {
+export default function AccountInfoSection({
+  store,
+  onLogout,
+  onRefresh,
+  onDeleteAccount,
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isDeleteConfirmModalOpen, setIsDeleteConfirmModalOpen] =
+    useState(false);
+  const [isDeleteWarningModalOpen, setIsDeleteWarningModalOpen] =
+    useState(false);
+
   const [formData, setFormData] = useState(() =>
     createFormDataFromStore(store)
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const displayData = createFormDataFromStore(store);
 
@@ -67,14 +79,69 @@ export default function AccountInfoSection({ store, onLogout, onRefresh }) {
   };
 
   const handleCancelLogout = () => {
+    if (isLoggingOut) return;
+
     setIsLogoutModalOpen(false);
   };
 
-  const handleConfirmLogout = () => {
-    setIsLogoutModalOpen(false);
+  const handleConfirmLogout = async () => {
+    if (isLoggingOut) return;
 
-    if (onLogout) {
-      onLogout();
+    try {
+      setIsLoggingOut(true);
+
+      if (onLogout) {
+        await onLogout();
+      }
+
+      setIsLogoutModalOpen(false);
+    } catch (error) {
+      console.error('로그아웃 실패:', error);
+      alert('로그아웃하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const handleDeleteAccountClick = () => {
+    setIsDeleteConfirmModalOpen(true);
+  };
+
+  const handleCancelDeleteConfirm = () => {
+    if (isDeletingAccount) return;
+
+    setIsDeleteConfirmModalOpen(false);
+  };
+
+  const handleOpenDeleteWarning = () => {
+    setIsDeleteConfirmModalOpen(false);
+    setIsDeleteWarningModalOpen(true);
+  };
+
+  const handleCancelDeleteWarning = () => {
+    if (isDeletingAccount) return;
+
+    setIsDeleteWarningModalOpen(false);
+  };
+
+  const handleConfirmDeleteAccount = async () => {
+    if (isDeletingAccount) return;
+
+    try {
+      setIsDeletingAccount(true);
+
+      if (onDeleteAccount) {
+        await onDeleteAccount();
+      } else {
+        console.log('회원탈퇴');
+      }
+
+      setIsDeleteWarningModalOpen(false);
+    } catch (error) {
+      console.error('회원탈퇴 실패:', error);
+      alert('회원탈퇴하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -109,13 +176,23 @@ export default function AccountInfoSection({ store, onLogout, onRefresh }) {
         )}
 
         {!isEditing && (
-          <button
-            type="button"
-            onClick={handleLogoutClick}
-            className="mx-auto mt-1 text-[15px] font-medium text-red-500 underline underline-offset-2 active:brightness-90"
-          >
-            로그아웃
-          </button>
+          <div className="mt-1 flex justify-center gap-4">
+            <button
+              type="button"
+              onClick={handleLogoutClick}
+              className="text-[15px] font-medium text-red-500 underline underline-offset-2"
+            >
+              로그아웃
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDeleteAccountClick}
+              className="text-[15px] font-medium text-gray-400 underline underline-offset-2"
+            >
+              회원탈퇴
+            </button>
+          </div>
         )}
       </section>
 
@@ -124,7 +201,7 @@ export default function AccountInfoSection({ store, onLogout, onRefresh }) {
           isOpen={isLogoutModalOpen}
           onClose={handleCancelLogout}
           showClose={false}
-          closeOnBackdrop
+          closeOnBackdrop={!isLoggingOut}
         >
           <div className="text-center">
             <h2 className="text-[22px] font-bold text-accent-100">
@@ -140,6 +217,7 @@ export default function AccountInfoSection({ store, onLogout, onRefresh }) {
                 size="sm"
                 variant="white"
                 onClick={handleCancelLogout}
+                disabled={isLoggingOut}
                 className="text-[18px] font-bold"
               >
                 취소
@@ -149,9 +227,98 @@ export default function AccountInfoSection({ store, onLogout, onRefresh }) {
                 size="sm"
                 variant="danger"
                 onClick={handleConfirmLogout}
+                disabled={isLoggingOut}
                 className="text-[18px] font-bold"
               >
-                로그아웃
+                {isLoggingOut ? '로그아웃 중' : '로그아웃'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {isDeleteConfirmModalOpen && (
+        <Modal
+          isOpen={isDeleteConfirmModalOpen}
+          onClose={handleCancelDeleteConfirm}
+          showClose={false}
+          closeOnBackdrop={!isDeletingAccount}
+        >
+          <div className="text-center">
+            <h2 className="text-[22px] font-bold text-accent-100">
+              회원탈퇴할까요?
+            </h2>
+
+            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
+              맡케팅 이용을 그만두시겠어요?
+            </p>
+
+            <div className="mt-7 flex justify-center gap-3">
+              <Button
+                size="sm"
+                variant="white"
+                onClick={handleCancelDeleteConfirm}
+                disabled={isDeletingAccount}
+                className="text-[18px] font-bold"
+              >
+                취소
+              </Button>
+
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={handleOpenDeleteWarning}
+                disabled={isDeletingAccount}
+                className="text-[18px] font-bold"
+              >
+                확인
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {isDeleteWarningModalOpen && (
+        <Modal
+          isOpen={isDeleteWarningModalOpen}
+          onClose={handleCancelDeleteWarning}
+          showClose={false}
+          closeOnBackdrop={!isDeletingAccount}
+        >
+          <div className="text-center">
+            <h2 className="text-[22px] font-bold text-red-500">
+              정말 탈퇴하시겠어요?
+            </h2>
+
+            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
+              탈퇴하면 계정, 매장 정보,
+              <br />
+              마케팅 기록 등 모든 정보가 사라져요.
+            </p>
+
+            <p className="mt-2 text-[15px] leading-relaxed text-red-400">
+              삭제된 정보는 다시 복구할 수 없습니다.
+            </p>
+
+            <div className="mt-7 flex justify-center gap-3">
+              <Button
+                size="sm"
+                variant="white"
+                onClick={handleCancelDeleteWarning}
+                disabled={isDeletingAccount}
+                className="text-[18px] font-bold"
+              >
+                취소
+              </Button>
+
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={handleConfirmDeleteAccount}
+                disabled={isDeletingAccount}
+                className="text-[18px] font-bold"
+              >
+                {isDeletingAccount ? '탈퇴 중' : '탈퇴'}
               </Button>
             </div>
           </div>

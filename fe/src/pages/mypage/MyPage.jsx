@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BottomTab from '@/components/common/BottomTab';
 import MyPageHeader from '@/features/mypage/components/MyPageHeader';
 import MyPageTabSwitcher from '@/features/mypage/components/MyPageTabSwitcher';
@@ -6,6 +7,7 @@ import MyPageStatsSection from '@/features/mypage/sections/MyPageStatsSection';
 import AccountInfoSection from '@/features/mypage/sections/AccountInfoSection';
 import OperatingHoursSection from '@/features/mypage/sections/OperatingHoursSection';
 import { mypageApi } from '@/features/mypage/api';
+import { authApi } from '@/features/auth/api';
 
 const myPageMockData = {
   weeklyPostAchievementRate: 25,
@@ -15,7 +17,15 @@ const myPageMockData = {
   weeklyVisitIntentScore: -29,
 };
 
+const clearAuthStorage = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  sessionStorage.removeItem('instagramAuthPurpose');
+};
+
 export default function MyPage() {
+  const navigate = useNavigate();
+
   const [activeTab, setActiveTab] = useState('stats');
   const [myInfo, setMyInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,9 +79,27 @@ export default function MyPage() {
     ? `@${user.instagramUsername}`
     : '@instagram';
 
-  const handleLogout = () => {
-    // TODO: 실제 로그아웃 로직 연결
-    console.log('로그아웃');
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('로그아웃 API 호출 실패:', error);
+    } finally {
+      clearAuthStorage();
+      navigate('/', { replace: true });
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await authApi.deleteAccount();
+    } catch (error) {
+      console.error('회원탈퇴 API 호출 실패:', error);
+      throw error;
+    }
+
+    clearAuthStorage();
+    navigate('/', { replace: true });
   };
 
   if (isLoading) {
@@ -107,6 +135,7 @@ export default function MyPage() {
             store={store}
             onLogout={handleLogout}
             onRefresh={fetchMyInfo}
+            onDeleteAccount={handleDeleteAccount}
           />
         )}
 

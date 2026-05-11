@@ -8,4 +8,8 @@ export const mypageApi = {
   updateMyInfo(data) {
     return api.patch('/api/v1/users/me', data);
   },
+
+  syncInstagramProfile() {
+    return api.post('/api/v1/users/me/instagram/sync');
+  },
 };
