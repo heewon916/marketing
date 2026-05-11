@@ -3,6 +3,7 @@ import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 function CodeInputStep({
   onNext,
@@ -15,6 +16,8 @@ function CodeInputStep({
   const inputRefs = useRef([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  const setMerchantId = useOnboardingStore((state) => state.setMerchantId);
 
   const handleChange = (e, idx) => {
     const val = e.target.value.replace(/[^0-9]/g, '');
@@ -40,6 +43,8 @@ function CodeInputStep({
   };
 
   const handleNext = async () => {
+    if (isLoading) return;
+
     if (value.length !== 6) {
       setErrorMessage('6자리 인증 코드를 입력해 주세요.');
       return;
@@ -57,6 +62,7 @@ function CodeInputStep({
         return;
       }
 
+      setMerchantId(merchantId);
       onVerified?.(merchantId);
       onNext();
     } catch (error) {
@@ -101,6 +107,7 @@ function CodeInputStep({
           onPrev={onPrev}
           onNext={handleNext}
           nextText={isLoading ? '확인 중' : '다음'}
+          nextDisabled={isLoading}
         />
       }
     >

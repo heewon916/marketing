@@ -4,10 +4,21 @@ import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import tossLoading from '@/assets/videos/toss-loading.mp4';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
+function LoadingStep({ onNext, onPrev }) {
   const hasSyncedRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [retryCount, setRetryCount] = useState(0);
+
+  const merchantId = useOnboardingStore((state) => state.merchantId);
+  const setPosSyncResult = useOnboardingStore(
+    (state) => state.setPosSyncResult
+  );
+
+  const displayErrorMessage =
+    errorMessage ||
+    (!merchantId ? 'POS 인증 정보가 없습니다. 다시 인증해 주세요.' : '');
 
   useEffect(() => {
     if (!merchantId || hasSyncedRef.current) return;
@@ -18,14 +29,27 @@ function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
         setErrorMessage('');
 
         const response = await onboardingApi.syncPosStore(merchantId);
-        const { success, storeId, message } = response.data;
+        const {
+          success,
+          storeId,
+          storeName,
+          suggestedCategory,
+          menus,
+          message,
+        } = response.data;
 
         if (!success || !storeId) {
           setErrorMessage(message || 'POS 데이터 동기화에 실패했습니다.');
           return;
         }
 
-        onSynced?.(storeId);
+        setPosSyncResult({
+          storeId,
+          storeName,
+          suggestedCategory,
+          menus,
+        });
+
         onNext();
       } catch (error) {
         const message =
@@ -36,8 +60,14 @@ function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
       }
     };
 
-    syncStore();
-  }, [merchantId, onNext, onSynced]);
+    void syncStore();
+  }, [merchantId, onNext, setPosSyncResult, retryCount]);
+
+  const handleRetry = () => {
+    hasSyncedRef.current = false;
+    setErrorMessage('');
+    setRetryCount((prev) => prev + 1);
+  };
 
   return (
     <OnboardingLayout
@@ -55,11 +85,11 @@ function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
         />
       }
       footer={
-        errorMessage ? (
+        displayErrorMessage ? (
           <OnboardingFooterButtons
             onPrev={onPrev}
-            onNext={() => window.location.reload()}
-            nextText="다시 시도"
+            onNext={merchantId ? handleRetry : onPrev}
+            nextText={merchantId ? '다시 시도' : '인증 다시 하기'}
           />
         ) : null
       }
@@ -74,9 +104,9 @@ function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
           className="w-full h-full justify-center object-contain"
         />
 
-        {errorMessage && (
+        {displayErrorMessage && (
           <p className="mt-4 text-sm font-medium text-red-500 text-center">
-            {errorMessage}
+            {displayErrorMessage}
           </p>
         )}
       </div>
