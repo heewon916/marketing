@@ -69,6 +69,19 @@ function LoadingStep({ onNext, onPrev }) {
     setRetryCount((prev) => prev + 1);
   };
 
+  const handleTempSuccess = () => {
+    setErrorMessage('');
+
+    setPosSyncResult({
+      storeId: 'dev-store-id',
+      storeName: '개발용 테스트 매장',
+      suggestedCategory: '카페',
+      menus: [],
+    });
+
+    onNext();
+  };
+
   return (
     <OnboardingLayout
       currentStep={3}
@@ -108,6 +121,16 @@ function LoadingStep({ onNext, onPrev }) {
           <p className="mt-4 text-sm font-medium text-red-500 text-center">
             {displayErrorMessage}
           </p>
+        )}
+
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={handleTempSuccess}
+            className="mt-4 w-full py-3 text-sm font-bold text-gray-500 underline"
+          >
+            개발용: POS 연결 완료 처리
+          </button>
         )}
       </div>
     </OnboardingLayout>

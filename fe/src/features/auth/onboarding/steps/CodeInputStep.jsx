@@ -15,7 +15,7 @@ function CodeInputStep({
 }) {
   const inputRefs = useRef([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState([]);
 
   const setMerchantId = useOnboardingStore((state) => state.setMerchantId);
 
@@ -29,7 +29,7 @@ function CodeInputStep({
     const newValue = newValueArray.join('');
 
     onChange(newValue);
-    setErrorMessage('');
+    setErrorMessage([]);
 
     if (val !== '' && idx < 5) {
       inputRefs.current[idx + 1]?.focus();
@@ -42,23 +42,34 @@ function CodeInputStep({
     }
   };
 
+  const handleTempSuccess = () => {
+    if (isLoading) return;
+
+    const tempMerchantId = 'dev-merchant-id';
+
+    setErrorMessage([]);
+    setMerchantId(tempMerchantId);
+    onVerified?.(tempMerchantId);
+    onNext();
+  };
+
   const handleNext = async () => {
     if (isLoading) return;
 
     if (value.length !== 6) {
-      setErrorMessage('6자리 인증 코드를 입력해 주세요.');
+      setErrorMessage(['6자리 인증 코드를 입력해 주세요.']);
       return;
     }
 
     try {
       setIsLoading(true);
-      setErrorMessage('');
+      setErrorMessage([]);
 
       const response = await onboardingApi.verifyPosPin(value);
       const { success, merchantId, message } = response.data;
 
       if (!success || !merchantId) {
-        setErrorMessage(message || '인증 코드 검증에 실패했습니다.');
+        setErrorMessage([message || '인증 코드 검증에 실패했습니다.']);
         return;
       }
 
@@ -66,11 +77,13 @@ function CodeInputStep({
       onVerified?.(merchantId);
       onNext();
     } catch (error) {
-      const message =
-        error.response?.data?.message ||
-        '인증 코드 검증 중 오류가 발생했습니다. 다시 시도해 주세요.';
+      const message = error.response?.data?.message;
 
-      setErrorMessage(message);
+      setErrorMessage(
+        message
+          ? [message]
+          : ['인증 코드 검증 중 오류가 발생했습니다.', '다시 시도해 주세요.']
+      );
     } finally {
       setIsLoading(false);
     }
@@ -129,9 +142,13 @@ function CodeInputStep({
           ))}
         </div>
 
-        {errorMessage && (
-          <p className="mt-4 text-sm font-medium text-red-500">
-            {errorMessage}
+        {errorMessage.length > 0 && (
+          <p className="mt-4 text-md font-medium text-red-500 text-center">
+            {errorMessage.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))}
           </p>
         )}
 
@@ -143,6 +160,17 @@ function CodeInputStep({
         >
           QR로 인증하기
         </button>
+
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={handleTempSuccess}
+            disabled={isLoading}
+            className="mt-4 w-full py-3 text-sm font-bold text-gray-500 underline disabled:text-gray-300"
+          >
+            개발용: 인증 코드 검증 완료 처리
+          </button>
+        )}
       </div>
     </OnboardingLayout>
   );

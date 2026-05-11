@@ -4,11 +4,35 @@ import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import CategoryChip from '../components/CategoryChip.jsx';
 import ModalCategoryGuide from '../components/ModalCategoryGuide.jsx';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 const types = ['식당', '주점', '카페', '제과점'];
 
-function BusinessTypeStep({ value, onChange, onNext, onPrev }) {
+function BusinessTypeStep({ value = '', onChange, onNext, onPrev }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const category = useOnboardingStore((state) => state.category);
+  const suggestedCategory = useOnboardingStore(
+    (state) => state.suggestedCategory
+  );
+  const setCategory = useOnboardingStore((state) => state.setCategory);
+
+  const [selectedCategory, setSelectedCategory] = useState(
+    () => category || value || suggestedCategory || ''
+  );
+
+  const handleSelectCategory = (type) => {
+    setSelectedCategory(type);
+    onChange?.(type);
+  };
+
+  const handleNext = () => {
+    if (!selectedCategory) return;
+
+    setCategory(selectedCategory);
+    onChange?.(selectedCategory);
+    onNext?.();
+  };
 
   return (
     <OnboardingLayout
@@ -33,27 +57,26 @@ function BusinessTypeStep({ value, onChange, onNext, onPrev }) {
       footer={
         <OnboardingFooterButtons
           onPrev={onPrev}
-          onNext={onNext}
+          onNext={handleNext}
           nextText="저장"
-          nextDisabled={!value}
+          nextDisabled={!selectedCategory}
         />
       }
     >
       <>
-        {/* 업종 선택 */}
         <div className="grid grid-cols-2 gap-3 mt-2 w-full">
           {types.map((type) => (
             <CategoryChip
               key={type}
               label={type}
-              isSelected={value === type}
-              onClick={() => onChange(type)}
+              isSelected={selectedCategory === type}
+              onClick={() => handleSelectCategory(type)}
             />
           ))}
 
-          {/* 가운데 정렬 */}
           <div className="col-span-2 flex justify-center">
             <button
+              type="button"
               onClick={() => setIsModalOpen(true)}
               className="mt-6 text-base text-gray-500 underline underline-offset-4"
             >
@@ -62,7 +85,6 @@ function BusinessTypeStep({ value, onChange, onNext, onPrev }) {
           </div>
         </div>
 
-        {/* 모달 */}
         <ModalCategoryGuide
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}

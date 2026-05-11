@@ -4,28 +4,97 @@ import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import DayTimeRow from '../components/DayTimeRow.jsx';
 import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 const days = ['월', '화', '수', '목', '금', '토', '일'];
 
-function TimeStep({ onNext, onPrev }) {
-  const [timeData, setTimeData] = useState(
-    days.map((day) => ({
+const dayKeyMap = {
+  월: 'monday',
+  화: 'tuesday',
+  수: 'wednesday',
+  목: 'thursday',
+  금: 'friday',
+  토: 'saturday',
+  일: 'sunday',
+};
+
+const createDefaultTimeData = () =>
+  days.map((day) => ({
+    day,
+    isOpen: true,
+    startTime: '09:00',
+    endTime: '18:00',
+  }));
+
+const convertOperatingHoursToTimeData = (operatingHours) => {
+  if (!operatingHours || Object.keys(operatingHours).length === 0) {
+    return createDefaultTimeData();
+  }
+
+  return days.map((day) => {
+    const dayKey = dayKeyMap[day];
+    const savedTime = operatingHours[dayKey];
+
+    if (!savedTime) {
+      return {
+        day,
+        isOpen: true,
+        startTime: '09:00',
+        endTime: '18:00',
+      };
+    }
+
+    return {
       day,
-      isOpen: true,
-      startTime: '09:00',
-      endTime: '18:00',
-    }))
+      isOpen: savedTime.isOpen ?? true,
+      startTime: savedTime.open ?? '09:00',
+      endTime: savedTime.close ?? '18:00',
+    };
+  });
+};
+
+const convertTimeDataToOperatingHours = (timeData) =>
+  timeData.reduce((acc, item) => {
+    const dayKey = dayKeyMap[item.day];
+
+    acc[dayKey] = {
+      isOpen: item.isOpen,
+      open: item.isOpen ? item.startTime : null,
+      close: item.isOpen ? item.endTime : null,
+    };
+
+    return acc;
+  }, {});
+
+function TimeStep({ onNext, onPrev, onChange }) {
+  const operatingHours = useOnboardingStore((state) => state.operatingHours);
+  const setOperatingHours = useOnboardingStore(
+    (state) => state.setOperatingHours
+  );
+
+  const [timeData, setTimeData] = useState(() =>
+    convertOperatingHoursToTimeData(operatingHours)
   );
 
   const updateDay = (index, key, value) => {
     setTimeData((prev) => {
       const updated = [...prev];
+
       updated[index] = {
         ...updated[index],
         [key]: value,
       };
+
       return updated;
     });
+  };
+
+  const handleNext = () => {
+    const nextOperatingHours = convertTimeDataToOperatingHours(timeData);
+
+    setOperatingHours(nextOperatingHours);
+    onChange?.(nextOperatingHours);
+    onNext?.();
   };
 
   return (
@@ -38,7 +107,10 @@ function TimeStep({ onNext, onPrev }) {
           <OnboardingHeader
             title={
               <>
-                <span className="text-primary-100 font-extrabold">영업시간</span>을
+                <span className="text-primary-100 font-extrabold">
+                  영업시간
+                </span>
+                을
                 <br />
                 확인해주세요
               </>
@@ -49,20 +121,25 @@ function TimeStep({ onNext, onPrev }) {
         footer={
           <OnboardingFooterButtons
             onPrev={onPrev}
-            onNext={onNext}
-            nextLabel="저장"
+            onNext={handleNext}
+            nextText="저장"
           />
         }
       >
-        {/* 안내 카드 */}
         <div className="mt-2 w-full p-5 bg-gray-50 rounded-2xl border border-gray-100 flex flex-col gap-2">
           <div className="text-xl font-bold text-gray-900 flex items-center gap-1.5">
-            <span className="material-icons text-primary-100 text-xl">info</span>
+            <span className="material-icons text-primary-100 text-xl">
+              info
+            </span>
             새벽까지 영업하시나요?
           </div>
 
           <div className="text-[17px] text-gray-600 leading-relaxed">
-            밤 12시가 넘어도 <span className="font-extrabold text-gray-900">그대로 입력</span>하세요.
+            밤 12시가 넘어도{' '}
+            <span className="font-extrabold text-gray-900">
+              그대로 입력
+            </span>
+            하세요.
           </div>
 
           <div className="mt-1 text-base font-medium text-gray-400">
@@ -70,7 +147,6 @@ function TimeStep({ onNext, onPrev }) {
           </div>
         </div>
 
-        {/* 요일/시간 리스트 */}
         <div className="mt-6 w-full flex flex-col gap-3 pb-8">
           {timeData.map((item, idx) => (
             <DayTimeRow

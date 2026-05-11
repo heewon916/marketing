@@ -27,6 +27,18 @@ function QRStep({ onPrev, onSuccess, onVerified }) {
     return qrValue.replace(/[^0-9]/g, '').slice(0, 6);
   };
 
+  const handleTempSuccess = () => {
+    if (isVerifying || isScanCompleted) return;
+
+    const tempMerchantId = 'dev-merchant-id';
+
+    setErrorMessage('');
+    setIsScanCompleted(true);
+
+    onVerified?.(tempMerchantId);
+    onSuccess?.();
+  };
+
   const handleScanSuccess = async (qrValue) => {
     if (isVerifying || isScanCompleted) return;
 
@@ -94,6 +106,16 @@ function QRStep({ onPrev, onSuccess, onVerified }) {
           onSuccess={handleScanSuccess}
           disabled={isVerifying || isScanCompleted}
         />
+
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={handleTempSuccess}
+            className="mt-4 w-full py-3 text-sm font-bold text-gray-500 underline"
+          >
+            개발용: QR 인증 완료 처리
+          </button>
+        )}
 
         {isVerifying && (
           <p className="mt-4 text-sm font-medium text-gray-500">
