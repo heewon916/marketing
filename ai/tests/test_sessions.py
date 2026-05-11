@@ -30,6 +30,10 @@ from app.services.keyword_extraction import (
     KeywordExtractionService,
     KeywordExtractionUnavailableError,
 )
+from app.services.reference_caption_retriever import (
+    ReferenceCaptionRetrievalResult,
+    RetrievedReferenceCaption,
+)
 from app.services.sessions import (
     resolve_caption_keywords,
     session_key,
@@ -259,6 +263,7 @@ class FakeCaptionGenerationService:
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
+                "reference_captions": list(request.reference_captions),
             }
         )
         if self.error is not None:
@@ -276,6 +281,7 @@ class FakeCaptionGenerationService:
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
+                "reference_captions": list(request.reference_captions),
                 "fallback_source": fallback_source,
             }
         )
@@ -302,6 +308,37 @@ class FakeCaptionGenerationService:
             ),
             fallback_source=effective_fallback_source,
         )
+
+
+class FakeReferenceCaptionRetrieverService:
+    def __init__(
+        self,
+        result: ReferenceCaptionRetrievalResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result or ReferenceCaptionRetrievalResult()
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def retrieve(
+        self,
+        *,
+        owner_persona: str,
+        utterance: str,
+        canonical_matches: list[CanonicalKeywordMatch],
+        max_references: int | None = None,
+    ) -> ReferenceCaptionRetrievalResult:
+        self.calls.append(
+            {
+                "owner_persona": owner_persona,
+                "utterance": utterance,
+                "canonical_matches": list(canonical_matches),
+                "max_references": max_references,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.result
 
 
 class StubDraftDownloader:
@@ -597,6 +634,106 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
 
     assert response.status_code == 200
     assert fake_service.calls[0]["keywords"] == ["signature menu", "evening notice"]
+
+
+def test_process_utterance_passes_reference_captions_to_caption_request(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-reference-captions-1"
+    original_caption_service = app.state.caption_generation_service
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[
+                RetrievedReferenceCaption(
+                    caption_id=1,
+                    caption_content="첫 번째 레퍼런스 캡션",
+                    score=0.91,
+                ),
+                RetrievedReferenceCaption(
+                    caption_id=2,
+                    caption_content="두 번째 레퍼런스 캡션",
+                    score=0.88,
+                ),
+            ],
+            candidate_count=2,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.reference_caption_retriever_service = fake_retriever_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    assert fake_caption_service.calls[0]["reference_captions"] == [
+        "첫 번째 레퍼런스 캡션",
+        "두 번째 레퍼런스 캡션",
+    ]
+    assert fake_retriever_service.calls[0]["owner_persona"] == VALID_PAYLOAD["owner_persona"]
+
+
+def test_process_utterance_skips_reference_captions_when_retriever_returns_no_matches(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-reference-captions-2"
+    original_caption_service = app.state.caption_generation_service
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[],
+            fallback_reason="no_reference_candidates",
+            candidate_count=0,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.reference_caption_retriever_service = fake_retriever_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    assert fake_caption_service.calls[0]["reference_captions"] == []
+
+
+def test_process_utterance_skips_reference_captions_when_retriever_fails(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-reference-captions-3"
+    original_caption_service = app.state.caption_generation_service
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        error=RuntimeError("retriever unavailable")
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.reference_caption_retriever_service = fake_retriever_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    assert fake_caption_service.calls[0]["reference_captions"] == []
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:

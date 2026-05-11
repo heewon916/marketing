@@ -311,7 +311,33 @@ def test_model_client_defaults_apply_when_env_is_missing(
         settings.caption_model_client.timeout_seconds
         == DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
     )
-    assert settings.caption_model_client.max_tokens == 256
+    assert settings.caption_model_client.max_tokens == 1024
+
+
+def test_reference_caption_rag_defaults_apply_when_env_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.delenv("REFERENCE_CAPTION_RAG_ENABLED", raising=False)
+    monkeypatch.delenv("REFERENCE_CAPTION_MAX_REFERENCES", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REFERENCE_CAPTION_RAG_ENABLED is True
+    assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 2
+
+
+def test_reference_caption_rag_env_vars_are_applied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("REFERENCE_CAPTION_RAG_ENABLED", "false")
+    monkeypatch.setenv("REFERENCE_CAPTION_MAX_REFERENCES", "4")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REFERENCE_CAPTION_RAG_ENABLED is False
+    assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 4
 
 
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -452,3 +452,25 @@ def test_caption_generation_service_preload_raises_when_server_unreachable(
         match="connectivity check failed",
     ):
         _run_immediate(service.preload())
+
+
+def test_caption_generation_prompt_includes_reference_captions() -> None:
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+
+    prompt = service._get_pipeline("메뉴 홍보").build_prompt(
+        CaptionGenerationRequest(
+            purpose="메뉴 홍보",
+            keywords=["signature menu"],
+            owner_persona="aesthetic",
+            weather_tags=["PRECIP_CLEAR"],
+            reference_captions=[
+                "첫 번째 레퍼런스 캡션",
+                "두 번째 레퍼런스 캡션",
+            ],
+        )
+    )
+
+    assert "참고용 레퍼런스 캡션" in prompt
+    assert "1. 첫 번째 레퍼런스 캡션" in prompt
+    assert "2. 두 번째 레퍼런스 캡션" in prompt
+    assert "문장을 그대로 복사" in prompt
