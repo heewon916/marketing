@@ -2,7 +2,7 @@ import { api } from "@/lib/Axios"
 
 export async function requestDraftPost(sessionId) {
 	if (!sessionId) {
-		throw new Error("세션 정보가 없어 임시 게시물을 조회할 수 없습니다.")
+		//throw new Error("세션 정보가 없어 임시 게시물을 조회할 수 없습니다.")
 	}
 
 	try {
@@ -36,7 +36,7 @@ export async function requestDraftPost(sessionId) {
 
 export async function requestEditDraftCaption(sessionId, caption) {
 	if (!sessionId) {
-		throw new Error("세션 정보가 없어 캡션을 수정할 수 없습니다.")
+		//throw new Error("세션 정보가 없어 캡션을 수정할 수 없습니다.")
 	}
 
 	try {
@@ -53,6 +53,6 @@ export async function requestEditDraftCaption(sessionId, caption) {
 		}
 	} catch (error) {
 		const errorMessage = error.response?.data?.message
-		throw new Error(errorMessage || "캡션 수정에 실패했습니다.", { cause: error })
+		//throw new Error(errorMessage || "캡션 수정에 실패했습니다.", { cause: error })
 	}
 }

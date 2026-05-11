@@ -2,7 +2,7 @@ import { api } from "@/lib/Axios"
 
 export async function requestContentImages(sessionId) {
 	if (!sessionId) {
-		throw new Error("세션 정보가 없어 이미지를 조회할 수 없습니다.")
+		//throw new Error("세션 정보가 없어 이미지를 조회할 수 없습니다.")
 	}
 
 	try {
@@ -20,7 +20,7 @@ export async function requestContentImages(sessionId) {
 		}
 	} catch (error) {
 		const errorMessage = error.response?.data?.message
-		throw new Error(errorMessage || "이미지 조회에 실패했습니다.", { cause: error })
+		//throw new Error(errorMessage || "이미지 조회에 실패했습니다.", { cause: error })
 	}
 }
 
@@ -47,6 +47,6 @@ export async function requestDeleteContentImage(sessionId, deletedImageKey) {
 		}
 	} catch (error) {
 		const errorMessage = error.response?.data?.message
-		throw new Error(errorMessage || "이미지 삭제에 실패했습니다.", { cause: error })
+		//throw new Error(errorMessage || "이미지 삭제에 실패했습니다.", { cause: error })
 	}
 }
