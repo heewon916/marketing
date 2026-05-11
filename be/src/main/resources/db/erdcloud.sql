@@ -93,7 +93,7 @@ COMMENT ON COLUMN "reference_images"."lighting_params" IS '표준 키:
 CREATE TABLE "reference_captions" (
                                       "id"                BIGINT         NOT NULL,
                                       "caption_content"   TEXT           NOT NULL,
-                                      "embedding"         VECTOR(768)   NOT NULL,
+                                      "embedding"         VECTOR(384)   NOT NULL,
                                       CONSTRAINT "PK_REFERENCE_CAPTIONS" PRIMARY KEY ("id") -- PK 추가
 );
 

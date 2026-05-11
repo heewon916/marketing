@@ -157,16 +157,34 @@ class CanonicalKeywordResolverService:
             matches=matches,
         )
 
-    async def embed_display_names(self, display_names: list[str]) -> list[list[float]]:
-        if not display_names:
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
             return []
         if not self._enabled:
             raise RuntimeError("Canonical keyword resolver is disabled.")
         return await asyncio.to_thread(
             self._embed_texts,
-            display_names,
+            texts,
+            "query",
+        )
+
+    async def embed_passages(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        if not self._enabled:
+            raise RuntimeError("Canonical keyword resolver is disabled.")
+        return await asyncio.to_thread(
+            self._embed_texts,
+            texts,
             "passage",
         )
+
+    async def embed_display_names(self, display_names: list[str]) -> list[list[float]]:
+        if not display_names:
+            return []
+        if not self._enabled:
+            raise RuntimeError("Canonical keyword resolver is disabled.")
+        return await self.embed_passages(display_names)
 
     def _ensure_model_loaded(self) -> None:
         if self._tokenizer is not None and self._model is not None:
