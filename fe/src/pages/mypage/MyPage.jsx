@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BottomTab from '@/components/common/BottomTab';
 import MyPageHeader from '@/features/mypage/components/MyPageHeader';
 import MyPageTabSwitcher from '@/features/mypage/components/MyPageTabSwitcher';
 import MyPageStatsSection from '@/features/mypage/sections/MyPageStatsSection';
 import AccountInfoSection from '@/features/mypage/sections/AccountInfoSection';
 import OperatingHoursSection from '@/features/mypage/sections/OperatingHoursSection';
+import { mypageApi } from '@/features/mypage/api';
+import { authApi } from '@/features/auth/api';
 
 const myPageMockData = {
-  storeName: '바나프레소',
-  instagramUsername: '@banapresso_official',
   weeklyPostAchievementRate: 25,
   targetPostCount: 4,
   achievedPostCount: 1,
@@ -16,19 +17,104 @@ const myPageMockData = {
   weeklyVisitIntentScore: -29,
 };
 
-export default function MyPage() {
-  const [activeTab, setActiveTab] = useState('stats');
+const clearAuthStorage = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  sessionStorage.removeItem('instagramAuthPurpose');
+};
 
-  const handleLogout = () => {
-    // TODO: 실제 로그아웃 로직 연결
-    console.log('로그아웃');
+export default function MyPage() {
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState('stats');
+  const [myInfo, setMyInfo] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchMyInfo = async () => {
+    try {
+      const response = await mypageApi.getMyInfo();
+
+      console.log('마이페이지 정보:', response.data);
+
+      setMyInfo(response.data);
+    } catch (error) {
+      console.error('마이페이지 정보 조회 실패:', error);
+    }
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadMyInfo = async () => {
+      try {
+        const response = await mypageApi.getMyInfo();
+
+        console.log('마이페이지 정보:', response.data);
+
+        if (isMounted) {
+          setMyInfo(response.data);
+        }
+      } catch (error) {
+        console.error('마이페이지 정보 조회 실패:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadMyInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const user = myInfo?.user;
+  const store = myInfo?.store;
+
+  const storeName = store?.storeName ?? '매장명 없음';
+
+  const instagramUsername = user?.instagramUsername
+    ? `@${user.instagramUsername}`
+    : '@instagram';
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch (error) {
+      console.error('로그아웃 API 호출 실패:', error);
+    } finally {
+      clearAuthStorage();
+      navigate('/', { replace: true });
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await authApi.deleteAccount();
+    } catch (error) {
+      console.error('회원탈퇴 API 호출 실패:', error);
+      throw error;
+    }
+
+    clearAuthStorage();
+    navigate('/', { replace: true });
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex h-dvh items-center justify-center bg-[#f4f4f6] text-base text-gray-500">
+        마이페이지 정보를 불러오는 중입니다.
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[#f4f4f6]">
       <MyPageHeader
-        storeName={myPageMockData.storeName}
-        instagramUsername={myPageMockData.instagramUsername}
+        storeName={storeName}
+        instagramUsername={instagramUsername}
       />
 
       <MyPageTabSwitcher activeTab={activeTab} onChange={setActiveTab} />
@@ -45,10 +131,20 @@ export default function MyPage() {
         )}
 
         {activeTab === 'info' && (
-          <AccountInfoSection onLogout={handleLogout} />
+          <AccountInfoSection
+            store={store}
+            onLogout={handleLogout}
+            onRefresh={fetchMyInfo}
+            onDeleteAccount={handleDeleteAccount}
+          />
         )}
 
-        {activeTab === 'hours' && <OperatingHoursSection />}
+        {activeTab === 'hours' && (
+          <OperatingHoursSection
+            operatingHours={store?.operatingHours}
+            onRefresh={fetchMyInfo}
+          />
+        )}
       </main>
 
       <BottomTab fixed={false} />
