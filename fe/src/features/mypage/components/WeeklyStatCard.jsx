@@ -91,11 +91,11 @@ export default function WeeklyStatCard({
       </div>
 
       <div className="mt-4 text-center">
-        <h2 className="text-[28px] font-semibold tracking-tight text-accent-100">
+        <h2 className="text-[24px] font-semibold tracking-tight text-accent-100">
           주간 포스팅 달성률
         </h2>
 
-        <p className="mt-2 text-[20px] font-normal leading-relaxed text-gray-500">
+        <p className="mt-2 text-[17px] font-normal leading-relaxed text-gray-500">
           지난 7일간 계획한{' '}
           <strong className="font-semibold text-primary-100">
             {plannedCount}개

@@ -1,9 +1,33 @@
+import { useState } from 'react';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import RoundedInput from '../components/RoundedInput.jsx';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function StoreNameStep({ value, onChange, onNext, onPrev }) {
+function StoreNameStep({ value = '', onChange, onNext, onPrev }) {
+  const storeName = useOnboardingStore((state) => state.storeName);
+  const setStoreName = useOnboardingStore((state) => state.setStoreName);
+
+  const [inputValue, setInputValue] = useState(() => storeName || value || '');
+
+  const handleChange = (e) => {
+    const nextValue = e.target.value;
+
+    setInputValue(nextValue);
+    onChange?.(nextValue);
+  };
+
+  const handleNext = () => {
+    const trimmedValue = inputValue.trim();
+
+    if (!trimmedValue) return;
+
+    setStoreName(trimmedValue);
+    onChange?.(trimmedValue);
+    onNext?.();
+  };
+
   return (
     <OnboardingLayout
       currentStep={6}
@@ -27,16 +51,16 @@ function StoreNameStep({ value, onChange, onNext, onPrev }) {
       footer={
         <OnboardingFooterButtons
           onPrev={onPrev}
-          onNext={onNext}
+          onNext={handleNext}
           nextText="저장"
-          nextDisabled={!value?.trim()}
+          nextDisabled={!inputValue.trim()}
         />
       }
     >
       <div className="mt-2 w-full">
         <RoundedInput
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          value={inputValue}
+          onChange={handleChange}
           placeholder="상호명을 입력해 주세요"
         />
       </div>

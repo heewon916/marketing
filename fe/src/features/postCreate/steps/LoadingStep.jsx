@@ -18,7 +18,7 @@ export default function LoadingStep({ title, description, stepNum }) {
 				</section>
 
 				<section className="flex justify-center">
-					<Character type="run" />
+					<Character type="run" className="max-h-[40vh]" />
 				</section>
 			</div>
 		</main>

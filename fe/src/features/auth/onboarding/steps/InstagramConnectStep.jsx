@@ -2,25 +2,14 @@ import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
+import {
+  authApi,
+  INSTAGRAM_AUTH_PURPOSE,
+} from '@/features/auth/api.js';
 
-// 개발 환경 (나중에 false로 변경)
-const IS_DEV = true;
-
-function InstagramConnectStep({ onNext, setFormData }) {
-
+function InstagramConnectStep() {
   const handleConnect = () => {
-    if (IS_DEV) {
-      // mock 처리
-      setFormData((prev) => ({
-        ...prev,
-        isInstagramConnected: true,
-      }));
-
-      onNext();
-    } else {
-      // 실제 OAuth
-      window.location.href = 'https://api.yourdomain.com/oauth/instagram';
-    }
+    authApi.loginWithInstagram(INSTAGRAM_AUTH_PURPOSE.ONBOARDING);
   };
 
   return (

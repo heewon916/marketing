@@ -12,3 +12,4 @@
 
 ## Convention
 - Git Convention: docs/git-convention.md
+- AI Llama Servers: docs/ai-keyword-server.md

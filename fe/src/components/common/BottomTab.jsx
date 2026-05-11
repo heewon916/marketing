@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { GoHomeFill } from 'react-icons/go';
 import { IoPerson } from 'react-icons/io5';
 
-function BottomTab() {
+function BottomTab({ fixed = true }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -15,12 +15,23 @@ function BottomTab() {
   const isMyPage = currentPath.startsWith('/mypage');
 
   return (
-    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-gray-200">
+    <div
+      className={[
+        'w-full max-w-md bg-white border-t border-gray-200',
+        fixed
+          ? 'fixed bottom-0 left-1/2 -translate-x-1/2'
+          : 'mx-auto shrink-0',
+      ].join(' ')}
+    >
       <div className="flex h-20">
         {/* 홈 */}
         <button
           type="button"
-          onClick={() => navigate('/home')}
+          onClick={() => {
+            if (currentPath !== '/home') {
+              navigate('/home');
+            }
+          }}
           className="flex-1 flex flex-col items-center justify-center"
         >
           <GoHomeFill
@@ -45,7 +56,11 @@ function BottomTab() {
         {/* 내 정보 */}
         <button
           type="button"
-          onClick={() => navigate('/mypage')}
+          onClick={() => {
+            if (currentPath !== '/mypage') {
+              navigate('/mypage');
+            }
+          }}
           className="flex-1 flex flex-col items-center justify-center"
         >
           <IoPerson

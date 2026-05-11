@@ -27,6 +27,9 @@ public class User {
     @Column(name = "instagram_username", length = 100)
     private String instagramUsername;
 
+    @Column(name = "profile_image_url", columnDefinition = "TEXT")
+    private String profileImageUrl;
+
     @Column(name = "access_token", columnDefinition = "TEXT")
     private String accessToken;
 
@@ -45,9 +48,10 @@ public class User {
     private OffsetDateTime updatedAt;
 
     @Builder
-    public User(String instagramUserId, String instagramUsername, String accessToken, OffsetDateTime tokenExpiresAt, Boolean cameraMicGranted) {
+    public User(String instagramUserId, String instagramUsername, String profileImageUrl, String accessToken, OffsetDateTime tokenExpiresAt, Boolean cameraMicGranted) {
         this.instagramUserId = instagramUserId;
         this.instagramUsername = instagramUsername;
+        this.profileImageUrl = profileImageUrl;
         this.accessToken = accessToken;
         this.tokenExpiresAt = tokenExpiresAt;
         this.cameraMicGranted = cameraMicGranted;
@@ -58,5 +62,10 @@ public class User {
         this.accessToken = accessToken;
         this.tokenExpiresAt = tokenExpiresAt;
         return this;
+    }
+
+    public void updateProfile(String instagramUsername, String profileImageUrl) {
+        if (instagramUsername != null) this.instagramUsername = instagramUsername;
+        if (profileImageUrl != null) this.profileImageUrl = profileImageUrl;
     }
 }

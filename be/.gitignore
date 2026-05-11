@@ -47,7 +47,7 @@ src/main/resources/application-prod.properties
 !src/main/resources/application-prod-example.properties
 
 # env
-.env
+../.env
 .env.*
 !.env.example
 

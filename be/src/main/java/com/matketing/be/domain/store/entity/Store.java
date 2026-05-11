@@ -7,6 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -31,11 +33,15 @@ public class Store {
     @Column(name = "store_name", nullable = false, length = 200)
     private String storeName;
 
-    @Column(name = "category")
-    private String category; // 향후 Enum으로 변경 가능
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "category", columnDefinition = "category_type")
+    private CategoryEnumType category;
 
-    @Column(name = "owner_persona")
-    private String ownerPersona; // 향후 Enum으로 변경 가능
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "owner_persona", columnDefinition = "owner_persona_type")
+    private OwnerPersonaEnumType ownerPersona;
 
     @Column(name = "address", columnDefinition = "TEXT")
     private String address;
@@ -46,6 +52,7 @@ public class Store {
     @Column(name = "longitude", precision = 10, scale = 7)
     private BigDecimal longitude;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "operating_hours", columnDefinition = "jsonb")
     private String operatingHours;
 
@@ -58,7 +65,7 @@ public class Store {
     private OffsetDateTime updatedAt;
 
     @Builder
-    public Store(UUID userId, String merchantId, String storeName, String category, String ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+    public Store(UUID userId, String merchantId, String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
         this.userId = userId;
         this.merchantId = merchantId;
         this.storeName = storeName;
@@ -70,9 +77,13 @@ public class Store {
         this.operatingHours = operatingHours;
     }
 
-    public void updateDetails(String address, BigDecimal latitude, BigDecimal longitude) {
-        this.address = address;
-        this.latitude = latitude;
-        this.longitude = longitude;
+    public void updateAllDetails(String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+        if (storeName != null) this.storeName = storeName;
+        if (category != null) this.category = category;
+        if (ownerPersona != null) this.ownerPersona = ownerPersona;
+        if (address != null) this.address = address;
+        if (latitude != null) this.latitude = latitude;
+        if (longitude != null) this.longitude = longitude;
+        if (operatingHours != null) this.operatingHours = operatingHours;
     }
 }

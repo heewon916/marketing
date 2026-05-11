@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import Modal from '@/components/common/Modal.jsx';
+import Button from '@/components/common/Button.jsx';
 
 import StartStep from '@/features/auth/onboarding/steps/StartStep.jsx';
 import InstagramConnectStep from '@/features/auth/onboarding/steps/InstagramConnectStep.jsx';
@@ -18,42 +20,44 @@ import TimeStep from '@/features/auth/onboarding/steps/TimeStep.jsx';
 import CompleteStep from '@/features/auth/onboarding/steps/CompleteStep.jsx';
 
 import OnboardingLeaveConfirmModal from '@/features/auth/onboarding/components/OnboardingLeaveConfirmModal.jsx';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 function OnboardingPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [step, setStep] = useState(1);
-  const [, setStepHistory] = useState([]);
+  const setMerchantId = useOnboardingStore((state) => state.setMerchantId);
+
+  const isInstagramSuccess =
+    new URLSearchParams(window.location.search).get('instagram') === 'success';
+
+  const [authNotice, setAuthNotice] = useState(
+    () => location.state?.authNotice ?? null
+  );
+
+  const [authRedirectTo, setAuthRedirectTo] = useState(
+    () => location.state?.redirectTo ?? null
+  );
+
+  const [step, setStep] = useState(() => (isInstagramSuccess ? 3 : 1));
+  const [stepHistory, setStepHistory] = useState([]);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [authCode, setAuthCode] = useState('');
 
-  const getProgressStep = (step) => {
-    if (step <= 3) return 1;
-    if (step <= 6) return 2;
-    if (step === 7) return 3;
-    if (step === 8) return 4;
-    if (step <= 10) return 5;
-    if (step <= 14) return 6;
-    return 7;
-  };
+  useEffect(() => {
+    if (!location.state?.authNotice) return;
 
-  const progressStep = getProgressStep(step);
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
+  }, [location.pathname, location.state, navigate]);
 
-  const [formData, setFormData] = useState({
-    storeId: '',
-    merchantId: '',
-    storeName: '',
-    category: '',
-    ownerPersona: '',
-    aesthetic: '',
-    naverPlaceId: '',
-    address: '',
-    lat: null,
-    lng: null,
-    operatingHours: {},
-    menus: [],
-    authCode: '',
-    isInstagramConnected: false,
-  });
+  useEffect(() => {
+    if (isInstagramSuccess) {
+      window.history.replaceState({}, document.title, '/auth/onboarding');
+    }
+  }, [isInstagramSuccess]);
 
   useEffect(() => {
     window.history.pushState({ onboardingGuard: true }, '');
@@ -70,6 +74,18 @@ function OnboardingPage() {
     };
   }, []);
 
+  const getProgressStep = (currentStep) => {
+    if (currentStep <= 3) return 1;
+    if (currentStep <= 6) return 2;
+    if (currentStep === 7) return 3;
+    if (currentStep === 8) return 4;
+    if (currentStep <= 10) return 5;
+    if (currentStep <= 14) return 6;
+    return 7;
+  };
+
+  const progressStep = getProgressStep(step);
+
   const moveToStep = (nextStep) => {
     setStepHistory((prev) => [...prev, step]);
     setStep(nextStep);
@@ -80,15 +96,15 @@ function OnboardingPage() {
   };
 
   const prevStep = () => {
-    setStepHistory((prev) => {
-      if (prev.length === 0) return prev;
+    if (stepHistory.length === 0) {
+      navigate('/', { replace: true });
+      return;
+    }
 
-      const previousStep = prev[prev.length - 1];
+    const previousStep = stepHistory[stepHistory.length - 1];
 
-      setStep(previousStep);
-
-      return prev.slice(0, -1);
-    });
+    setStep(previousStep);
+    setStepHistory((prev) => prev.slice(0, -1));
   };
 
   const handleCancelLeave = () => {
@@ -98,6 +114,21 @@ function OnboardingPage() {
   const handleConfirmLeave = () => {
     setIsLeaveModalOpen(false);
     navigate('/', { replace: true });
+  };
+
+  const handleCloseAuthNoticeModal = () => {
+    setAuthNotice(null);
+
+    if (authRedirectTo) {
+      const nextPath = authRedirectTo;
+
+      setAuthRedirectTo(null);
+      navigate(nextPath, { replace: true });
+    }
+  };
+
+  const handleVerified = (merchantId) => {
+    setMerchantId(merchantId);
   };
 
   const commonProps = {
@@ -112,12 +143,7 @@ function OnboardingPage() {
         return <StartStep {...commonProps} />;
 
       case 2:
-        return (
-          <InstagramConnectStep
-            {...commonProps}
-            setFormData={setFormData}
-          />
-        );
+        return <InstagramConnectStep {...commonProps} />;
 
       case 3:
         return <InstagramSuccessStep {...commonProps} />;
@@ -129,17 +155,22 @@ function OnboardingPage() {
         return (
           <CodeInputStep
             {...commonProps}
-            value={formData.authCode}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, authCode: value }))
-            }
+            value={authCode}
+            onChange={setAuthCode}
+            onVerified={handleVerified}
             onGoToQR={() => moveToStep(6)}
             onNext={() => moveToStep(7)}
           />
         );
 
       case 6:
-        return <QRStep {...commonProps} onSuccess={nextStep} />;
+        return (
+          <QRStep
+            {...commonProps}
+            onSuccess={() => moveToStep(7)}
+            onVerified={handleVerified}
+          />
+        );
 
       case 7:
         return <LoadingStep {...commonProps} />;
@@ -151,6 +182,7 @@ function OnboardingPage() {
         return (
           <StoreSelectStep
             {...commonProps}
+            onNext={() => moveToStep(13)}
             onManualInput={() => moveToStep(11)}
           />
         );
@@ -159,51 +191,19 @@ function OnboardingPage() {
         return <StoreLoadingStep {...commonProps} />;
 
       case 11:
-        return (
-          <StoreNameStep
-            {...commonProps}
-            value={formData.storeName}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, storeName: value }))
-            }
-          />
-        );
+        return <StoreNameStep {...commonProps} />;
 
       case 12:
-        return (
-          <BusinessTypeStep
-            {...commonProps}
-            value={formData.category}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, category: value }))
-            }
-          />
-        );
+        return <BusinessTypeStep {...commonProps} />;
 
       case 13:
-        return (
-          <LocationStep
-            {...commonProps}
-            value={formData.naverPlaceId}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, naverPlaceId: value }))
-            }
-          />
-        );
+        return <LocationStep {...commonProps} />;
 
       case 14:
-        return (
-          <TimeStep
-            {...commonProps}
-            value={formData.operatingHours}
-            onChange={(value) =>
-              setFormData((prev) => ({ ...prev, operatingHours: value }))
-            }
-          />
-        );
+        return <TimeStep {...commonProps} />;
 
       case 15:
-        return <CompleteStep progressStep={progressStep} />;
+        return <CompleteStep {...commonProps} />;
 
       default:
         return <div>잘못된 접근입니다</div>;
@@ -221,6 +221,30 @@ function OnboardingPage() {
         onCancel={handleCancelLeave}
         onConfirm={handleConfirmLeave}
       />
+
+      <Modal
+        isOpen={!!authNotice}
+        onClose={handleCloseAuthNoticeModal}
+        showClose={false}
+        closeOnBackdrop={false}
+      >
+        <div className="text-center">
+          <h3 className="text-xl font-bold text-gray-900">
+            {authNotice?.title}
+          </h3>
+
+          <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
+            {authNotice?.description}
+          </p>
+
+          <Button
+            onClick={handleCloseAuthNoticeModal}
+            className="mt-8 w-full font-bold"
+          >
+            확인
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

@@ -17,6 +17,7 @@
 .gradle/
 build/
 out/
+docs/
 
 # Node (프론트 대비)
 node_modules/
@@ -25,6 +26,7 @@ dist/
 # ai
 __pycache__/
 .venv/
+.models/
 
 ######################################################################
 # OS Files
@@ -47,6 +49,7 @@ Thumbs.db
 application-local.yml
 application-dev.yml
 application-prod.yml
+init.sql
 
 ######################################################################
 # Etc
