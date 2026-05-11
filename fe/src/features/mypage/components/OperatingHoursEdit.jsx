@@ -1,6 +1,25 @@
+import { useState } from 'react';
 import DayTimeRow from '@/features/auth/onboarding/components/DayTimeRow';
 import Button from '@/components/common/Button';
 import CardShell from './CardShell';
+import {
+  convertApiCloseTimeToDisplayTime,
+  convertDisplayCloseTimeToApiTime,
+} from '@/utils/operatingHours.js';
+
+const convertHoursToDisplayHours = (hours) =>
+  hours.map((item) => ({
+    ...item,
+    endTime: convertApiCloseTimeToDisplayTime(item.endTime),
+  }));
+
+const convertHoursToApiHours = (hours) =>
+  hours.map((item) => ({
+    ...item,
+    endTime: item.isOpen
+      ? convertDisplayCloseTimeToApiTime(item.startTime, item.endTime)
+      : null,
+  }));
 
 export default function OperatingHoursEdit({
   hours,
@@ -8,17 +27,32 @@ export default function OperatingHoursEdit({
   onCancel,
   onSave,
 }) {
+  const [editableHours, setEditableHours] = useState(() =>
+    convertHoursToDisplayHours(hours)
+  );
+
   const updateDay = (index, key, value) => {
-    const updatedHours = hours.map((item, currentIndex) => {
-      if (currentIndex !== index) return item;
+    setEditableHours((prev) => {
+      const updatedHours = prev.map((item, currentIndex) => {
+        if (currentIndex !== index) return item;
 
-      return {
-        ...item,
-        [key]: value,
-      };
+        return {
+          ...item,
+          [key]: value,
+        };
+      });
+
+      onChange?.(updatedHours);
+
+      return updatedHours;
     });
+  };
 
-    onChange(updatedHours);
+  const handleSave = () => {
+    const apiHours = convertHoursToApiHours(editableHours);
+
+    onChange?.(apiHours);
+    onSave?.(apiHours);
   };
 
   return (
@@ -26,7 +60,7 @@ export default function OperatingHoursEdit({
       <h2 className="text-[15px] font-semibold text-gray-400">영업시간</h2>
 
       <div className="flex flex-col gap-3">
-        {hours.map((item, index) => (
+        {editableHours.map((item, index) => (
           <DayTimeRow
             key={item.day}
             day={item.day}
@@ -53,7 +87,7 @@ export default function OperatingHoursEdit({
         <Button
           size="sm"
           variant="primary"
-          onClick={onSave}
+          onClick={handleSave}
           className="text-[18px] font-bold"
         >
           저장하기

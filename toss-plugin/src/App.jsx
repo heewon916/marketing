@@ -52,22 +52,31 @@ function App() {
 
   const generatePin = async () => {
     setStep('loading');
-    setStatus("번호 생성 중");
+    setStatus("번호 생성 중...");
+    
     const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     setPinCode(randomPin);
-    setTimeLeft(180); // 3분 타이머 초기화
+    setTimeLeft(180);
+
+    let mId = "";
+
+    // [에러 케이스 A] POS SDK 추출 에러
+    try {
+      const merchant = await posPluginSdk.merchant.getMerchant();
+      mId = merchant.id.toString();
+    } catch (sdkError) {
+      console.warn("POS 환경이 아닙니다. 테스트용 가맹점 ID를 사용합니다.", sdkError);
+      // 라이브 환경에서는 에러 처리 필요
+      // setStatus("포스기 정보를 불러올 수 없습니다. 기기를 재시작해주세요.");
+      // setStep('initial');
+      // return;
+      
+      // 현재는 테스트를 위해 더미 유지
+      mId = "test-merchant-123"; 
+    }
+    merchantRef.current = mId;
 
     try {
-      // 로컬 테스트용 Mock 가맹점 ID 처리
-      let mId = "test-merchant-123";
-      try {
-        const merchant = await posPluginSdk.merchant.getMerchant();
-        mId = merchant.id.toString();
-      } catch {
-        console.warn("POS 환경이 아닙니다. 테스트용 가맹점 ID를 사용합니다.");
-      }
-      merchantRef.current = mId;
-
       const response = await fetch(`${API_BASE_URL}/api/v1/onboarding/pin/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,16 +86,36 @@ function App() {
         })
       });
 
-      if (response.ok) {
-        setStatus("등록 성공! 매장 관리 앱에서 아래 번호를 입력해주세요.");
-        setStep('generated');
-      } else {
-        setStatus("등록 실패 (서버 에러)");
+      // [에러 케이스 C] 백엔드 서버에서 거절한 경우 (4xx, 5xx)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("서버 응답 에러:", response.status, errorData);
+        
+        if (response.status === 400 || response.status === 404) {
+          setStatus("잘못된 요청입니다. 다시 시도해주세요.");
+        } else if (response.status === 500) {
+          setStatus("서버에 일시적인 오류가 발생했습니다. 잠시 후 다시 눌러주세요.");
+        } else {
+          setStatus(`인증 번호 등록에 실패했습니다. (코드: ${response.status})`);
+        }
         setStep('initial');
+        return; // 함수 종료
       }
-    } catch (error) {
-      console.error("SDK 인증 정보 추출 또는 서버 등록 실패:", error);
-      setStatus(`에러 발생: ${error.message || "원인 불명"}`);
+
+      // 정상 처리
+      setStatus("등록 성공! 매장 관리 앱에서 아래 번호를 입력해주세요.");
+      setStep('generated');
+
+    } catch (networkError) {
+      // [에러 케이스 B] 네트워크 단절 또는 CORS/ACL 차단 에러
+      console.error("네트워크/CORS 에러:", networkError);
+      
+      // fetch 에러는 보통 TypeError로 넘어옵니다.
+      if (networkError.name === 'TypeError') {
+        setStatus("통신이 차단되었습니다. 인터넷 연결이나 개발자 센터의 ACL 설정을 확인해주세요.");
+      } else {
+        setStatus("알 수 없는 네트워크 오류가 발생했습니다. 와이파이 연결을 확인해주세요.");
+      }
       setStep('initial');
     }
   };

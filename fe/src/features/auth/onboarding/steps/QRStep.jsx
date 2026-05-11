@@ -3,7 +3,7 @@ import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import BackButton from '../components/BackButton.jsx';
 import QRScanner from '../components/QRScanner.jsx';
-import { authApi } from '@/features/auth/api.js';
+import { onboardingApi } from '@/features/auth/onboarding/api.js';
 
 function QRStep({ onPrev, onSuccess, onVerified }) {
   const [isVerifying, setIsVerifying] = useState(false);
@@ -42,7 +42,7 @@ function QRStep({ onPrev, onSuccess, onVerified }) {
       setIsScanCompleted(true);
       setErrorMessage('');
 
-      const response = await authApi.verifyPosPin(pin);
+      const response = await onboardingApi.verifyPosPin(pin);
       const { success, merchantId, message } = response.data;
 
       if (!success || !merchantId) {

@@ -2,6 +2,10 @@ import { useState } from 'react';
 import OperatingHoursEdit from '../components/OperatingHoursEdit';
 import OperatingHoursList from '../components/OperatingHoursList';
 import { mypageApi } from '@/features/mypage/api';
+import {
+  convertApiCloseTimeToDisplayTime,
+  convertDisplayCloseTimeToApiTime,
+} from '@/utils/operatingHours.js';
 
 const DAY_MAP = [
   { apiKey: 'monday', label: '월' },
@@ -25,7 +29,9 @@ const createHoursFromApi = (operatingHours) => {
       apiKey,
       isOpen: Boolean(dayHours?.open && dayHours?.close),
       startTime: dayHours?.open ?? DEFAULT_START_TIME,
-      endTime: dayHours?.close ?? DEFAULT_END_TIME,
+      endTime: dayHours?.close
+        ? convertApiCloseTimeToDisplayTime(dayHours.close)
+        : DEFAULT_END_TIME,
     };
   });
 };
@@ -35,7 +41,10 @@ const createOperatingHoursRequestBody = (hours) => {
     acc[item.apiKey] = item.isOpen
       ? {
           open: item.startTime,
-          close: item.endTime,
+          close: convertDisplayCloseTimeToApiTime(
+            item.startTime,
+            item.endTime
+          ),
         }
       : {
           open: null,
@@ -67,9 +76,9 @@ export default function OperatingHoursSection({ operatingHours, onRefresh }) {
     setIsEditing(false);
   };
 
-  const handleSaveClick = async () => {
+  const handleSaveClick = async (nextHours = hours) => {
     const requestBody = {
-      operatingHours: createOperatingHoursRequestBody(hours),
+      operatingHours: createOperatingHoursRequestBody(nextHours),
     };
 
     try {
