@@ -4,34 +4,62 @@ import InfoItem from '../components/InfoItem';
 import CardShell from '../components/CardShell';
 import Button from '@/components/common/Button';
 import Modal from '@/components/common/Modal';
+import { mypageApi } from '@/features/mypage/api';
 
-const accountMockData = {
-  storeName: '바나프레소',
-  instagramUsername: '@banapresso_official',
-  businessName: '바나프레소',
-  category: '카페',
-  address: '서울시 강남구 테헤란로 208 1층 (역삼동)',
-};
+const createFormDataFromStore = (store) => ({
+  businessName: store?.storeName ?? '매장명 없음',
+  category: store?.category ?? '',
+  address: store?.address ?? '',
+});
 
-export default function AccountInfoSection({ onLogout }) {
+export default function AccountInfoSection({ store, onLogout, onRefresh }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [formData, setFormData] = useState(accountMockData);
+  const [formData, setFormData] = useState(() =>
+    createFormDataFromStore(store)
+  );
+  const [isSaving, setIsSaving] = useState(false);
 
-  const { businessName, category, address } = formData;
+  const displayData = createFormDataFromStore(store);
+
+  const { businessName, category, address } = isEditing
+    ? formData
+    : displayData;
 
   const handleEditClick = () => {
+    setFormData(createFormDataFromStore(store));
     setIsEditing(true);
   };
 
   const handleCancelClick = () => {
-    setFormData(accountMockData);
+    setFormData(createFormDataFromStore(store));
     setIsEditing(false);
   };
 
-  const handleSaveClick = () => {
-    // TODO: 계정 기본정보 수정 API 연결
-    setIsEditing(false);
+  const handleSaveClick = async () => {
+    const requestBody = {
+      category: formData.category,
+      address: formData.address,
+    };
+
+    try {
+      setIsSaving(true);
+
+      console.log('내정보 수정 요청:', requestBody);
+
+      await mypageApi.updateMyInfo(requestBody);
+
+      if (onRefresh) {
+        await onRefresh();
+      }
+
+      setIsEditing(false);
+    } catch (error) {
+      console.error('내정보 수정 실패:', error);
+      alert('매장 정보를 수정하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleLogoutClick = () => {
@@ -59,13 +87,14 @@ export default function AccountInfoSection({ onLogout }) {
             onChange={setFormData}
             onCancel={handleCancelClick}
             onSave={handleSaveClick}
+            isSaving={isSaving}
           />
         ) : (
           <CardShell as="div" className="flex flex-col px-7 py-8">
             <dl className="flex flex-col">
               <InfoItem label="상호명" value={businessName} />
-              <InfoItem label="업종" value={category} />
-              <InfoItem label="위치" value={address} />
+              <InfoItem label="업종" value={category || '업종 없음'} />
+              <InfoItem label="위치" value={address || '주소 없음'} />
             </dl>
 
             <Button

@@ -20,22 +20,44 @@ export default function MyPage() {
   const [myInfo, setMyInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchMyInfo = async () => {
+    try {
+      const response = await mypageApi.getMyInfo();
+
+      console.log('마이페이지 정보:', response.data);
+
+      setMyInfo(response.data);
+    } catch (error) {
+      console.error('마이페이지 정보 조회 실패:', error);
+    }
+  };
+
   useEffect(() => {
-    const fetchMyInfo = async () => {
+    let isMounted = true;
+
+    const loadMyInfo = async () => {
       try {
         const response = await mypageApi.getMyInfo();
 
         console.log('마이페이지 정보:', response.data);
 
-        setMyInfo(response.data);
+        if (isMounted) {
+          setMyInfo(response.data);
+        }
       } catch (error) {
         console.error('마이페이지 정보 조회 실패:', error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    fetchMyInfo();
+    loadMyInfo();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const user = myInfo?.user;
@@ -81,10 +103,19 @@ export default function MyPage() {
         )}
 
         {activeTab === 'info' && (
-          <AccountInfoSection onLogout={handleLogout} />
+          <AccountInfoSection
+            store={store}
+            onLogout={handleLogout}
+            onRefresh={fetchMyInfo}
+          />
         )}
 
-        {activeTab === 'hours' && <OperatingHoursSection />}
+        {activeTab === 'hours' && (
+          <OperatingHoursSection
+            operatingHours={store?.operatingHours}
+            onRefresh={fetchMyInfo}
+          />
+        )}
       </main>
 
       <BottomTab fixed={false} />
