@@ -447,3 +447,24 @@ CREATE INDEX idx_reference_image_id ON "reference" ("image_id");
 CREATE INDEX idx_stores_operating_hours_gin ON "stores" USING GIN ("operating_hours");
 CREATE INDEX idx_menus_weather_tags_gin ON "menus" USING GIN ("weather_tags");
 CREATE INDEX idx_menus_holiday_tags_gin ON "menus" USING GIN ("holiday_tags");
+
+ALTER TABLE notifications
+    ALTER COLUMN type TYPE varchar(50)
+    USING CASE type::text
+    WHEN '0' THEN 'REMIND'
+    WHEN '1' THEN 'WEATHER_MENU'
+    WHEN '2' THEN 'HOLIDAY_MENU'
+    WHEN '3' THEN 'HOLIDAY_OPERATION'
+    WHEN '4' THEN 'WEEKLY_STATS'
+    WHEN '5' THEN 'POSTING_SUCCESS'
+    WHEN '6' THEN 'POSTING_FAILED'
+    ELSE type::text
+    END,
+ALTER COLUMN status TYPE varchar(50)
+    USING CASE status::text
+      WHEN '0' THEN 'PENDING'
+      WHEN '1' THEN 'PROCESSING'
+      WHEN '2' THEN 'SENT'
+      WHEN '3' THEN 'FAILED'
+      ELSE status::text
+    END;
