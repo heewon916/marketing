@@ -140,6 +140,9 @@ pipeline {
                         cp "$FIREBASE_SERVICE_ACCOUNT_FILE" "${DEPLOY_DIR}/secrets/firebase-service-account.json"
                         chmod 600 "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
+                        test -s "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                        grep -q '"type"[[:space:]]*:[[:space:]]*"service_account"' "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+
                         echo "Firebase service account secret file created."
                     '''
                 }
@@ -291,6 +294,11 @@ pipeline {
                       exit 1
                     }
 
+                    if [ "$FIREBASE_ENABLED_VALUE" != "true" ]; then
+                      echo "ERROR: FIREBASE_ENABLED must be true for this deployment"
+                      exit 1
+                    }
+
                     echo ".env validation passed"
                 '''
             }
@@ -309,6 +317,8 @@ pipeline {
                     test -f "${DEPLOY_DIR}/fe/Dockerfile"
                     test -f "${DEPLOY_DIR}/ai/Dockerfile"
                     test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                    test -s "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                    test ! -d "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
                 '''

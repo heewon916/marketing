@@ -51,7 +51,12 @@ services:
       FIREBASE_ENABLED: ${FIREBASE_ENABLED:-false}
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-file:/run/secrets/firebase-service-account.json}
     volumes:
-      - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      - type: bind
+        source: ./secrets/firebase-service-account.json
+        target: /run/secrets/firebase-service-account.json
+        read_only: true
+        bind:
+          create_host_path: false
     expose:
       - "8080"
     depends_on:
