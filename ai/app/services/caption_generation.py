@@ -13,6 +13,7 @@ import httpx
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
 from app.services.content_purpose import ContentPurpose
+from app.services.menu_promotion_context import StoreMenuCandidate
 from app.services.weather_tags import (
     PRECIP_CLEAR,
     PRECIP_CLOUDY,
@@ -205,6 +206,7 @@ class CaptionGenerationLanguageError(CaptionGenerationUnavailableError):
 class CaptionGenerationResult:
     guide_text: str
     draft_caption: str
+    selected_menu_name: str | None = None
 
     @property
     def stored_caption(self) -> str:
@@ -219,6 +221,7 @@ class CaptionGenerationRequest:
     utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
     reference_captions: list[str] = field(default_factory=list)
+    menu_candidates: list[StoreMenuCandidate] = field(default_factory=list)
 
 
 @dataclass
