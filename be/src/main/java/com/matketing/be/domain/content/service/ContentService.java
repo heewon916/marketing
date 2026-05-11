@@ -2,39 +2,52 @@ package com.matketing.be.domain.content.service;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.S3VideoClient;
 import com.matketing.be.domain.content.config.ContentProperties;
+import com.matketing.be.domain.content.dto.AiExtractFramesRequest;
+import com.matketing.be.domain.content.dto.AiExtractFramesResponse;
+import com.matketing.be.domain.content.dto.AiFinalEditRequest;
+import com.matketing.be.domain.content.dto.AiFinalEditResponse;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceRequest;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
 import com.matketing.be.domain.content.dto.AiWeatherRequest;
 import com.matketing.be.domain.content.dto.ChatRequest;
 import com.matketing.be.domain.content.dto.ChatResponse;
+import com.matketing.be.domain.content.dto.ContentDraftResponseDto;
 import com.matketing.be.domain.content.dto.ContentRequest;
 import com.matketing.be.domain.content.dto.ContentResponse;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
+import com.matketing.be.domain.content.dto.ContentPublishResponseDto;
+import com.matketing.be.domain.content.dto.ContentPublishStatusResponseDto;
 import com.matketing.be.domain.content.dto.ContentRedisResult;
-import com.matketing.be.domain.content.dto.ContentResponseDto;
+import com.matketing.be.domain.content.dto.ContentVideoResponseDto;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.entity.Content;
-import com.matketing.be.domain.content.entity.ContentImage;
 import com.matketing.be.domain.content.enums.ContentStatus;
 import com.matketing.be.domain.content.redis.ContentRedisRepository;
-import com.matketing.be.domain.content.repository.ContentImageRepository;
+import com.matketing.be.domain.content.redis.ContentRedisRepository.ContentRedisSession;
+import com.matketing.be.domain.content.redis.ContentRedisRepository.RedisImageValue;
 import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
+import com.matketing.be.global.auth.jwt.AuthUser;
 import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -63,9 +76,9 @@ public class ContentService {
     private static final String TEXT_RECOGNIZED = "TEXT_RECOGNIZED";
 
     private final ContentRepository contentRepository;
-    private final ContentImageRepository contentImageRepository;
     private final ClovaSttClient clovaSttClient;
     private final AiContentClient aiContentClient;
+    private final S3VideoClient s3VideoClient;
     private final ContentRedisRepository contentRedisRepository;
     private final ContentProperties contentProperties;
     private final StoreRepository storeRepository;
@@ -96,8 +109,8 @@ public class ContentService {
      * @param userId 인증 사용자 식별자
      * @return AI 캡션 생성 응답
      */
-    public ChatResponse createTextContent(ChatRequest request, String userId) {
-        return createTextContent(new ContentRequest(request.requestId(), null, request.utterance()), userId);
+    public ChatResponse createTextContent(ChatRequest request) {
+        return createTextContent(new ContentRequest(request.requestId(), null, request.utterance()));
     }
 
     /**
@@ -108,12 +121,12 @@ public class ContentService {
      * @param userId 인증 사용자 식별자
      * @return ChatResponse 또는 ContentResponse
      */
-    public Object createCaption(ContentRequest request, String userId) {
+    public Object createCaption(ContentRequest request) {
         // request_id는 멱등성 키이므로, 값이 있는 요청은 기존 캡션 생성 트리거로 판단한다.
         if (request.requestId() != null && !request.requestId().isBlank()) {
-            return createTextContent(request, userId);
+            return createTextContent(request);
         }
-        return createCaptionContext(request, userId);
+        return createCaptionContext(request);
     }
 
     /**
@@ -125,14 +138,14 @@ public class ContentService {
      * @param userId 인증 사용자 식별자
      * @return store, utterance, persona, date, weather가 포함된 참고정보 응답
      */
-    public ContentResponse createCaptionContext(ContentRequest request, String userId) {
+    public ContentResponse createCaptionContext(ContentRequest request) {
         // utterance는 AI 게시글 생성의 핵심 입력이므로 빈 값이면 즉시 차단한다.
         if (request.utterance() == null || request.utterance().isBlank()) {
             throw new BusinessException(ErrorCode.EMPTY_UTTERANCE);
         }
 
         // store_id가 있으면 해당 매장을 우선 사용하고, 없으면 인증 사용자에게 연결된 매장을 사용한다.
-        Store store = getStore(request.storeId(), userId);
+        Store store = getStore(request.storeId(), currentUserId());
         String ownerPersona = ownerPersona(store);
         String date = LocalDate.now().toString();
 
@@ -157,7 +170,7 @@ public class ContentService {
      * @param userId 인증 사용자 식별자
      * @return FastAPI 캡션 생성 결과
      */
-    public ChatResponse createTextContent(ContentRequest request, String userId) {
+    public ChatResponse createTextContent(ContentRequest request) {
         // 1. utterance empty 검사
         if (request.utterance() == null || request.utterance().isBlank()) {
             throw new BusinessException(ErrorCode.EMPTY_UTTERANCE);
@@ -168,6 +181,7 @@ public class ContentService {
         parseUuid(request.requestId()).orElseThrow(() -> new BusinessException(ErrorCode.INVALID_REQUEST));
 
         // 2. request_id + session_id 기준으로 Redis 멱등성 key 생성
+        String userId = currentUserId();
         String requestId = request.requestId();
         String sessionId = UUID.randomUUID().toString();
         Duration ttl = Duration.ofSeconds(contentProperties.idempotencyTtlSeconds()); // 10분 동안은 같은 request_id는 중복 처리된다
@@ -194,13 +208,12 @@ public class ContentService {
             );
         }
 
-        // 4. 최초 요청일 경우: Redis에 contents:{sessionId}/ utterance만 초기화한다.
-        // TODO FastAPI는 sessionId로 검색하고, utterance는 GET만 진행한다.
-        contentRedisRepository.createStartedContent(sessionId, request.utterance());
-
-        // 5. store 정보를 들고 온다
+        // 4. store 정보를 들고 온다
         Store store = getStore(request.storeId(), userId);
         String ownerPersona = ownerPersona(store);
+
+        // 5. 최초 요청일 경우: Redis에 contents:{sessionId} 최소 필드를 초기화한다.
+        contentRedisRepository.createStartedContent(sessionId, store.getId().toString(), request.utterance());
 
         // 6. 매장 좌표/주소 기반 날씨 참고정보를 생성한다. 외부 API 실패 시 가능한 필드는 null로 채워진다.
         AiWeatherRequest weather = weatherService.getWeatherContext(store, LocalDateTime.now());
@@ -235,11 +248,10 @@ public class ContentService {
      */
     @Transactional(readOnly = true)
     public ContentImageUrlsResponseDto getContentImages(UUID sessionId) {
-        Content content = getContentWithRelations(sessionId);
-
         return new ContentImageUrlsResponseDto(
-                content.getImages().stream()
-                        .map(ContentImage::getS3Key)
+                sessionId,
+                contentRedisRepository.getPhotoUrls(sessionId.toString()).stream()
+                        .map(photo -> new ContentImageUrlsResponseDto.ImageUrlItem(photo.field(), photo.url()))
                         .toList()
         );
     }
@@ -251,17 +263,17 @@ public class ContentService {
      * @return
      */
     @Transactional
-    public ContentImageDeleteResponseDto deleteContentImage(UUID sessionId, String imageUrl) {
-        if (imageUrl == null || imageUrl.isBlank()) {
+    public ContentImageDeleteResponseDto deleteContentImage(UUID sessionId, String deletedImageKey) {
+        if (deletedImageKey == null || deletedImageKey.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 
-        ContentImage contentImage = contentImageRepository.findByContent_SessionIdAndS3Key(sessionId, imageUrl)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_IMAGE_NOT_FOUND));
+        boolean deleted = contentRedisRepository.deletePhotoByField(sessionId.toString(), deletedImageKey);
+        if (!deleted) {
+            throw new BusinessException(ErrorCode.CONTENT_IMAGE_NOT_FOUND);
+        }
 
-        contentImageRepository.delete(contentImage);
-
-        long remainingImages = contentImageRepository.countByContent_SessionId(sessionId);
+        long remainingImages = contentRedisRepository.getPhotoUrlValues(sessionId.toString()).size();
         return new ContentImageDeleteResponseDto(true, remainingImages);
     }
 
@@ -271,13 +283,20 @@ public class ContentService {
      * @return
      */
     @Transactional(readOnly = true)
-    public ContentResponseDto getContent(UUID sessionId) {
-        return ContentResponseDto.from(getContentWithRelations(sessionId));
-    }
-
-    @Transactional(readOnly = true)
-    public ContentResponseDto getPublishedContent(Long contentId) {
-        return ContentResponseDto.from(getContentWithRelations(contentId));
+    public ContentDraftResponseDto getContent(UUID sessionId) {
+        ContentRedisSession session = getRedisSessionOrThrow(sessionId);
+        AuthUser user = currentAuthUser();
+        List<ContentDraftResponseDto.ImageItem> images = contentRedisRepository.getPhotoUrls(sessionId.toString()).stream()
+                .map(photo -> new ContentDraftResponseDto.ImageItem(photo.field(), photo.url(), photo.displayOrder()))
+                .toList();
+        return new ContentDraftResponseDto(
+                sessionId,
+                normalizeDraftStatus(session.status()),
+                session.caption(),
+                images,
+                user.getInstagramUsername(),
+                user.getProfileImageUrl()
+        );
     }
 
     /**
@@ -288,27 +307,98 @@ public class ContentService {
      */
     @Transactional
     public ContentEditResponseDto updateContent(UUID sessionId, ContentEditRequestDto requestDto) {
-        Content content = getContentWithRelations(sessionId);
+        if (requestDto.caption() == null || requestDto.caption().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
 
-        // 현재 스키마에는 status/hashtags/updatedAt이 없어 caption만 수정한다.
-        content.updateCaption(requestDto.caption());
+        OffsetDateTime updatedAt = OffsetDateTime.now();
+        boolean updated = contentRedisRepository.updateCaption(sessionId.toString(), requestDto.caption(), updatedAt);
+        if (!updated) {
+            throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+        }
 
-        return ContentEditResponseDto.from(content);
+        return new ContentEditResponseDto(sessionId, requestDto.caption(), updatedAt);
+    }
+
+    public ContentPublishResponseDto publishContent(UUID sessionId) {
+        String publishId = UUID.randomUUID().toString();
+        boolean queued = contentRedisRepository.queuePublish(sessionId.toString(), publishId);
+        if (!queued) {
+            throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+        }
+        return new ContentPublishResponseDto(publishId, "queued", "발행이 시작되었습니다");
+    }
+
+    @Transactional
+    public ContentPublishStatusResponseDto getPublishStatus(UUID sessionId) {
+        ContentRedisSession session = getRedisSessionOrThrow(sessionId);
+        if (session.contentId() != null && !session.contentId().isBlank()) {
+            return new ContentPublishStatusResponseDto(
+                    session.contentId(),
+                    "completed",
+                    session.instagramMediaId(),
+                    session.instagramPermalink()
+            );
+        }
+
+        if (session.storeId() == null || session.storeId().isBlank()) {
+            throw new BusinessException(ErrorCode.STORE_NOT_FOUND);
+        }
+
+        String instagramMediaId = "local-" + sessionId;
+        String instagramPermalink = "https://instagram.com/p/" + sessionId;
+        Content content = Content.builder()
+                .storeId(UUID.fromString(session.storeId()))
+                .sessionId(sessionId)
+                .caption(session.caption())
+                .instagramMediaId(instagramMediaId)
+                .instagramPermalink(instagramPermalink)
+                .publishedAt(OffsetDateTime.now())
+                .isDeleted(false)
+                .createdAt(OffsetDateTime.now())
+                .build();
+        content.replaceImages(session.photos());
+        content.replaceVideoRecordings(session.video() == null || session.video().isBlank() ? List.of() : List.of(session.video()));
+        Content saved = contentRepository.save(content);
+        contentRedisRepository.completePublish(sessionId.toString(), saved.getId(), instagramMediaId, instagramPermalink);
+
+        return new ContentPublishStatusResponseDto(
+                String.valueOf(saved.getId()),
+                "completed",
+                instagramMediaId,
+                instagramPermalink
+        );
+    }
+
+    public ContentVideoResponseDto processVideo(UUID sessionId, MultipartFile videoFile) {
+        validateVideoFile(videoFile);
+        String videoKey = "/inputs/" + sessionId + "/draft.mp4";
+        s3VideoClient.uploadVideo(videoKey, videoFile);
+        boolean videoSaved = contentRedisRepository.putVideo(sessionId.toString(), videoKey);
+        if (!videoSaved) {
+            throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+        }
+
+        AiExtractFramesResponse extracted = aiContentClient.extractFrames(
+                new AiExtractFramesRequest(sessionId.toString(), videoKey)
+        );
+        List<String> drafts = extracted != null && extracted.drafts() != null ? extracted.drafts() : List.of();
+        AiFinalEditResponse edited = aiContentClient.finalEdit(
+                new AiFinalEditRequest(sessionId.toString(), drafts)
+        );
+        List<String> results = edited != null && edited.results() != null ? edited.results() : List.of();
+        String status = edited != null && edited.status() != null ? edited.status() : ContentStatus.PHOTO_EDITED.name();
+        contentRedisRepository.putAiVideoResults(sessionId.toString(), videoKey, status, drafts, results);
+
+        List<ContentVideoResponseDto.ExtractedFrame> frames = results.stream()
+                .map(result -> new ContentVideoResponseDto.ExtractedFrame(UUID.randomUUID().toString(), result))
+                .toList();
+        return new ContentVideoResponseDto(videoKey, frames);
     }
 
     //============================================
     // 여기서부터는 부가 로직이다.
     //============================================
-    private Content getContentWithRelations(Long contentId) {
-        return contentRepository.findWithImagesAndVideoRecordingsById(contentId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
-    }
-
-    private Content getContentWithRelations(UUID sessionId) {
-        return contentRepository.findWithImagesAndVideoRecordingsBySessionId(sessionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
-    }
-
     // STT에 전달할 수 있는 오디오 파일인지 사전 검증한다.
     // content-type을 우선 신뢰하되, 모바일/브라우저 환경에서 content-type이 빠질 수 있어 확장자를 보조 기준으로 허용한다.
     // 둘 다 허용 목록에 없거나 파일이 비어 있으면 INVALID_AUDIO_FILE로 통일한다.
@@ -335,6 +425,12 @@ public class ContentService {
         }
 
         throw new BusinessException(ErrorCode.INVALID_AUDIO_FILE);
+    }
+
+    private void validateVideoFile(MultipartFile videoFile) {
+        if (videoFile == null || videoFile.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
     }
 
     /**
@@ -382,6 +478,33 @@ public class ContentService {
         } catch (IllegalArgumentException exception) {
             return Optional.empty();
         }
+    }
+
+    private ContentRedisSession getRedisSessionOrThrow(UUID sessionId) {
+        ContentRedisSession session = contentRedisRepository.getSession(sessionId.toString());
+        if (session == null) {
+            throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+        }
+        return session;
+    }
+
+    private String normalizeDraftStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return "draft";
+        }
+        return status;
+    }
+
+    private AuthUser currentAuthUser() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof AuthUser authUser)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_USER);
+        }
+        return authUser;
+    }
+
+    private String currentUserId() {
+        return currentAuthUser().getId().toString();
     }
 
     // FastAPI가 돌려준 상태 문자열을 Spring 표준 enum으로 변환한다.

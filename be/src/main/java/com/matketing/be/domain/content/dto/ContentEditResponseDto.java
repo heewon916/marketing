@@ -1,13 +1,14 @@
 package com.matketing.be.domain.content.dto;
 
-import com.matketing.be.domain.content.entity.Content;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 public record ContentEditResponseDto(
-        Long id,
-        String caption
+        @JsonProperty("session_id")
+        UUID sessionId,
+        String caption,
+        @JsonProperty("updated_at")
+        OffsetDateTime updatedAt
 ) {
-
-    public static ContentEditResponseDto from(Content content) {
-        return new ContentEditResponseDto(content.getId(), content.getCaption());
-    }
 }

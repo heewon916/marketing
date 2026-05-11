@@ -10,33 +10,41 @@ import static org.mockito.Mockito.when;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.S3VideoClient;
 import com.matketing.be.domain.content.config.ContentProperties;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
 import com.matketing.be.domain.content.dto.AiWeatherRequest;
 import com.matketing.be.domain.content.dto.ChatRequest;
 import com.matketing.be.domain.content.dto.ChatResponse;
+import com.matketing.be.domain.content.dto.ContentEditRequestDto;
+import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentRequest;
 import com.matketing.be.domain.content.dto.ContentResponse;
+import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
 import com.matketing.be.domain.content.dto.ContentRedisResult;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.enums.ContentStatus;
 import com.matketing.be.domain.content.redis.ContentRedisRepository;
-import com.matketing.be.domain.content.repository.ContentImageRepository;
+import com.matketing.be.domain.content.redis.ContentRedisRepository.RedisImageValue;
 import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.store.entity.OwnerPersonaEnumType;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
+import com.matketing.be.global.auth.jwt.AuthUser;
 import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,13 +58,13 @@ class ContentServiceTest {
     private ContentRepository contentRepository;
 
     @Mock
-    private ContentImageRepository contentImageRepository;
-
-    @Mock
     private ClovaSttClient clovaSttClient;
 
     @Mock
     private AiContentClient aiContentClient;
+
+    @Mock
+    private S3VideoClient s3VideoClient;
 
     @Mock
     private ContentRedisRepository contentRedisRepository;
@@ -73,11 +81,15 @@ class ContentServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                new AuthUser(UUID.fromString(USER_ID), "instagram-user-id", "instagram-name", "https://profile.example/image.jpg"),
+                null
+        ));
         contentService = new ContentService(
                 contentRepository,
-                contentImageRepository,
                 clovaSttClient,
                 aiContentClient,
+                s3VideoClient,
                 contentRedisRepository,
                 contentProperties,
                 storeRepository,
@@ -85,11 +97,16 @@ class ContentServiceTest {
         );
     }
 
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void createTextContentThrowsEmptyUtteranceWhenBlank() {
         ChatRequest request = new ChatRequest(REQUEST_ID, " ");
 
-        assertThatThrownBy(() -> contentService.createTextContent(request, USER_ID))
+        assertThatThrownBy(() -> contentService.createTextContent(request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.EMPTY_UTTERANCE);
@@ -111,12 +128,12 @@ class ContentServiceTest {
                         "따뜻한 차 한 잔 어떠세요?"
                 ));
 
-        ChatResponse response = contentService.createTextContent(request, USER_ID);
+        ChatResponse response = contentService.createTextContent(request);
 
         assertThat(response.status()).isEqualTo(ContentStatus.TEXT_GENERATED);
         assertThat(response.guideText()).isEqualTo("예쁘게 찍어주세요!");
         assertThat(response.caption()).isEqualTo("따뜻한 차 한 잔 어떠세요?");
-        verify(contentRedisRepository).createStartedContent(response.sessionId(), request.utterance());
+        verify(contentRedisRepository).createStartedContent(response.sessionId(), STORE_ID.toString(), request.utterance());
         verify(contentRedisRepository).updateTextGeneratedResult(
                 response.sessionId(),
                 "예쁘게 찍어주세요!",
@@ -146,7 +163,7 @@ class ContentServiceTest {
                         "기존 캡션"
                 ));
 
-        ChatResponse response = contentService.createTextContent(request, USER_ID);
+        ChatResponse response = contentService.createTextContent(request);
 
         assertThat(response.sessionId()).isEqualTo("existing-session");
         assertThat(response.status()).isEqualTo(ContentStatus.TEXT_GENERATED);
@@ -164,7 +181,7 @@ class ContentServiceTest {
         when(contentRedisRepository.getContentResult("existing-session"))
                 .thenReturn(new ContentRedisResult("existing-session", ContentStatus.STARTED, null, null));
 
-        ChatResponse response = contentService.createTextContent(request, USER_ID);
+        ChatResponse response = contentService.createTextContent(request);
 
         assertThat(response.sessionId()).isEqualTo("existing-session");
         assertThat(response.status()).isEqualTo(ContentStatus.STARTED);
@@ -193,8 +210,7 @@ class ContentServiceTest {
         when(weatherService.getWeatherContext(eq(store), any(LocalDateTime.class))).thenReturn(weather);
 
         ContentResponse response = contentService.createCaptionContext(
-                new ContentRequest(null, STORE_ID.toString(), "오늘 가게 찻잔을 자랑하고 싶어"),
-                USER_ID
+                new ContentRequest(null, STORE_ID.toString(), "오늘 가게 찻잔을 자랑하고 싶어")
         );
 
         assertThat(response.storeId()).isEqualTo(STORE_ID.toString());
@@ -202,6 +218,52 @@ class ContentServiceTest {
         assertThat(response.ownerPersona()).isEqualTo("aesthetic");
         assertThat(response.date()).isNotBlank();
         assertThat(response.weather()).isEqualTo(weather);
+    }
+
+    @Test
+    void getContentImagesReturnsPhotoUrlsFromRedisBySessionId() {
+        UUID sessionId = UUID.randomUUID();
+        when(contentRedisRepository.getPhotoUrls(sessionId.toString()))
+                .thenReturn(java.util.List.of(
+                        new RedisImageValue("photo:1", "/ai-finals/%s/final-001.jpg".formatted(sessionId)),
+                        new RedisImageValue("photo:2", "/ai-finals/%s/final-002.jpg".formatted(sessionId))
+                ));
+
+        ContentImageUrlsResponseDto response = contentService.getContentImages(sessionId);
+
+        assertThat(response.sessionId()).isEqualTo(sessionId);
+        assertThat(response.imageUrl())
+                .extracting(ContentImageUrlsResponseDto.ImageUrlItem::imageUrl)
+                .containsExactly(
+                        "/ai-finals/%s/final-001.jpg".formatted(sessionId),
+                        "/ai-finals/%s/final-002.jpg".formatted(sessionId)
+                );
+    }
+
+    @Test
+    void updateContentUpdatesCaptionInRedisBySessionId() {
+        UUID sessionId = UUID.randomUUID();
+        ContentEditRequestDto request = new ContentEditRequestDto("수정된 캡션");
+        when(contentRedisRepository.updateCaption(eq(sessionId.toString()), eq(request.caption()), any())).thenReturn(true);
+
+        ContentEditResponseDto response = contentService.updateContent(sessionId, request);
+
+        assertThat(response.sessionId()).isEqualTo(sessionId);
+        assertThat(response.caption()).isEqualTo("수정된 캡션");
+        assertThat(response.updatedAt()).isNotNull();
+        verify(contentRedisRepository).updateCaption(eq(sessionId.toString()), eq("수정된 캡션"), any());
+    }
+
+    @Test
+    void updateContentThrowsContentNotFoundWhenRedisSessionDoesNotExist() {
+        UUID sessionId = UUID.randomUUID();
+        ContentEditRequestDto request = new ContentEditRequestDto("수정된 캡션");
+        when(contentRedisRepository.updateCaption(eq(sessionId.toString()), eq(request.caption()), any())).thenReturn(false);
+
+        assertThatThrownBy(() -> contentService.updateContent(sessionId, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.CONTENT_NOT_FOUND);
     }
 
     @Test
