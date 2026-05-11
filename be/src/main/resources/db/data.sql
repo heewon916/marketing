@@ -18,7 +18,6 @@ INSERT INTO users (
     instagram_username,
     access_token,
     token_expires_at,
-    camera_mic_granted,
     created_at,
     updated_at
 ) VALUES (
@@ -27,7 +26,6 @@ INSERT INTO users (
     'hmmnyanyam_',
     NULL,
     NULL,
-    FALSE,
     NOW(),
     NOW()
 ) ON CONFLICT (id) DO NOTHING;
