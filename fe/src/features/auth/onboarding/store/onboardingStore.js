@@ -24,12 +24,10 @@ export const useOnboardingStore = create((set, get) => ({
   ...initialState,
 
   setMerchantId: (merchantId) => {
-    console.log('[onboardingStore] merchantId:', merchantId);
     set({ merchantId });
   },
 
   setStoreId: (storeId) => {
-    console.log('[onboardingStore] storeId:', storeId);
     set({ storeId });
   },
 
@@ -39,58 +37,44 @@ export const useOnboardingStore = create((set, get) => ({
     suggestedCategory,
     menus,
   }) => {
-    const nextState = {
+    set({
       storeId: storeId ?? '',
       storeName: storeName ?? '',
       suggestedCategory: suggestedCategory ?? '',
       category: suggestedCategory ?? '',
       menus: menus ?? [],
-    };
-
-    console.log('[onboardingStore] POS sync result:', nextState);
-
-    set(nextState);
+    });
   },
 
   setStoreName: (storeName) => {
-    console.log('[onboardingStore] storeName:', storeName);
     set({ storeName });
   },
 
   setSuggestedCategory: (suggestedCategory) => {
-    console.log('[onboardingStore] suggestedCategory:', suggestedCategory);
     set({ suggestedCategory });
   },
 
   setCategory: (category) => {
-    console.log('[onboardingStore] category:', category);
     set({ category });
   },
 
   setOwnerPersona: (ownerPersona) => {
-    console.log('[onboardingStore] ownerPersona:', ownerPersona);
     set({ ownerPersona });
   },
 
   setSelectedPlaceId: (selectedPlaceId) => {
-    console.log('[onboardingStore] selectedPlaceId:', selectedPlaceId);
     set({ selectedPlaceId });
   },
 
   setLocation: ({ address, latitude, longitude }) => {
-    const nextState = {
+    set({
       address: address ?? '',
       latitude: latitude ?? null,
       longitude: longitude ?? null,
-    };
-
-    console.log('[onboardingStore] location:', nextState);
-
-    set(nextState);
+    });
   },
 
   setOperatingHours: (operatingHours) => {
-    console.log('[onboardingStore] operatingHours:', operatingHours);
     set({ operatingHours });
   },
 
@@ -105,7 +89,7 @@ export const useOnboardingStore = create((set, get) => ({
       operatingHours,
     } = get();
 
-    const payload = {
+    return {
       storeName,
       category,
       ownerPersona,
@@ -114,18 +98,9 @@ export const useOnboardingStore = create((set, get) => ({
       longitude,
       operatingHours: JSON.stringify(operatingHours),
     };
-
-    console.log('[onboardingStore] final payload:', payload);
-    console.log(
-      '[onboardingStore] operatingHours type:',
-      typeof payload.operatingHours
-    );
-
-    return payload;
   },
 
   resetOnboarding: () => {
-    console.log('[onboardingStore] reset');
     set(initialState);
   },
 }));
