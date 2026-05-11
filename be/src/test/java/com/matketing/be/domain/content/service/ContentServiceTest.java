@@ -12,18 +12,25 @@ import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
 import com.matketing.be.domain.content.config.ContentProperties;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
+import com.matketing.be.domain.content.dto.AiWeatherRequest;
 import com.matketing.be.domain.content.dto.ChatRequest;
 import com.matketing.be.domain.content.dto.ChatResponse;
+import com.matketing.be.domain.content.dto.ContentRequest;
+import com.matketing.be.domain.content.dto.ContentResponse;
 import com.matketing.be.domain.content.dto.ContentRedisResult;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.enums.ContentStatus;
 import com.matketing.be.domain.content.redis.ContentRedisRepository;
 import com.matketing.be.domain.content.repository.ContentImageRepository;
 import com.matketing.be.domain.content.repository.ContentRepository;
+import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
 import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,7 +41,8 @@ import org.springframework.mock.web.MockMultipartFile;
 @ExtendWith(MockitoExtension.class)
 class ContentServiceTest {
 
-    private static final String USER_ID = "user-1";
+    private static final String USER_ID = "00000000-0000-0000-0000-000000000001";
+    private static final UUID STORE_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final String REQUEST_ID = "9d5b4b52-78f2-4f7e-8c10-4a04bb5a6b1b";
 
     @Mock
@@ -55,6 +63,9 @@ class ContentServiceTest {
     @Mock
     private StoreRepository storeRepository;
 
+    @Mock
+    private WeatherContextProvider weatherService;
+
     private final ContentProperties contentProperties = new ContentProperties(600);
 
     private ContentService contentService;
@@ -68,7 +79,8 @@ class ContentServiceTest {
                 aiContentClient,
                 contentRedisRepository,
                 contentProperties,
-                storeRepository
+                storeRepository,
+                weatherService
         );
     }
 
@@ -85,8 +97,11 @@ class ContentServiceTest {
     @Test
     void createTextContentCreatesRedisStateAndReturnsAiResultOnFirstRequest() {
         ChatRequest request = new ChatRequest(REQUEST_ID, "오늘 가게 찻잔을 자랑하고 싶어");
+        Store store = mockStore();
         when(contentRedisRepository.setIdempotencyKeyIfAbsent(eq(USER_ID), eq(REQUEST_ID), any(), eq(Duration.ofSeconds(600))))
                 .thenReturn(true);
+        when(storeRepository.findFirstByUserId(UUID.fromString(USER_ID))).thenReturn(Optional.of(store));
+        when(weatherService.getWeatherContext(eq(store), any(LocalDateTime.class))).thenReturn(AiWeatherRequest.empty());
         when(aiContentClient.processUtterance(any()))
                 .thenReturn(new AiProcessUtteranceResponse(
                         "session-id",
@@ -107,6 +122,13 @@ class ContentServiceTest {
                 "따뜻한 차 한 잔 어떠세요?",
                 ContentStatus.TEXT_GENERATED
         );
+    }
+
+    private Store mockStore() {
+        Store store = org.mockito.Mockito.mock(Store.class);
+        org.mockito.Mockito.when(store.getId()).thenReturn(STORE_ID);
+        org.mockito.Mockito.when(store.getOwnerPersona()).thenReturn("aesthetic");
+        return store;
     }
 
     @Test
@@ -148,6 +170,37 @@ class ContentServiceTest {
         assertThat(response.guideText()).isNull();
         assertThat(response.caption()).isNull();
         verify(aiContentClient, never()).processUtterance(any());
+    }
+
+    @Test
+    void createCaptionContextReturnsStoreUtterancePersonaDateAndWeather() {
+        Store store = mockStore();
+        AiWeatherRequest weather = new AiWeatherRequest(
+                18.5,
+                0.0,
+                "맑음",
+                45,
+                2.5,
+                85,
+                35,
+                12.0,
+                63,
+                null,
+                null
+        );
+        when(storeRepository.findById(STORE_ID)).thenReturn(Optional.of(store));
+        when(weatherService.getWeatherContext(eq(store), any(LocalDateTime.class))).thenReturn(weather);
+
+        ContentResponse response = contentService.createCaptionContext(
+                new ContentRequest(null, STORE_ID.toString(), "오늘 가게 찻잔을 자랑하고 싶어"),
+                USER_ID
+        );
+
+        assertThat(response.storeId()).isEqualTo(STORE_ID.toString());
+        assertThat(response.utterance()).isEqualTo("오늘 가게 찻잔을 자랑하고 싶어");
+        assertThat(response.ownerPersona()).isEqualTo("aesthetic");
+        assertThat(response.date()).isNotBlank();
+        assertThat(response.weather()).isEqualTo(weather);
     }
 
     @Test

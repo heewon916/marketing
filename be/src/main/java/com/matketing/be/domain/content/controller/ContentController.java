@@ -6,6 +6,7 @@ import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
+import com.matketing.be.domain.content.dto.ContentRequest;
 import com.matketing.be.domain.content.dto.ContentResponseDto;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
@@ -45,20 +46,20 @@ public class ContentController {
 
     /**
      * 게시물 캡션 생성 API
-     * - 같은 사용자 -> 동일 request_id로 구분 -> Redis 멱등성 Key로 중복 제거
-     * - 최초 요청: FAST API 트리거
-     * - 중복 요청: Redis에 존재하는 결과 반환
-     * @param request request_id, 최종 utterance
+     * - request_id가 포함된 기존 요청: Redis 멱등성 처리 후 FastAPI 캡션 생성 트리거
+     * - request_id가 없는 신규 요청: store/utterance 기반 AI 게시글 생성 참고 JSON 반환
+     * - store_id가 없으면 인증 사용자 기준으로 등록된 매장을 조회한다.
+     * @param request store_id, request_id(선택), 최종 utterance
      * @param authentication TODO SecurityContext에서 인증된 사용자로 변경
-     * @return
+     * @return 기존 캡션 생성 응답(ChatResponse) 또는 참고정보 응답(ContentResponse)
      */
     @PostMapping("/caption")
-    public ChatResponse createTextContent(
-            @Valid @RequestBody ChatRequest request,
+    public Object createTextContent(
+            @RequestBody ContentRequest request,
             Authentication authentication
     ) {
-        // TODO users.id, users.instagram_user_id, users.instagram_username 중 무엇인지 명확히 해야 한다
-        return contentService.createTextContent(request, getCurrentUserId(authentication));
+        // Controller는 인증 사용자 식별자만 Service에 전달하고, 요청 형태별 분기는 ContentService에서 처리한다.
+        return contentService.createCaption(request, getCurrentUserId(authentication));
     }
 
     /**
@@ -79,7 +80,7 @@ public class ContentController {
      * @param imageId
      * @return
      */
-    @DeleteMapping("/{contentId}/images/{imageId}")
+    @DeleteMapping("/{sessionId}/images/{imageId}")
     public ContentImageDeleteResponseDto deleteContentImage(
             @PathVariable Long contentId,
             @PathVariable UUID imageId  // TODO UUID..?
@@ -98,14 +99,19 @@ public class ContentController {
         return contentService.getContent(contentId);
     }
 
-    // 현재 스키마 기준으로 게시물 텍스트는 caption만 수정할 수 있다.
-    @PutMapping("/{contentId}/edit")
+    // 현재 스키마 기준으로 게시물 텍스트는 caption만 수정할 수 있다. - redis 존재
+    @PutMapping("/{sessionId}/edit")
     public ContentEditResponseDto updateContent(
             @PathVariable Long contentId,
             @RequestBody ContentEditRequestDto requestDto
     ) {
         return contentService.updateContent(contentId, requestDto);
     }
+
+    // TODO 게시물 발행 API 로직 추가
+    // return할 때 최종 캡션, 이미지를 줘야 한다. 그리고 instagram 리다이렉트 url도
+    // @PostMapping("/{sessionId}/publish")
+
 
     // TODO JWT 인증 필터가 적용되면 이 함수는 삭제하고 SecurityContext의 실제 user_name을 주도록 바꿔야 한다.
     private String getCurrentUserId(Authentication authentication) {
