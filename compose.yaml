@@ -156,13 +156,13 @@ services:
       - --port
       - "${CAPTION_MODEL_SERVER_PORT:-8002}"
       - -m
-      - /models/qwen2.5-7b-instruct/q3_k_m/model.gguf
+      - /models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf
       - -c
       - "${CAPTION_MODEL_CTX_SIZE:-2048}"
       - --n-gpu-layers
       - "${CAPTION_MODEL_GPU_LAYERS:-0}"
     volumes:
-      - ${CAPTION_MODEL_HOST_DIR:-./.models/caption/qwen2.5-7b-instruct/q3_k_m}:/models/qwen2.5-7b-instruct/q3_k_m:ro
+      - ${CAPTION_MODEL_HOST_DIR:-./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m}:/models/exaone-3.5-7.8b-instruct/q4_k_m:ro
     expose:
       - "${CAPTION_MODEL_SERVER_PORT:-8002}"
     networks:
