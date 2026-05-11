@@ -507,6 +507,7 @@ async def process_utterance(
             guide_text,
             stored_caption,
             fallback_source,
+            selected_menu_name,
         ) = (
             fallback_result.result.draft_caption,
             fallback_result.result.guide_text,
@@ -568,6 +569,7 @@ async def process_utterance(
                 guide_text,
                 stored_caption,
                 fallback_source,
+                selected_menu_name,
             ) = (
                 fallback_result.result.draft_caption,
                 fallback_result.result.guide_text,

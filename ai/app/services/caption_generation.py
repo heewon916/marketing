@@ -482,7 +482,7 @@ class CaptionGenerationService:
         prompt: str,
         include_response_format: bool,
         *,
-        require_selected_menu: bool,
+        require_selected_menu: bool = False,
         strict_language: bool,
     ) -> dict[str, Any]:
         properties: dict[str, Any] = {
@@ -544,7 +544,7 @@ class CaptionGenerationService:
         prompt: str,
         *,
         include_response_format: bool,
-        require_selected_menu: bool,
+        require_selected_menu: bool = False,
         strict_language: bool,
     ) -> httpx.Response:
         payload = self._build_request_payload(
@@ -637,11 +637,15 @@ class CaptionGenerationService:
         response: httpx.Response | None = None
         first_unsupported_status: int | None = None
         try:
+            request_kwargs = {
+                "include_response_format": self._response_format_supported,
+                "strict_language": strict_language,
+            }
+            if menu_candidates:
+                request_kwargs["require_selected_menu"] = True
             response = await self._post_chat_completion(
                 prompt,
-                include_response_format=self._response_format_supported,
-                require_selected_menu=bool(menu_candidates),
-                strict_language=strict_language,
+                **request_kwargs,
             )
             if (
                 self._response_format_supported
@@ -661,11 +665,15 @@ class CaptionGenerationService:
                         caption_http_status=first_unsupported_status,
                     ),
                 )
+                retry_kwargs = {
+                    "include_response_format": False,
+                    "strict_language": strict_language,
+                }
+                if menu_candidates:
+                    retry_kwargs["require_selected_menu"] = True
                 response = await self._post_chat_completion(
                     prompt,
-                    include_response_format=False,
-                    require_selected_menu=bool(menu_candidates),
-                    strict_language=strict_language,
+                    **retry_kwargs,
                 )
             response.raise_for_status()
         except httpx.TimeoutException as exc:

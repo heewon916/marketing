@@ -22,6 +22,7 @@ from app.services.keyword_extraction import KeywordExtractionResult
 from app.services.reference_caption_retriever import (
     ReferenceCaptionRetrievalResult,
 )
+from app.services.menu_promotion_context import MenuPromotionContext
 from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
 
 
@@ -127,6 +128,11 @@ class DefaultReferenceCaptionRetrieverService:
         return ReferenceCaptionRetrievalResult()
 
 
+class DefaultMenuPromotionContextService:
+    async def fetch_context(self, **kwargs) -> MenuPromotionContext:
+        return MenuPromotionContext()
+
+
 @pytest.fixture(scope="session")
 def fake_redis_server() -> Iterator[fakeredis.FakeServer]:
     yield fakeredis.FakeServer()
@@ -180,6 +186,9 @@ def client(
             )
             app.state.reference_caption_retriever_service = (
                 DefaultReferenceCaptionRetrieverService()
+            )
+            app.state.menu_promotion_context_service = (
+                DefaultMenuPromotionContextService()
             )
             yield test_client
         finally:

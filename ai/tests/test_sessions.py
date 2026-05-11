@@ -35,6 +35,10 @@ from app.services.reference_caption_retriever import (
     ReferenceCaptionRetrievalResult,
     RetrievedReferenceCaption,
 )
+from app.services.menu_promotion_context import (
+    MenuPromotionContext,
+    StoreMenuCandidate,
+)
 from app.services.sessions import (
     resolve_caption_keywords,
     session_key,
@@ -265,6 +269,7 @@ class FakeCaptionGenerationService:
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
                 "reference_captions": list(request.reference_captions),
+                "menu_candidates": list(request.menu_candidates),
             }
         )
         if self.error is not None:
@@ -283,6 +288,7 @@ class FakeCaptionGenerationService:
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
                 "reference_captions": list(request.reference_captions),
+                "menu_candidates": list(request.menu_candidates),
                 "fallback_source": fallback_source,
             }
         )
@@ -306,6 +312,9 @@ class FakeCaptionGenerationService:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=caption,
+                selected_menu_name=(
+                    request.menu_candidates[0].name if request.menu_candidates else None
+                ),
             ),
             fallback_source=effective_fallback_source,
         )
@@ -339,6 +348,29 @@ class FakeReferenceCaptionRetrieverService:
         )
         if self.error is not None:
             raise self.error
+        return self.result
+
+
+class FakeMenuPromotionContextService:
+    def __init__(
+        self,
+        result: MenuPromotionContext | None = None,
+    ) -> None:
+        self.result = result or MenuPromotionContext()
+        self.calls: list[dict[str, object]] = []
+
+    async def fetch_context(
+        self,
+        *,
+        store_id,
+        weather_tags: list[str],
+    ) -> MenuPromotionContext:
+        self.calls.append(
+            {
+                "store_id": str(store_id),
+                "weather_tags": list(weather_tags),
+            }
+        )
         return self.result
 
 
@@ -646,6 +678,135 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
 
     assert response.status_code == 200
     assert fake_service.calls[0]["keywords"] == ["signature menu", "evening notice"]
+
+
+def test_process_utterance_fetches_menu_candidates_for_menu_promotion(
+    client: TestClient,
+) -> None:
+    session_id = "sess-menu-candidates-1"
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    assert fake_menu_service.calls[0]["store_id"] == VALID_PAYLOAD["store_id"]
+    assert fake_caption_service.calls[0]["menu_candidates"][0].name == "해물파전"
+
+
+def test_process_utterance_skips_menu_candidates_for_non_menu_purpose(
+    client: TestClient,
+) -> None:
+    session_id = "sess-menu-candidates-2"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="영업 공지",
+        draft_keywords=["임시 휴무"],
+    )
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    assert fake_menu_service.calls == []
+    assert fake_caption_service.calls[0]["menu_candidates"] == []
+
+
+def test_process_utterance_stores_menu_context_debug_fields(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-menu-candidates-debug-1"
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:menu_candidate_source"] == "weather_tag_menu"
+    assert saved["debug:menu_candidate_count"] == "1"
+    assert saved["debug:weather_matched_menu_count"] == "1"
 
 
 def test_process_utterance_passes_reference_captions_to_caption_request(
