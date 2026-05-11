@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
+    POSTGRES_SCHEMA: str = "public"
 
     REDIS_HOST: str = "project-redis"
     REDIS_PORT: int = 6379
@@ -132,8 +133,8 @@ class Settings(BaseSettings):
     CAPTION_MODEL_API_KEY: str | None = None
     CAPTION_MODEL_CTX_SIZE: int = 2048
     CAPTION_MODEL_GPU_LAYERS: int = 20
-    CAPTION_MODEL_MAX_TOKENS: int = 256
-    CAPTION_MODEL_TEMPERATURE: float = 0.7
+    CAPTION_MODEL_MAX_TOKENS: int = 1024
+    CAPTION_MODEL_TEMPERATURE: float = 1
     CAPTION_MODEL_TOP_P: float = 0.9
     CAPTION_MODEL_ENABLED: bool = True
     CAPTION_MODEL_TIMEOUT_SECONDS: float = DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
@@ -148,6 +149,8 @@ class Settings(BaseSettings):
     CANONICAL_KEYWORD_EMBEDDING_DIM: int = (
         DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM
     )
+    REFERENCE_CAPTION_RAG_ENABLED: bool = True
+    REFERENCE_CAPTION_MAX_REFERENCES: int = 2
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -167,6 +170,14 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @computed_field
+    @property
+    def postgres_search_path(self) -> str:
+        normalized_schema = self.POSTGRES_SCHEMA.strip() or "public"
+        if normalized_schema == "public":
+            return "public"
+        return f"{normalized_schema},public"
 
     @computed_field
     @property

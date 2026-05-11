@@ -471,10 +471,18 @@ pipeline {
 
                       if [ ! -f "$MODEL_PATH" ]; then
                         echo "${MODEL_LABEL} is missing. Downloading the GGUF artifact..."
+                        if [ -n "${HF_TOKEN:-}" ]; then
+                          echo "${MODEL_LABEL} will download from the HF Hub with authentication."
+                          HF_TOKEN_DOCKER_ARG="-e HF_TOKEN=$HF_TOKEN"
+                        else
+                          echo "${MODEL_LABEL} will download from the HF Hub without authentication."
+                          HF_TOKEN_DOCKER_ARG=""
+                        fi
 
                         docker_run_rc=0
                         docker run --rm \
                           -e HF_HOME=/tmp/hf-home \
+                          ${HF_TOKEN_DOCKER_ARG} \
                           -e MODEL_HF_REPO_ID="$MODEL_HF_REPO_ID_VALUE" \
                           -e MODEL_HF_FILENAME="$MODEL_HF_FILENAME_VALUE" \
                           -e TARGET_PATH="$MODEL_CONTAINER_PATH" \

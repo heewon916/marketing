@@ -84,6 +84,7 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
 
     assert settings.POSTGRES_HOST == "project-postgres"
     assert settings.POSTGRES_PORT == 5432
+    assert settings.POSTGRES_SCHEMA == "public"
     assert settings.REDIS_HOST == "project-redis"
     assert settings.REDIS_PORT == 6379
     assert settings.REDIS_DB == 0
@@ -130,6 +131,7 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
         == "intfloat/multilingual-e5-small"
     )
     assert settings.CANONICAL_KEYWORD_EMBEDDING_DIM == 384
+    assert settings.postgres_search_path == "public"
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -138,6 +140,15 @@ def test_postgres_dsn_format(env_setup: None) -> None:
     assert settings.postgres_dsn == (
         "postgresql+asyncpg://tester:secret@project-postgres:5432/testdb"
     )
+
+
+def test_postgres_search_path_uses_custom_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("POSTGRES_SCHEMA", "custom_schema")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.postgres_search_path == "custom_schema,public"
 
 
 def test_redis_url_with_password(env_setup: None) -> None:
@@ -300,7 +311,33 @@ def test_model_client_defaults_apply_when_env_is_missing(
         settings.caption_model_client.timeout_seconds
         == DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
     )
-    assert settings.caption_model_client.max_tokens == 256
+    assert settings.caption_model_client.max_tokens == 1024
+
+
+def test_reference_caption_rag_defaults_apply_when_env_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.delenv("REFERENCE_CAPTION_RAG_ENABLED", raising=False)
+    monkeypatch.delenv("REFERENCE_CAPTION_MAX_REFERENCES", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REFERENCE_CAPTION_RAG_ENABLED is True
+    assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 2
+
+
+def test_reference_caption_rag_env_vars_are_applied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("REFERENCE_CAPTION_RAG_ENABLED", "false")
+    monkeypatch.setenv("REFERENCE_CAPTION_MAX_REFERENCES", "4")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REFERENCE_CAPTION_RAG_ENABLED is False
+    assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 4
 
 
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:

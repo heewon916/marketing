@@ -16,7 +16,16 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
-        _engine = create_async_engine(settings.postgres_dsn, future=True, echo=False)
+        _engine = create_async_engine(
+            settings.postgres_dsn,
+            future=True,
+            echo=False,
+            connect_args={
+                "server_settings": {
+                    "search_path": settings.postgres_search_path,
+                }
+            },
+        )
     return _engine
 
 
