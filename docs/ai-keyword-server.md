@@ -11,20 +11,20 @@
 ### Keyword Server
 - Service name: `keyword-server`
 - Default port: `8001`
-- Container model dir: `/models/qwen2-1.5b-instruct/q3_k_m`
-- Container model path: `/models/qwen2-1.5b-instruct/q3_k_m/model.gguf`
-- Default host cache dir: `./.models/keyword/qwen2-1.5b-instruct/q3_k_m`
-- Default source: `Qwen/Qwen2-1.5B-Instruct-GGUF`
-- Default filename: `qwen2-1_5b-instruct-q3_k_m.gguf`
+- Container model dir: `/models/exaone-3.5-7.8b-instruct/q4_k_m`
+- Container model path: `/models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf`
+- Default host cache dir: `./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m`
+- Default source: `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF`
+- Default filename: `EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf`
 
 ### Caption Server
 - Service name: `caption-server`
 - Default port: `8002`
-- Container model dir: `/models/exaone-3.5-7.8b-instruct/q4_k_m`
-- Container model path: `/models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf`
-- Default host cache dir: `./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m`
-- Default source: `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF`
-- Default filename: `EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf`
+- Container model dir: `/models/exaone-4.0-32b/q4_k_m`
+- Container model path: `/models/exaone-4.0-32b/q4_k_m/model.gguf`
+- Default host cache dir: `./.models/caption/exaone-4.0-32b/q4_k_m`
+- Default source: `LGAI-EXAONE/EXAONE-4.0-32B-GGUF`
+- Default filename: `EXAONE-4.0-32B-Q4_K_M.gguf`
 
 ## FastAPI Runtime Env
 
@@ -76,6 +76,14 @@
 5. Jenkins starts `postgres`, `redis`, `keyword-server`, and `caption-server`.
 6. `fastapi` starts after both llama servers are reachable from the Docker network.
 
+## First Deploy Checks
+1. Run `docker compose config` with the deploy `.env` and confirm the keyword path resolves to `/models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf`.
+2. In the same output, confirm the caption path resolves to `/models/exaone-4.0-32b/q4_k_m/model.gguf`.
+3. Check Jenkins logs for:
+   - `keyword-model source: LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF/EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf`
+   - `caption-model source: LGAI-EXAONE/EXAONE-4.0-32B-GGUF/EXAONE-4.0-32B-Q4_K_M.gguf`
+4. Verify both model host cache directories contain `model.gguf` after provisioning.
+
 ## Runtime Behavior
 - If `keyword-server` is unavailable, `process-utterance` can return `503`.
 - If `caption-server` is unavailable, `FastAPI` falls back to the rule-based guide text and caption builder.
@@ -85,6 +93,7 @@
 - Keyword server health must respond at `http://keyword-server:<KEYWORD_MODEL_SERVER_PORT>/health`.
 - Caption server health must respond at `http://caption-server:<CAPTION_MODEL_SERVER_PORT>/health`.
 - FastAPI health must respond at `http://fastapi:8000/ai/health`.
+- Treat `docker compose config`, both llama `/health` responses, and the Jenkins source log lines above as the deployment acceptance criteria for the model switch.
 
 ## Troubleshooting
 - Model file missing:
