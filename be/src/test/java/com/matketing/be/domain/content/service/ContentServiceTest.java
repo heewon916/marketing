@@ -23,6 +23,7 @@ import com.matketing.be.domain.content.enums.ContentStatus;
 import com.matketing.be.domain.content.redis.ContentRedisRepository;
 import com.matketing.be.domain.content.repository.ContentImageRepository;
 import com.matketing.be.domain.content.repository.ContentRepository;
+import com.matketing.be.domain.store.entity.OwnerPersonaEnumType;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
 import com.matketing.be.global.exception.BusinessException;
@@ -127,7 +128,7 @@ class ContentServiceTest {
     private Store mockStore() {
         Store store = org.mockito.Mockito.mock(Store.class);
         org.mockito.Mockito.when(store.getId()).thenReturn(STORE_ID);
-        org.mockito.Mockito.when(store.getOwnerPersona()).thenReturn("aesthetic");
+        org.mockito.Mockito.when(store.getOwnerPersona()).thenReturn(OwnerPersonaEnumType.aesthetic);
         return store;
     }
 

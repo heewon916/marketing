@@ -9,8 +9,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ContentImageRepository extends JpaRepository<ContentImage, UUID> {
 
-    // 이미지가 특정 게시물에 속하는지 함께 검증한다.
-    Optional<ContentImage> findByIdAndContent_Id(UUID id, Long contentId);
+    Optional<ContentImage> findByContent_SessionIdAndS3Key(UUID sessionId, String s3Key);
 
-    long countByContent_Id(Long contentId);
+    long countByContent_SessionId(UUID sessionId);
 }

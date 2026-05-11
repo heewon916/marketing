@@ -229,13 +229,13 @@ public class ContentService {
     }
 
     /**
-     * [게시물 이미지 조회] /api/v1/contents/{content_id}/images 핵심 비즈니스 로직
-     * @param contentId
+     * [게시물 이미지 조회] /api/v1/contents/{sessionId}/images 핵심 비즈니스 로직
+     * @param sessionId
      * @return
      */
     @Transactional(readOnly = true)
-    public ContentImageUrlsResponseDto getContentImages(Long contentId) {
-        Content content = getContentWithRelations(contentId);
+    public ContentImageUrlsResponseDto getContentImages(UUID sessionId) {
+        Content content = getContentWithRelations(sessionId);
 
         return new ContentImageUrlsResponseDto(
                 content.getImages().stream()
@@ -245,44 +245,50 @@ public class ContentService {
     }
 
     /**
-     * [게시물 이미지 삭제] /api/v1/contents/{content_id}/images/{image_id} 핵심 비즈니스 로직
-     * @param contentId
-     * @param imageId
+     * [게시물 이미지 삭제] /api/v1/contents/{sessionId}/images/delete 핵심 비즈니스 로직
+     * @param sessionId
+     * @param imageUrl
      * @return
      */
     @Transactional
-    public ContentImageDeleteResponseDto deleteContentImage(Long contentId, UUID imageId) {
-        // TODO 이미지 정보 삭제는 redis에서 이루어진다. 이때 contentId가 필요한 것이 맞는지 sessionId가 필요한 것이 맞는지 확인이 필요하다
-        findContentById(contentId);
+    public ContentImageDeleteResponseDto deleteContentImage(UUID sessionId, String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
 
-        ContentImage contentImage = contentImageRepository.findByIdAndContent_Id(imageId, contentId)
+        ContentImage contentImage = contentImageRepository.findByContent_SessionIdAndS3Key(sessionId, imageUrl)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_IMAGE_NOT_FOUND));
 
         contentImageRepository.delete(contentImage);
 
-        long remainingImages = contentImageRepository.countByContent_Id(contentId);
+        long remainingImages = contentImageRepository.countByContent_SessionId(sessionId);
         return new ContentImageDeleteResponseDto(true, remainingImages);
     }
 
     /**
-     * [게시물 내용 조회] /api/v1/contents/{content_id} 핵심 비즈니스 로직
-     * @param contentId
+     * [게시물 내용 조회] /api/v1/contents/{sessionId} 핵심 비즈니스 로직
+     * @param sessionId
      * @return
      */
     @Transactional(readOnly = true)
-    public ContentResponseDto getContent(Long contentId) {
+    public ContentResponseDto getContent(UUID sessionId) {
+        return ContentResponseDto.from(getContentWithRelations(sessionId));
+    }
+
+    @Transactional(readOnly = true)
+    public ContentResponseDto getPublishedContent(Long contentId) {
         return ContentResponseDto.from(getContentWithRelations(contentId));
     }
 
     /**
-     * [게시물 텍스트 갱신] /api/v1/contents/{content_id}/edit 핵심 비즈니스 로직
-     * @param contentId
+     * [게시물 텍스트 갱신] /api/v1/contents/{sessionId}/edit 핵심 비즈니스 로직
+     * @param sessionId
      * @param requestDto 캡션만 수정 가능하다.
      * @return 수정된
      */
     @Transactional
-    public ContentEditResponseDto updateContent(Long contentId, ContentEditRequestDto requestDto) {
-        Content content = findContentById(contentId);
+    public ContentEditResponseDto updateContent(UUID sessionId, ContentEditRequestDto requestDto) {
+        Content content = getContentWithRelations(sessionId);
 
         // 현재 스키마에는 status/hashtags/updatedAt이 없어 caption만 수정한다.
         content.updateCaption(requestDto.caption());
@@ -293,13 +299,13 @@ public class ContentService {
     //============================================
     // 여기서부터는 부가 로직이다.
     //============================================
-    private Content findContentById(Long contentId) {
-        return contentRepository.findById(contentId)
+    private Content getContentWithRelations(Long contentId) {
+        return contentRepository.findWithImagesAndVideoRecordingsById(contentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
     }
 
-    private Content getContentWithRelations(Long contentId) {
-        return contentRepository.findWithImagesAndVideoRecordingsById(contentId)
+    private Content getContentWithRelations(UUID sessionId) {
+        return contentRepository.findWithImagesAndVideoRecordingsBySessionId(sessionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CONTENT_NOT_FOUND));
     }
 
