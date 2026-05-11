@@ -23,6 +23,16 @@ public record AiWeatherRequest(
 ) {
 
     public static AiWeatherRequest empty() {
-        return new AiWeatherRequest(null, null, null, null, null, null, null, null, null, null, null);
+        return new AiWeatherRequest(null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 }
