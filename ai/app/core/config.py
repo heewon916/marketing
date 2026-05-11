@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     CAPTION_MODEL_API_KEY: str | None = None
     CAPTION_MODEL_CTX_SIZE: int = 2048
     CAPTION_MODEL_GPU_LAYERS: int = 20
-    CAPTION_MODEL_MAX_TOKENS: int = 64
+    CAPTION_MODEL_MAX_TOKENS: int = 256
     CAPTION_MODEL_TEMPERATURE: float = 0.7
     CAPTION_MODEL_TOP_P: float = 0.9
     CAPTION_MODEL_ENABLED: bool = True

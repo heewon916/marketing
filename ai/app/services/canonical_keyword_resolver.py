@@ -98,7 +98,7 @@ class CanonicalKeywordResolverService:
         matches: list[CanonicalKeywordMatch] = []
         for draft_keyword, embedding in zip(draft_keywords, embeddings, strict=True):
             try:
-                row = await self._find_best_match(embedding)
+                best_match = await self._find_best_match(embedding)
             except Exception as exc:
                 logger.warning(
                     "Canonical keyword lookup failed. Falling back to draft keyword.",
@@ -112,15 +112,21 @@ class CanonicalKeywordResolverService:
                         draft_keyword=draft_keyword,
                     ),
                 )
-                row = None
+                best_match = None
 
-            if row is None or not row.code:
+            if (
+                best_match is None
+                or not best_match.matched
+                or not best_match.final_keyword
+            ):
                 matches.append(
                     CanonicalKeywordMatch(
                         draft_keyword=draft_keyword,
                         final_keyword=draft_keyword,
-                        display_name=None if row is None else row.display_name,
-                        score=None if row is None else row.score,
+                        display_name=(
+                            None if best_match is None else best_match.display_name
+                        ),
+                        score=None if best_match is None else best_match.score,
                         matched=False,
                     )
                 )
@@ -129,10 +135,10 @@ class CanonicalKeywordResolverService:
             matches.append(
                 CanonicalKeywordMatch(
                     draft_keyword=draft_keyword,
-                    final_keyword=row.code,
-                    display_name=row.display_name,
-                    score=row.score,
-                    matched=True,
+                    final_keyword=best_match.final_keyword,
+                    display_name=best_match.display_name,
+                    score=best_match.score,
+                    matched=best_match.matched,
                 )
             )
 

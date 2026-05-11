@@ -15,6 +15,7 @@ from app.services.caption_generation import (
     CaptionFallbackResult,
     CaptionGenerationRequest,
     CaptionGenerationResult,
+    CaptionGenerationService,
     CaptionGenerationUnavailableError,
     DEFAULT_FALLBACK_GUIDE_TEXT,
 )
@@ -48,16 +49,6 @@ def _weather_context_for_tests(weather_tags: list[str]) -> str:
     return ""
 
 
-def _weather_hashtags_for_tests(weather_tags: list[str]) -> list[str]:
-    if PRECIP_HEAVY_RAIN in weather_tags:
-        return ["#폭우"]
-    if PRECIP_RAIN in weather_tags:
-        return ["#비오는날"]
-    if PRECIP_CLEAR in weather_tags:
-        return ["#맑은날"]
-    if PRECIP_CLOUDY in weather_tags:
-        return ["#흐린날"]
-    return []
 
 
 def _make_chat_response(
@@ -232,7 +223,6 @@ class FakeCaptionGenerationService:
         self.result = result or CaptionGenerationResult(
             guide_text="키워드가 잘 보이도록 구도를 잡아보세요.",
             draft_caption="오늘의 메뉴를 자연스럽게 소개해보세요.",
-            draft_hashtags=["#signaturemenu"],
         )
         self.error = error
         self.calls: list[dict[str, object]] = []
@@ -269,14 +259,9 @@ class FakeCaptionGenerationService:
             }
         )
         keyword_phrase = (
-            ", ".join(request.keywords) if request.keywords else "today's highlights"
+            ", ".join(request.keywords) if request.keywords else "오늘의 매장"
         )
         weather_context = _weather_context_for_tests(request.weather_tags)
-        hashtags = [f"#{keyword.replace(' ', '')}" for keyword in request.keywords[:5]]
-        hashtags.extend(
-            hashtag for hashtag in _weather_hashtags_for_tests(request.weather_tags)
-            if hashtag not in hashtags
-        )
         caption = (
             f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
             f"{keyword_phrase}를 소개해보세요."
@@ -284,13 +269,8 @@ class FakeCaptionGenerationService:
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
             if not request.keywords
-            else (
-                f"Make sure {', '.join(request.keywords)} is clearly visible in the shot. "
-                "Check the framing and subject emphasis before shooting."
-            )
+            else f"사장님, {', '.join(request.keywords)}이(가) 잘 보이도록 영상을 촬영해보세요."
         )
-        if not hashtags:
-            hashtags.append("#오늘기록")
         effective_fallback_source = fallback_source
         if not request.keywords and effective_fallback_source is None:
             effective_fallback_source = "default_guide"
@@ -298,7 +278,6 @@ class FakeCaptionGenerationService:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=caption,
-                draft_hashtags=hashtags,
             ),
             fallback_source=effective_fallback_source,
         )
@@ -385,9 +364,37 @@ def test_keywords_not_exposed_even_when_debug_on(
     assert "final_keywords" not in body
 
 
-def test_resolve_caption_keywords_prefers_final_keywords() -> None:
-    assert resolve_caption_keywords(["draft menu"], ["final menu"]) == ["final menu"]
-    assert resolve_caption_keywords(["draft menu"], []) == ["draft menu"]
+def test_resolve_caption_keywords_prefers_display_names() -> None:
+    resolution = CanonicalKeywordResolution(
+        final_keywords=["CANONICAL_SIGNATURE_MENU", "draft notice"],
+        matches=[
+            CanonicalKeywordMatch(
+                draft_keyword="draft menu",
+                final_keyword="CANONICAL_SIGNATURE_MENU",
+                display_name="시그니처 메뉴",
+                score=0.99,
+                matched=True,
+            ),
+            CanonicalKeywordMatch(
+                draft_keyword="draft notice",
+                final_keyword="draft notice",
+                display_name=None,
+                score=None,
+                matched=False,
+            ),
+        ],
+    )
+
+    assert resolve_caption_keywords(["draft menu", "draft notice"], resolution) == [
+        "시그니처 메뉴",
+        "draft notice",
+    ]
+
+
+def test_resolve_caption_keywords_falls_back_to_draft_keywords_without_matches() -> None:
+    resolution = CanonicalKeywordResolution(final_keywords=[], matches=[])
+
+    assert resolve_caption_keywords(["draft menu"], resolution) == ["draft menu"]
 
 
 def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
@@ -404,9 +411,8 @@ def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
     )
 
     assert fallback_result.result.draft_caption
-    assert fallback_result.result.draft_hashtags == ["#오늘기록"]
     assert fallback_result.result.guide_text == DEFAULT_FALLBACK_GUIDE_TEXT
-    assert fallback_result.result.stored_caption.endswith("#오늘기록")
+    assert fallback_result.result.stored_caption == fallback_result.result.draft_caption
     assert fallback_result.fallback_source == "default_guide"
 
 
@@ -467,6 +473,49 @@ def test_process_utterance_falls_back_when_caption_generation_fails(
     assert saved["caption"]
 
 
+def test_process_utterance_falls_back_to_korean_when_caption_model_returns_english(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id = "sess-caption-english-fallback"
+    original_service = app.state.caption_generation_service
+    service = CaptionGenerationService(base_url="http://caption-server:8002")
+
+    async def fake_post_chat_completion(
+        prompt: str,
+        *,
+        include_response_format: bool,
+        strict_language: bool,
+    ):
+        return _make_chat_response(
+            200,
+            content=(
+                '{"guide_text":"Show the dish clearly.",'
+                '"caption":"Fresh soup for tonight."}'
+            ),
+        )
+
+    monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+    app.state.caption_generation_service = service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "사장님" in body["guide_text"]
+    assert "Make sure" not in body["guide_text"]
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:text_generation_fallback_source"] == "caption_model_fallback"
+    assert "Make sure" not in saved["caption"]
+
+
 def test_process_utterance_passes_purpose_to_caption_request(
     client: TestClient,
 ) -> None:
@@ -492,6 +541,39 @@ def test_process_utterance_passes_purpose_to_caption_request(
     assert response.status_code == 200
     assert fake_service.calls[0]["purpose"] == "영업 공지"
     assert "cloud_cover" not in fake_service.calls[0]
+
+
+def test_process_utterance_passes_human_readable_keywords_to_caption_request(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-readable-keywords-1"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    original_canonical_service = app.state.canonical_keyword_resolver_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="메뉴 홍보",
+        draft_keywords=["signature menu", "evening notice"],
+    )
+    app.state.canonical_keyword_resolver_service = FakeCanonicalKeywordResolverService(
+        final_keywords=["CANONICAL_SIGNATURE_MENU", "CANONICAL_EVENING_NOTICE"],
+        display_names=["시그니처 메뉴", "저녁 안내"],
+        matched_indexes={0, 1},
+    )
+    fake_service = FakeCaptionGenerationService()
+    app.state.caption_generation_service = fake_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+        app.state.canonical_keyword_resolver_service = original_canonical_service
+
+    assert response.status_code == 200
+    assert fake_service.calls[0]["keywords"] == ["시그니처 메뉴", "저녁 안내"]
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -560,7 +642,8 @@ def test_redis_payload_persisted(
     assert saved["status"] == "TEXT_GENERATED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"]
-    assert "#맑은날" in saved["caption"]
+    assert "맑은 날" in saved["caption"]
+    assert "CANONICAL_" not in saved["caption"]
     draft_keyword_fields = [
         field for field in saved if field.startswith("draft_keyword:")
     ]
