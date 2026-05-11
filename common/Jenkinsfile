@@ -344,11 +344,11 @@ pipeline {
                           ;;
                         CAPTION)
                           MODEL_LABEL="caption-model"
-                          DEFAULT_MODEL_HOST_DIR="./.models/caption/qwen2.5-7b-instruct/q3_k_m"
-                          DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2.5-7B-Instruct-GGUF"
-                          DEFAULT_MODEL_HF_FILENAME="qwen2.5-7b-instruct-q3_k_m.gguf"
+                          DEFAULT_MODEL_HOST_DIR="./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
                           LEGACY_MODEL_HF_FILENAME=""
-                          MODEL_CONTAINER_DIR="/models/qwen2.5-7b-instruct/q3_k_m"
+                          MODEL_CONTAINER_DIR="/models/exaone-3.5-7.8b-instruct/q4_k_m"
                           ;;
                         *)
                           echo "ERROR: unsupported model role: $model_role"

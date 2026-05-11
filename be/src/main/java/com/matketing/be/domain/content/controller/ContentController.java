@@ -2,19 +2,20 @@ package com.matketing.be.domain.content.controller;
 
 import com.matketing.be.domain.content.dto.ChatRequest;
 import com.matketing.be.domain.content.dto.ChatResponse;
+import com.matketing.be.domain.content.dto.ContentDraftResponseDto;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteRequestDto;
 import com.matketing.be.domain.content.dto.ContentImageDeleteResponseDto;
 import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
+import com.matketing.be.domain.content.dto.ContentPublishResponseDto;
+import com.matketing.be.domain.content.dto.ContentPublishStatusResponseDto;
 import com.matketing.be.domain.content.dto.ContentRequest;
-import com.matketing.be.domain.content.dto.ContentResponseDto;
+import com.matketing.be.domain.content.dto.ContentVideoResponseDto;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
-import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,6 +27,15 @@ public class ContentController {
     private final ContentService contentService;
 
     /**
+     * S3 저장 규칙
+     * 1. 사용자가 처음 찍은 영상 : /inputs/{session-id}/draft.mp4
+     * 2. AI가 처음 프레임 추출한 drafts : /ai-drafts/{session-id}/draft-001.jpg
+     * 3. AI가 최종 편집한 사진 : /ai-finals/{session-id}/final-001.jpg
+     * 4. 레퍼런스 사진 : /references/{owner_persona}/{reference_id}/001.jpg
+     */
+
+    /**
+     * 사용자 발화 처리 API
      * Clova STT API
      * 역할: multipart 파라미터 service, client로 전달
      * 응답: 최종 utterance, status=TEXT_RECOGNIZED
@@ -42,21 +52,41 @@ public class ContentController {
      * - request_id가 포함된 기존 요청: Redis 멱등성 처리 후 FastAPI 캡션 생성 트리거
      * - request_id가 없는 신규 요청: store/utterance 기반 AI 게시글 생성 참고 JSON 반환
      * - store_id가 없으면 인증 사용자 기준으로 등록된 매장을 조회한다.
+     * request body:
+     * {
+     * 	"request_id": "9d5b4b52-78f2-4f7e-8c10-4a04bb5a6b1b",
+     * 	"utterance": "오늘 가게에 있는 찻잔, 곰돌이 인형, 원목 찬장을 자랑하고 싶어"
+     * }
+     *
+     * response body:
+     * {
+     * 	"session_id": "3f1b7c6e-4e4d-4f6e-9a44-9d7a6f9d2d10",
+     * 	"status": "TEXT_GENERATED",
+     * 	"guide_text": "찻잔, 곰돌이 인형, 원목 찬장이 모두 잘 보이도록 예쁘게 찍어주세요!",
+     * 	"caption": "비 내리는 월요일 오후, 따뜻한 #생강차 한 잔 어떠세요?"
+     * }
+     *
      * @param request store_id, request_id(선택), 최종 utterance
-     * @param authentication TODO SecurityContext에서 인증된 사용자로 변경
      * @return 기존 캡션 생성 응답(ChatResponse) 또는 참고정보 응답(ContentResponse)
      */
     @PostMapping("/caption")
-    public Object createTextContent(
-            @RequestBody ContentRequest request,
-            Authentication authentication
-    ) {
-        // Controller는 인증 사용자 식별자만 Service에 전달하고, 요청 형태별 분기는 ContentService에서 처리한다.
-        return contentService.createCaption(request, getCurrentUserId(authentication));
+    public Object createTextContent(@RequestBody ContentRequest request) {
+        return contentService.createCaption(request);
     }
 
     /**
      * 임시 저장 게시물 이미지 조회 API
+     * request body: {}
+     * response body:
+     * {
+     * 		"session_id": uuid,
+     *      "image_url": [
+     * 	        {
+     * 	            "image_key": "photo:{no}",
+     * 			    "image_url" : "/ai-finals/{session-id}/final-001.jpg"
+     *          },
+     *      ]
+     * }
      * @param sessionId
      * @return List<String> imageUrl
      */
@@ -68,14 +98,19 @@ public class ContentController {
 
     /**
      * 임시저장 게시물 이미지 삭제 API
-     * TODO 이미지 정보 삭제는 redis에서 이루어진다. 이 로직으로 수정이 필요해보인다.
-     * TODO request body로 전달받는 이미지 url 삭제는 param에 어떻게 반영해야 할까.
+     * redis: `contents:{session_id}:photo:{no}` 삭제
      * request body:
      * {
-     *     "image_url": "ai-finals/{sessionId}/final-001.jpg" // 삭제할 이미지의 s3 url
+     * 	"session_id": uuid,
+     * 	"deleted_image_key": redis 키 값
+     * }
+     * response body:
+     * {
+     *   "success": true,
+     *   "remaining_images": 2 // 남은 이미지 개수만 반환
      * }
      * @param sessionId
-     * @param imageUrl
+     * @param request
      * @return
      */
     @DeleteMapping("/{sessionId}/images/delete")
@@ -83,12 +118,21 @@ public class ContentController {
             @PathVariable UUID sessionId,
             @RequestBody ContentImageDeleteRequestDto request
     ) {
-        return contentService.deleteContentImage(sessionId, request.imageUrl());
+        return contentService.deleteContentImage(sessionId, request.deletedImageKey());
     }
 
     /**
      * 임시저장 게시물 텍스트 수정 API
-     * - 캡션 수정만 가능하다
+     * request body:
+     * {
+     *   "caption": "수정된 무언가"
+     * }
+     * response body:
+     * {
+     *   "session_id": "uuid",
+     *   "caption": " …. ",
+     *   "updated_at": "2026-04-23T10:00:00Z"
+     * }
      * @param sessionId 수정할 게시물의 sessionId
      * @param requestDto
      * @return
@@ -101,57 +145,142 @@ public class ContentController {
         return contentService.updateContent(sessionId, requestDto);
     }
 
-
     /**
      * 임시저장인 게시물 내용 조회 API
      * - 응답에는 캡션, 이미지, 인스타 아이디, 인스타 프로필
      * - 인스타 아이디랑 인스타 프로필도 응답에 포함시켜야 함
+     *
+     * request body:{}
+     * response body:
+     * {
+     *   "sessionId": "uuid",
+     *   "status": "draft",
+     *   "caption": "...",
+     *   "images": [
+     *          {
+     *          "id" : "uuid",
+     *          "filtered_url": "s3://...",
+     *          "display_order": 1
+     *          }
+     *      ],
+     *   "instagramUsername": "".
+     *   "instagramProfileImageUrl": ""
+     * }
      * @param sessionId
      * @return
      */
     @GetMapping("/{sessionId}")
-    public ContentResponseDto getContent(@PathVariable UUID sessionId) {
+    public ContentDraftResponseDto getContent(@PathVariable UUID sessionId) {
         return contentService.getContent(sessionId);
     }
 
-
-    // 현재 스키마 기준으로 게시물 텍스트는 caption만 수정할 수 있다. - redis 존재
-
-
-    // TODO 게시물 발행 API 로직 추가
-    // return할 때 최종 캡션, 이미지를 줘야 한다. 그리고 instagram 리다이렉트 url도
-    // @PostMapping("/{sessionId}/publish")
-    /*
-      1. session_id로 Redis contents:{sessionId} 조회
-      2. caption, image urls, video url, status 검증
-      3. Instagram 발행 API 호출
-      4. 성공하면 DB contents 생성
-      5. contents_images, video_recordings 생성
-      6. instagram_media_id, instagram_permalink, published_at 저장
-      7. 응답으로 content_id 반환
-      8. Redis 세션은 삭제하거나 PUBLISHED 상태로 TTL 부여
-
-      현재 계획된 api는 2가지
-      1. /api/v1/contents/{sessionId}/publish -> 응답: {content_id: , publish_progress: , message: "발행이 시작되었습니다"}
-      2. /api/v1/contents/{sessionId}/publish/status -> 응답: {content_id: , publish_progress: , instagram_media_id: , instagram_permalink: }
-     */
-
     /**
-     * 최종발행된 게시물의 링크 조회 API
-     * - 오로지 발행된 인스타그램의 perm_link만 주면 될 듯 싶다
-     * @param contentId
-     * @return
+     * 게시물 발행 API
+     * @PostMapping("/{sessionId}/publish")
+     * 발행하기 버튼을 누르면 조회됩니다.
+     * request body: {}
+     * response body:
+     * {
+     *      "content_id":"uuid",
+     *      "publish_progress": "queued",
+     *      "message": "발행이 시작되었습니다"
+     * }
      */
-    @GetMapping("/published/{contentId}")
-    public ContentResponseDto getPublishedContent(@PathVariable Long contentId) {
-        return contentService.getPublishedContent(contentId);
+    @PostMapping("/{sessionId}/publish")
+    public ContentPublishResponseDto publishContent(@PathVariable UUID sessionId) {
+        return contentService.publishContent(sessionId);
     }
 
-    // TODO JWT 인증 필터가 적용되면 이 함수는 삭제하고 SecurityContext의 실제 user_name을 주도록 바꿔야 한다.
-    private String getCurrentUserId(Authentication authentication) {
-        if (authentication != null && authentication.getName() != null && !authentication.getName().isBlank()) {
-            return authentication.getName();
-        }
-        return "00000000-0000-0000-0000-000000000000";
+    /**
+     * 게시물 발행 상태 조회 API
+     * @GetMapping("/{session_id}/publish/status")
+     * 발행 상태를 조회합니다. 주기적으로 프론트에서 요청할 수 있습니다.
+     * 만약 발행이 성공되면 DB에 저장하고 해당 응답을 프론트에게 전달합니다.
+     * Redis에 저장되어 있던 관련 세션 정보는 남깁니다.
+     *
+     * request body: {}
+     * response body:
+     * {
+     * 	    "content_id": "uuid",
+     *      "publish_progress": "completed",
+     * 	    "instagram_media_id":  "17918...",
+     * 	    "instagram_permalink": "https://instagram.com/p/..."
+     * }
+     */
+    @GetMapping("/{sessionId}/publish/status")
+    public ContentPublishStatusResponseDto getPublishStatus(@PathVariable UUID sessionId) {
+        return contentService.getPublishStatus(sessionId);
+    }
+
+    /**
+     * 비디오 추출 API
+     * @PostMapping("/{session_id}/video")
+     * 프론트로부터 mp4파일을 받고, s3에 저장합니다.
+     * ai 모델을 내부적으로 호출해 프레임을 추출, 최종 편집합니다.
+     *
+     * request body:
+     * (multipart/form-data)
+     *     video_file: File
+     * 		session_id: uuid
+     *
+     * response body:
+     * {
+     * 	    "video_recording_id": "video s3 key",
+     * 	    "extracted_frames":	[
+     * 	        {
+     * 	            "image_id": "uuid",
+     * 	            "original_key":	"s3_url"
+     * 	        },
+     *      ]
+     * }
+     *
+     * 1. AI 비디오 프레임 추출 호출 →  /ai/sessions/{session_id}/extract-frames
+     * request body:
+     * {
+     *  "session_id": "uuid",
+     *  "video": "/inputs/{session-id}/test-video.mp4"
+     * }
+     * response body:
+     * -> s3 url을 돌려 받습니다.
+     * {
+     * 	"session_id": "uuid",
+     * 	"status" : "FRAME_EXTRACTED",
+     * 	"drafts": [
+     * 		"/ai-drafts/session-123/draft-001.jpg",
+     * 		"/ai-drafts/session-123/draft-002.jpg"
+     * 	]
+     * }
+     *
+     * 2. AI 사진 최종 편집 호출 → /ai/sessions/{session_id}/final-edit
+     *
+     * request body:
+     * {
+     * 	"session_id": "uuid",
+     * 	"drafts" : [
+     * 		"/ai-drafts/session-123/draft-001.jpg",
+     * 		"/ai-drafts/session-123/draft-002.jpg"
+     * 	]
+     * }
+     *
+     * response body:
+     * - AI가 redis에 저장합니다. 우리는 results를 최종 /api/v1/contents/{sessionId}/video의 응답에 포함하게 됩니다.
+     * contents:{sessionId}:
+     * {
+     * 	"session_id": "uuid",
+     * 	"status" : "PHOTO_EDITED",
+     * 	"results":
+     * 		[
+     * 			"/ai-finals/session-123/final-001.jpg",
+     * 			"/ai-finals/session-123/final-002.jpg"
+     * 		]
+     * }
+     *
+     */
+    @PostMapping("/{sessionId}/video")
+    public ContentVideoResponseDto processVideo(
+            @PathVariable UUID sessionId,
+            @RequestPart("video_file") MultipartFile videoFile
+    ) {
+        return contentService.processVideo(sessionId, videoFile);
     }
 }

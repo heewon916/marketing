@@ -2,9 +2,14 @@ package com.matketing.be.domain.content.redis;
 
 import com.matketing.be.domain.content.dto.ContentRedisResult;
 import com.matketing.be.domain.content.enums.ContentStatus;
+import java.time.OffsetDateTime;
 import java.time.Duration;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
@@ -15,8 +20,18 @@ public class ContentRedisRepository {
 
     private static final String STATUS = "status";
     private static final String UTTERANCE = "utterance";
+    private static final String STORE_ID = "store_id";
     private static final String GUIDE_TEXT = "guide_text";
     private static final String CAPTION = "caption";
+    private static final String VIDEO = "video";
+    private static final String UPDATED_AT = "updated_at";
+    private static final String PUBLISH_ID = "publish_id";
+    private static final String PUBLISH_PROGRESS = "publish_progress";
+    private static final String CONTENT_ID = "content_id";
+    private static final String INSTAGRAM_MEDIA_ID = "instagram_media_id";
+    private static final String INSTAGRAM_PERMALINK = "instagram_permalink";
+    private static final String DRAFT_PREFIX = "draft:";
+    private static final String PHOTO_PREFIX = "photo:";
 
     private final StringRedisTemplate redisTemplate;
 
@@ -42,10 +57,15 @@ public class ContentRedisRepository {
      * @param sessionId
      * @param utterance
      */
-    public void createStartedContent(String sessionId, String utterance) {
+    public void createStartedContent(String sessionId, String storeId, String utterance) {
         String key = contentKey(sessionId);  // contents:{sessionId} 생성
         redisTemplate.opsForHash().putIfAbsent(key, STATUS, ContentStatus.STARTED.name());
+        redisTemplate.opsForHash().putIfAbsent(key, STORE_ID, storeId);
         redisTemplate.opsForHash().putIfAbsent(key, UTTERANCE, utterance);
+    }
+
+    public void createStartedContent(String sessionId, String utterance) {
+        createStartedContent(sessionId, null, utterance);
     }
 
     // 프론트 재요청 또는 중복 요청 응답에 필요한 텍스트 생성 결과만 조회한다.
@@ -85,6 +105,168 @@ public class ContentRedisRepository {
         }
     }
 
+    public List<RedisImageValue> getPhotoUrls(String sessionId) {
+        return prefixedValues(sessionId, PHOTO_PREFIX).entrySet().stream()
+                .map(entry -> new RedisImageValue(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    public List<String> getPhotoUrlValues(String sessionId) {
+        return getPhotoUrls(sessionId).stream()
+                .map(RedisImageValue::url)
+                .toList();
+    }
+
+    public List<String> getVideoKeys(String sessionId) {
+        String video = getStringField(sessionId, VIDEO);
+        if (video == null || video.isBlank()) {
+            return List.of();
+        }
+        return List.of(video);
+    }
+
+    public boolean deletePhotoByField(String sessionId, String photoField) {
+        String key = contentKey(sessionId);
+        if (photoField == null || !isPhotoField(photoField)) {
+            return false;
+        }
+        return redisTemplate.opsForHash().delete(key, photoField) > 0;
+    }
+
+    public boolean putVideo(String sessionId, String videoKey) {
+        String key = contentKey(sessionId);
+        if (redisTemplate.opsForHash().entries(key).isEmpty()) {
+            return false;
+        }
+        redisTemplate.opsForHash().put(key, VIDEO, videoKey);
+        return true;
+    }
+
+    public boolean putAiVideoResults(String sessionId, String videoKey, String status, List<String> drafts, List<String> photos) {
+        String key = contentKey(sessionId);
+        if (redisTemplate.opsForHash().entries(key).isEmpty()) {
+            return false;
+        }
+
+        Map<String, String> mapping = new LinkedHashMap<>();
+        mapping.put(VIDEO, videoKey);
+        mapping.put(STATUS, status);
+        redisTemplate.opsForHash().putAll(key, mapping);
+        replacePrefixedFields(key, DRAFT_PREFIX, drafts);
+        replacePrefixedFields(key, PHOTO_PREFIX, photos);
+        return true;
+    }
+
+    public boolean updateCaption(String sessionId, String caption, OffsetDateTime updatedAt) {
+        String key = contentKey(sessionId);
+        if (redisTemplate.opsForHash().entries(key).isEmpty()) {
+            return false;
+        }
+
+        redisTemplate.opsForHash().put(key, CAPTION, caption);
+        redisTemplate.opsForHash().put(key, UPDATED_AT, updatedAt.toString());
+        return true;
+    }
+
+    public boolean queuePublish(String sessionId, String publishId) {
+        String key = contentKey(sessionId);
+        if (redisTemplate.opsForHash().entries(key).isEmpty()) {
+            return false;
+        }
+        redisTemplate.opsForHash().put(key, PUBLISH_ID, publishId);
+        redisTemplate.opsForHash().put(key, PUBLISH_PROGRESS, "queued");
+        return true;
+    }
+
+    public void completePublish(String sessionId, Long contentId, String instagramMediaId, String instagramPermalink) {
+        String key = contentKey(sessionId);
+        redisTemplate.opsForHash().put(key, CONTENT_ID, String.valueOf(contentId));
+        redisTemplate.opsForHash().put(key, PUBLISH_PROGRESS, "completed");
+        redisTemplate.opsForHash().put(key, INSTAGRAM_MEDIA_ID, instagramMediaId);
+        redisTemplate.opsForHash().put(key, INSTAGRAM_PERMALINK, instagramPermalink);
+        redisTemplate.opsForHash().put(key, STATUS, ContentStatus.COMPLETED.name());
+    }
+
+    public ContentRedisSession getSession(String sessionId) {
+        Map<Object, Object> entries = redisTemplate.opsForHash().entries(contentKey(sessionId));
+        if (entries.isEmpty()) {
+            return null;
+        }
+        return new ContentRedisSession(
+                sessionId,
+                stringValue(entries.get(STORE_ID)),
+                stringValue(entries.get(STATUS)),
+                stringValue(entries.get(CAPTION)),
+                stringValue(entries.get(VIDEO)),
+                stringValue(entries.get(PUBLISH_ID)),
+                stringValue(entries.get(PUBLISH_PROGRESS)),
+                stringValue(entries.get(CONTENT_ID)),
+                stringValue(entries.get(INSTAGRAM_MEDIA_ID)),
+                stringValue(entries.get(INSTAGRAM_PERMALINK)),
+                new ArrayList<>(prefixedValues(entries, PHOTO_PREFIX).values()),
+                getPrefixedValues(entries, DRAFT_PREFIX)
+        );
+    }
+
+    public String getStringField(String sessionId, String field) {
+        Object value = redisTemplate.opsForHash().get(contentKey(sessionId), field);
+        return value instanceof String stringValue ? stringValue : null;
+    }
+
+    private LinkedHashMap<String, String> prefixedValues(String sessionId, String prefix) {
+        return prefixedValues(redisTemplate.opsForHash().entries(contentKey(sessionId)), prefix);
+    }
+
+    private LinkedHashMap<String, String> prefixedValues(Map<Object, Object> entries, String prefix) {
+        LinkedHashMap<String, String> values = new LinkedHashMap<>();
+        entries.entrySet().stream()
+                .filter(entry -> isPrefixedField(entry.getKey(), prefix))
+                .sorted(Comparator.comparingInt(entry -> prefixedIndex(entry.getKey(), prefix)))
+                .forEach(entry -> values.put((String) entry.getKey(), stringValue(entry.getValue())));
+        return values;
+    }
+
+    private List<String> getPrefixedValues(Map<Object, Object> entries, String prefix) {
+        return prefixedValues(entries, prefix).values().stream()
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+    }
+
+    private void replacePrefixedFields(String key, String prefix, List<String> values) {
+        Object[] oldFields = redisTemplate.opsForHash().entries(key).keySet().stream()
+                .filter(field -> isPrefixedField(field, prefix))
+                .toArray();
+        if (oldFields.length > 0) {
+            redisTemplate.opsForHash().delete(key, oldFields);
+        }
+        if (values == null) {
+            return;
+        }
+        for (int index = 0; index < values.size(); index++) {
+            redisTemplate.opsForHash().put(key, prefix + (index + 1), values.get(index));
+        }
+    }
+
+    public boolean deletePhotoByUrl(String sessionId, String photoUrl) {
+        String key = contentKey(sessionId);
+        Object[] fieldsToDelete = redisTemplate.opsForHash().entries(key).entrySet().stream()
+                .filter(entry -> isPhotoField(entry.getKey()))
+                .filter(entry -> photoUrl.equals(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .toArray();
+
+        if (fieldsToDelete.length == 0) {
+            return false;
+        }
+
+        redisTemplate.opsForHash().delete(key, fieldsToDelete);
+        return true;
+    }
+
+    public boolean updateCaption(String sessionId, String caption) {
+        return updateCaption(sessionId, caption, OffsetDateTime.now());
+    }
+
     // Redis의 현재 status가 새 status보다 뒤 단계면 유지하고, 새 status가 더 진행된 단계일 때만 갱신한다.
     // 예를 들어 FastAPI가 이미 FRAME_EXTRACTED까지 진행했는데 Spring이 늦게 TEXT_GENERATED를 쓰면 상태가 역행하므로 막는다.
     // 현재 비교는 enum 선언 순서에 의존하므로 상태 추가/순서 변경 시 이 메서드도 함께 검토해야 한다.
@@ -109,5 +291,57 @@ public class ContentRedisRepository {
 
     private String contentKey(String sessionId) {
         return "contents:" + sessionId;
+    }
+
+    private boolean isPhotoField(Object field) {
+        return isPrefixedField(field, PHOTO_PREFIX);
+    }
+
+    private boolean isPrefixedField(Object field, String prefix) {
+        return field instanceof String fieldName && fieldName.startsWith(prefix);
+    }
+
+    private int prefixedIndex(Object field, String prefix) {
+        if (!(field instanceof String fieldName)) {
+            return Integer.MAX_VALUE;
+        }
+
+        String suffix = fieldName.substring(prefix.length()).replace("{", "").replace("}", "");
+        try {
+            return Integer.parseInt(suffix);
+        } catch (NumberFormatException exception) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    private String stringValue(Object value) {
+        return value instanceof String stringValue ? stringValue : null;
+    }
+
+    public record RedisImageValue(String field, String url) {
+        public int displayOrder() {
+            String suffix = field.substring(PHOTO_PREFIX.length()).replace("{", "").replace("}", "");
+            try {
+                return Integer.parseInt(suffix);
+            } catch (NumberFormatException exception) {
+                return 0;
+            }
+        }
+    }
+
+    public record ContentRedisSession(
+            String sessionId,
+            String storeId,
+            String status,
+            String caption,
+            String video,
+            String publishId,
+            String publishProgress,
+            String contentId,
+            String instagramMediaId,
+            String instagramPermalink,
+            List<String> photos,
+            List<String> drafts
+    ) {
     }
 }

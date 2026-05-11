@@ -18,12 +18,14 @@ public class AuthUser implements UserDetails {
     private final UUID id;
     private final String instagramUserId;
     private final String instagramUsername;
+    private final String profileImageUrl;
 
     public static AuthUser from(User user) {
         return new AuthUser(
                 user.getId(),
                 user.getInstagramUserId(),
-                user.getInstagramUsername()
+                user.getInstagramUsername(),
+                user.getProfileImageUrl()
         );
     }
 
@@ -41,6 +43,8 @@ public class AuthUser implements UserDetails {
     public String getUsername() {
         return instagramUserId;
     }
+
+    public String getProfileImageUrl() { return profileImageUrl; }
 
     @Override
     public boolean isAccountNonExpired() {

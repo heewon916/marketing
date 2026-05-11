@@ -179,33 +179,42 @@ Output:
 _ALLOWED_PURPOSES = ALLOWED_CONTENT_PURPOSES
 KeywordPurpose = ContentPurpose
 
-_PROMPT_TEMPLATE = """You classify the purpose of a Korean shop-owner utterance and extract 1 to 3 reusable keyword candidates.
+_PROMPT_TEMPLATE = """당신은 한국어로 입력된 자영업자 발화를 읽고 게시물 목적을 분류한 뒤, 재사용 가능한 키워드 1~3개를 추출하는 분류기다.
 
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"purpose": "...", "keywords": ["..."]}}.
-- "purpose" must be exactly one of: "메뉴 홍보", "영업 공지", "일상 공유".
-- "keywords" must contain 1 to 3 short Korean keyword candidates copied or lightly normalized from the utterance.
-- Keep "keywords" focused on menu, product, event, notice, routine, or shop-operation phrases.
-- Drop filler talk, complaints, mood-only phrases, and general situation words.
-- Preserve useful phrases and deduplicate everything.
-- Do not explain your reasoning.
+규칙:
+- 출력은 JSON 객체 텍스트만 반환한다.
+- 반드시 다음 스키마를 사용한다: {{"purpose": "...", "keywords": ["..."]}}.
+- "purpose" 값은 반드시 다음 셋 중 하나여야 한다: "메뉴 홍보", "영업 공지", "일상 공유".
+- "keywords"는 발화에서 그대로 가져오거나 가볍게 정규화한 짧은 한국어 표현 1~3개여야 한다.
+- "keywords"는 메뉴, 식재료, 음식명, 상품, 이벤트, 공지, 일상, 매장 운영과 관련된 표현 중심으로 고른다.
+- 군더더기 말, 하소연, 감정만 있는 표현, 너무 일반적인 상황 설명은 제외한다.
+- 유용한 표현은 보존하고, 중복은 제거한다.
+- 추론 과정은 설명하지 않는다.
 
-Examples:
-Input: \uc624\ub298 \uc544\uc8fc \ube44\uc2fc \ubc14\ub2d0\ub77c\ub85c \ubc84\ud130 \ucfe0\ud0a4\ub97c \uad6c\uc6e0\ub294\ub370 \uc190\ub2d8\uc774 \uc601 \uc5c6\ub124...
-Output: {{"purpose": "메뉴 홍보", "keywords": ["\ubc84\ud130 \ucfe0\ud0a4"]}}
+분류 기준:
+- 식재료명이나 음식명이 들어가고, 그것이 소개·추천·판매 맥락으로 언급되면 "메뉴 홍보"로 분류한다.
+- 사용자가 구체적인 기간, 날짜, 요일, 공휴일과 함께 영업시간 변경, 영업일 변경, 휴무, 정상영업 여부를 언급하면 "영업 공지"로 분류한다.
+- 특히 구체적인 기간이나 일정 변경 안내가 핵심이면, 음식명이나 메뉴명이 함께 있어도 "영업 공지"를 우선한다.
+- 위 두 경우가 아니고, 가게 운영자 개인의 생각, 일상, 감상, 근황 공유가 중심이면 "일상 공유"로 분류한다.
 
-Input: \uc624\ub298 \ube44\ub3c4 \uc624\uace0 \uc601 \ud558\ub298\uc774 \uafb8\ubb3c\uac70\ub9ac\ub294\ub370 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\uaca0\ub2e4
-Output: {{"purpose": "메뉴 홍보", "keywords": ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"]}}
+예시:
+입력: 오늘 아주 비싼 바닐라로 버터 쿠키를 구웠는데 손님들이 좋아하셨으면 좋겠네
+출력: {{"purpose": "메뉴 홍보", "keywords": ["바닐라", "버터 쿠키"]}}
 
-Input: \uc624\ub298 \uc784\uc2dc\ud734\ubb34\ub77c\uc11c \uc800\ub141 \uc601\uc5c5\uc740 \uc26c\uace0 \ub0b4\uc77c \uc815\uc0c1\uc601\uc5c5\ud560\uac8c\uc694
-Output: {{"purpose": "영업 공지", "keywords": ["\uc784\uc2dc \ud734\ubb34", "\uc815\uc0c1\uc601\uc5c5"]}}
+입력: 비 오는 날이라 막걸리랑 파전 생각나서 오늘은 이 조합 추천하고 싶어요
+출력: {{"purpose": "메뉴 홍보", "keywords": ["막걸리", "파전"]}}
 
-Input: \uc624\ub298\uc740 \uac00\uac8c \ub9c8\uac10\ud558\uace0 \uc9d1\uc5d0\uc11c \ucc45 \uc77d\uc73c\uba74\uc11c \uc27d\ub2c8\ub2e4
-Output: {{"purpose": "일상 공유", "keywords": ["\uac00\uac8c \ub9c8\uac10", "\ucc45 \uc77d\uae30"]}}
+입력: 5월 15일부터 5월 17일까지 가게 공사로 휴무이고 5월 18일부터 정상영업합니다
+출력: {{"purpose": "영업 공지", "keywords": ["5월 15일~5월 17일 휴무", "5월 18일 정상영업"]}}
 
-Input: {utterance}
-Output:
+입력: 어린이날이라 5월 5일은 오픈 시간을 오후 1시로 늦춥니다
+출력: {{"purpose": "영업 공지", "keywords": ["어린이날", "오후 1시 오픈"]}}
+
+입력: 오늘은 가게 마감하고 집에서 책 읽으면서 쉬고 싶네요
+출력: {{"purpose": "일상 공유", "keywords": ["가게 마감", "책 읽기"]}}
+
+입력: {utterance}
+출력:
 """
 
 

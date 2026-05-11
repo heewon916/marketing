@@ -49,7 +49,7 @@ Thumbs.db
 application-local.yml
 application-dev.yml
 application-prod.yml
-db/init.sql
+init.sql
 
 ######################################################################
 # Etc

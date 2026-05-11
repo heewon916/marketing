@@ -19,8 +19,6 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "notifications", indexes = {
@@ -51,14 +49,12 @@ public class Notification {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
-    @Enumerated(EnumType.ORDINAL)
-    @JdbcTypeCode(SqlTypes.SMALLINT)
-    @Column(name = "type", nullable = false, columnDefinition = "SMALLINT")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type", nullable = false, length = 50)
     private NotificationType type;
 
-    @Enumerated(EnumType.ORDINAL)
-    @JdbcTypeCode(SqlTypes.SMALLINT)
-    @Column(name = "status", nullable = false, columnDefinition = "SMALLINT")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 50)
     private NotificationStatus status;
 
     @Column(name = "sent_at")

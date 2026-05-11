@@ -1,6 +1,10 @@
 package com.matketing.be.domain.content.client;
 
 import com.matketing.be.domain.content.config.AiServerProperties;
+import com.matketing.be.domain.content.dto.AiExtractFramesRequest;
+import com.matketing.be.domain.content.dto.AiExtractFramesResponse;
+import com.matketing.be.domain.content.dto.AiFinalEditRequest;
+import com.matketing.be.domain.content.dto.AiFinalEditResponse;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceRequest;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
 import com.matketing.be.global.exception.BusinessException;
@@ -36,6 +40,38 @@ public class AiContentClient {
         AiProcessUtteranceResponse response = sendProcessUtteranceRequest(request);
         validateRequiredFields(response);
         return response;
+    }
+
+    public AiExtractFramesResponse extractFrames(AiExtractFramesRequest request) {
+        try {
+            return restClient.post()
+                    .uri("/ai/sessions/{sessionId}/extract-frames", request.sessionId())
+                    .body(request)
+                    .retrieve()
+                    .body(AiExtractFramesResponse.class);
+        } catch (RestClientException exception) {
+            log.warn("content.ai.extract-frames.failed: sessionId={}", request.sessionId(), exception);
+            throw new BusinessException(ErrorCode.AI_SERVER_FAILED, exception);
+        } catch (Exception exception) {
+            log.warn("content.ai.extract-frames.invalid-response: sessionId={}", request.sessionId(), exception);
+            throw new BusinessException(ErrorCode.AI_SERVER_FAILED, exception);
+        }
+    }
+
+    public AiFinalEditResponse finalEdit(AiFinalEditRequest request) {
+        try {
+            return restClient.post()
+                    .uri("/ai/sessions/{sessionId}/final-edit", request.sessionId())
+                    .body(request)
+                    .retrieve()
+                    .body(AiFinalEditResponse.class);
+        } catch (RestClientException exception) {
+            log.warn("content.ai.final-edit.failed: sessionId={}", request.sessionId(), exception);
+            throw new BusinessException(ErrorCode.AI_SERVER_FAILED, exception);
+        } catch (Exception exception) {
+            log.warn("content.ai.final-edit.invalid-response: sessionId={}", request.sessionId(), exception);
+            throw new BusinessException(ErrorCode.AI_SERVER_FAILED, exception);
+        }
     }
 
     // 실제 HTTP POST 호출만 담당한다.
