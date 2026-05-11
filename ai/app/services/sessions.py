@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from dataclasses import dataclass
 
 from redis.asyncio import Redis
@@ -22,6 +23,7 @@ from app.services.canonical_keyword_resolver import (
 )
 from app.services.reference_caption_retriever import (
     ReferenceCaptionRetrieverService,
+    RetrievedReferenceCaption,
 )
 from app.services.weather_tags import evaluate_weather_tags
 
@@ -55,6 +57,21 @@ def _result_from_caption_generation(
         result.stored_caption,
         None,
     )
+
+
+def _build_reference_caption_log_details(
+    references: list[RetrievedReferenceCaption],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "id": reference.caption_id,
+            "score": (
+                round(reference.score, 4) if reference.score is not None else None
+            ),
+            "content": reference.caption_content,
+        }
+        for reference in references
+    ]
 
 
 def session_key(session_id: str) -> str:
@@ -426,6 +443,13 @@ async def process_utterance(
                     for caption_id in reference_caption_result.selected_caption_ids
                 )
                 or None,
+                reference_caption_selected_details=(
+                    _build_reference_caption_log_details(
+                        reference_caption_result.references
+                    )
+                    if reference_caption_result.references
+                    else None
+                ),
                 reference_caption_fallback_reason=reference_caption_result.fallback_reason,
             ),
         )

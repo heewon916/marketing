@@ -1,6 +1,7 @@
-import asyncio
-from uuid import uuid4
 from collections.abc import Awaitable
+import asyncio
+import logging
+from uuid import uuid4
 
 import fakeredis
 import httpx
@@ -376,6 +377,17 @@ class FailingUploader:
         self.deleted.append(uploaded_path)
 
 
+def _find_reference_caption_log_record(
+    caplog: pytest.LogCaptureFixture,
+) -> logging.LogRecord:
+    return next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "session.process_utterance.reference_caption_retrieval.completed"
+    )
+
+
 def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> None:
     session_id = "redis-session-id-123"
 
@@ -680,6 +692,61 @@ def test_process_utterance_passes_reference_captions_to_caption_request(
     assert fake_retriever_service.calls[0]["owner_persona"] == VALID_PAYLOAD["owner_persona"]
 
 
+def test_process_utterance_logs_selected_reference_caption_details(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-1"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[
+                RetrievedReferenceCaption(
+                    caption_id=1,
+                    caption_content="reference caption body one",
+                    score=0.91234,
+                ),
+                RetrievedReferenceCaption(
+                    caption_id=2,
+                    caption_content="reference caption body two",
+                    score=0.88,
+                ),
+            ],
+            candidate_count=2,
+        )
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.reference_caption_selected_ids == "1,2"
+    assert record.reference_caption_selected_count == 2
+    assert record.reference_caption_selected_details == [
+        {
+            "id": 1,
+            "score": 0.9123,
+            "content": "reference caption body one",
+        },
+        {
+            "id": 2,
+            "score": 0.88,
+            "content": "reference caption body two",
+        },
+    ]
+
+
 def test_process_utterance_skips_reference_captions_when_retriever_returns_no_matches(
     client: TestClient,
 ) -> None:
@@ -710,6 +777,40 @@ def test_process_utterance_skips_reference_captions_when_retriever_returns_no_ma
     assert fake_caption_service.calls[0]["reference_captions"] == []
 
 
+def test_process_utterance_omits_reference_caption_details_when_no_matches(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-2"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[],
+            fallback_reason="no_reference_candidates",
+            candidate_count=0,
+        )
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.reference_caption_candidate_count == 0
+    assert record.reference_caption_fallback_reason == "no_reference_candidates"
+    assert not hasattr(record, "reference_caption_selected_details")
+
+
 def test_process_utterance_skips_reference_captions_when_retriever_fails(
     client: TestClient,
 ) -> None:
@@ -734,6 +835,36 @@ def test_process_utterance_skips_reference_captions_when_retriever_fails(
 
     assert response.status_code == 200
     assert fake_caption_service.calls[0]["reference_captions"] == []
+
+
+def test_process_utterance_omits_reference_caption_details_when_retriever_fails(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-3"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        error=RuntimeError("retriever unavailable")
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.outcome == "failed"
+    assert record.error_type == "RuntimeError"
+    assert not hasattr(record, "reference_caption_selected_details")
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
