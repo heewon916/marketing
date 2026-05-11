@@ -20,11 +20,11 @@
 ### Caption Server
 - Service name: `caption-server`
 - Default port: `8002`
-- Container model dir: `/models/qwen2.5-7b-instruct/q3_k_m`
-- Container model path: `/models/qwen2.5-7b-instruct/q3_k_m/model.gguf`
-- Default host cache dir: `./.models/caption/qwen2.5-7b-instruct/q3_k_m`
-- Default source: `Qwen/Qwen2.5-7B-Instruct-GGUF`
-- Default filename: `qwen2.5-7b-instruct-q3_k_m.gguf`
+- Container model dir: `/models/exaone-3.5-7.8b-instruct/q4_k_m`
+- Container model path: `/models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf`
+- Default host cache dir: `./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m`
+- Default source: `LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF`
+- Default filename: `EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf`
 
 ## FastAPI Runtime Env
 
