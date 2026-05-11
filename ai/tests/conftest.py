@@ -19,6 +19,9 @@ from app.services.caption_generation import (
     DEFAULT_FALLBACK_GUIDE_TEXT,
 )
 from app.services.keyword_extraction import KeywordExtractionResult
+from app.services.reference_caption_retriever import (
+    ReferenceCaptionRetrievalResult,
+)
 from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
 
 
@@ -119,6 +122,11 @@ class DefaultCaptionGenerationService:
         )
 
 
+class DefaultReferenceCaptionRetrieverService:
+    async def retrieve(self, **kwargs) -> ReferenceCaptionRetrievalResult:
+        return ReferenceCaptionRetrievalResult()
+
+
 @pytest.fixture(scope="session")
 def fake_redis_server() -> Iterator[fakeredis.FakeServer]:
     yield fakeredis.FakeServer()
@@ -169,6 +177,9 @@ def client(
             app.state.caption_generation_service = DefaultCaptionGenerationService()
             app.state.canonical_keyword_resolver_service = (
                 DefaultCanonicalKeywordResolverService()
+            )
+            app.state.reference_caption_retriever_service = (
+                DefaultReferenceCaptionRetrieverService()
             )
             yield test_client
         finally:

@@ -20,6 +20,9 @@ from app.services.canonical_keyword_resolver import (
     CanonicalKeywordResolverService,
     CanonicalKeywordResolution,
 )
+from app.services.reference_caption_retriever import (
+    ReferenceCaptionRetrieverService,
+)
 from app.services.weather_tags import evaluate_weather_tags
 
 CONTENTS_KEY_PREFIX = "contents"
@@ -326,6 +329,7 @@ async def process_utterance(
     keyword_service: KeywordExtractionService,
     caption_service: CaptionGenerationService,
     canonical_keyword_resolver: CanonicalKeywordResolverService,
+    reference_caption_retriever: ReferenceCaptionRetrieverService,
 ) -> ProcessUtteranceResult:
     weather_tags = evaluate_weather_tags(
         payload.weather,
@@ -379,6 +383,13 @@ async def process_utterance(
         utterance=payload.utterance,
         weather_tags=weather_tags,
     )
+    reference_caption_result = await reference_caption_retriever.retrieve(
+        owner_persona=payload.owner_persona,
+        utterance=payload.utterance,
+        canonical_matches=canonical_resolution.matches,
+    )
+    if reference_caption_result.captions:
+        caption_request.reference_captions = reference_caption_result.captions
     fallback_source: str | None = None
     if not caption_keywords:
         fallback_result = caption_service.build_fallback_result(

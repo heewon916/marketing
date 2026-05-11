@@ -58,6 +58,9 @@ from app.services.keyword_extraction import (
 from app.services.canonical_keyword_resolver import (
     build_canonical_keyword_resolver_service,
 )
+from app.services.reference_caption_retriever import (
+    build_reference_caption_retriever_service,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +232,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.caption_generation_service = build_caption_generation_service()
     app.state.canonical_keyword_resolver_service = (
         build_canonical_keyword_resolver_service()
+    )
+    app.state.reference_caption_retriever_service = (
+        build_reference_caption_retriever_service(
+            app.state.canonical_keyword_resolver_service
+        )
     )
     logger.info(
         "Keyword extraction configured.",

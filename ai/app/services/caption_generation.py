@@ -299,6 +299,7 @@ class CaptionGenerationRequest:
     owner_persona: str
     utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
+    reference_captions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -313,11 +314,24 @@ class CaptionPipeline:
         self.prompt_template = prompt_template
 
     def build_prompt(self, request: CaptionGenerationRequest) -> str:
-        return self.prompt_template.format(
+        prompt = self.prompt_template.format(
             owner_persona=request.owner_persona.strip(),
             weather_context=_build_weather_context(request.weather_tags),
             utterance=request.utterance.strip() or "(없음)",
             keywords=", ".join(request.keywords) if request.keywords else "(없음)",
+        )
+        if not request.reference_captions:
+            return prompt
+        reference_lines = "\n".join(
+            f"{index}. {caption}"
+            for index, caption in enumerate(request.reference_captions, start=1)
+        )
+        return (
+            f"{prompt}\n\n"
+            "참고용 레퍼런스 캡션:\n"
+            f"{reference_lines}\n\n"
+            "위 레퍼런스는 문체와 분위기를 참고하기 위한 예시입니다.\n"
+            "문장을 그대로 복사하거나 해시태그를 재사용하지 말고, 현재 입력의 의도에 맞춰 새롭게 작성하세요."
         )
 
     def build_fallback(
