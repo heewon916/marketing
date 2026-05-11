@@ -8,6 +8,8 @@ export default function MetricCard({
   value,
   unit,
   description,
+  valuePrefix,
+  valueColorClassName = 'text-primary-100',
 }) {
   const [isDescriptionOpen, setIsDescriptionOpen] = useState(false);
   const [animatedValue, setAnimatedValue] = useState(0);
@@ -69,12 +71,28 @@ export default function MetricCard({
         </div>
 
         <div className="flex w-full items-baseline justify-end gap-1.5 text-right">
-          <strong className="text-[38px] font-semibold tracking-tight text-primary-100">
+          {valuePrefix && (
+            <span
+              className={`
+                relative
+                ${valuePrefix === '▼' ? '-top-1.5' : '-top-0.5'}
+                flex h-7 w-5 items-center justify-center
+                text-[20px] font-medium leading-none
+                ${valueColorClassName}
+              `}
+            >
+              {valuePrefix}
+            </span>
+          )}
+
+          <strong
+            className={`text-[38px] font-semibold tracking-tight ${valueColorClassName}`}
+          >
             {animatedValue.toLocaleString()}
           </strong>
 
           {unit && (
-            <span className="text-[16px] font-medium text-gray-400">
+            <span className={`text-[16px] font-medium ${valueColorClassName}`}>
               {unit}
             </span>
           )}

@@ -8,8 +8,15 @@ export default function MyPageStatsSection({
   weeklyReachCount,
   weeklyVisitIntentScore,
 }) {
+  const reachValue = Math.abs(weeklyReachCount);
+  const reachPrefix = weeklyReachCount < 0 ? '▼' : '▲';
+  const reachColorClassName =
+    weeklyReachCount < 0 ? 'text-accent-100' : 'text-primary-100';
+
   const visitIntentValue = Math.abs(weeklyVisitIntentScore);
-  const visitIntentUnit = weeklyVisitIntentScore < 0 ? '%↓' : '%↑';
+  const visitIntentPrefix = weeklyVisitIntentScore < 0 ? '▼' : '▲';
+  const visitIntentColorClassName =
+    weeklyVisitIntentScore < 0 ? 'text-accent-100' : 'text-primary-100';
 
   return (
     <section className="flex flex-col gap-4">
@@ -29,8 +36,10 @@ export default function MyPageStatsSection({
             </>
           }
           modalTitle="가게 노출 수"
-          value={weeklyReachCount}
-          unit="%↑"
+          value={reachValue}
+          valuePrefix={reachPrefix}
+          unit="%"
+          valueColorClassName={reachColorClassName}
           description={
             <span className="flex flex-col gap-1">
               <span>인스타그램 게시물 노출 횟수예요.</span>
@@ -53,7 +62,9 @@ export default function MyPageStatsSection({
           }
           modalTitle="방문 관심도"
           value={visitIntentValue}
-          unit={visitIntentUnit}
+          valuePrefix={visitIntentPrefix}
+          unit="%"
+          valueColorClassName={visitIntentColorClassName}
           description={
             <span className="flex flex-col gap-1">
               <span>
