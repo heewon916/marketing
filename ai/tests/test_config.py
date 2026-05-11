@@ -300,6 +300,7 @@ def test_model_client_defaults_apply_when_env_is_missing(
         settings.caption_model_client.timeout_seconds
         == DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
     )
+    assert settings.caption_model_client.max_tokens == 256
 
 
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:

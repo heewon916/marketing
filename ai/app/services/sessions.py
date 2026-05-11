@@ -29,9 +29,18 @@ logger = logging.getLogger(__name__)
 
 def resolve_caption_keywords(
     draft_keywords: list[str],
-    final_keywords: list[str],
+    canonical_resolution: CanonicalKeywordResolution,
 ) -> list[str]:
-    return final_keywords or draft_keywords
+    if not canonical_resolution.matches:
+        return draft_keywords
+
+    caption_keywords: list[str] = []
+    for match in canonical_resolution.matches:
+        if match.matched and match.display_name:
+            caption_keywords.append(match.display_name)
+        else:
+            caption_keywords.append(match.draft_keyword)
+    return caption_keywords or draft_keywords
 
 
 def _result_from_caption_generation(
@@ -362,7 +371,7 @@ async def process_utterance(
         resolution=canonical_resolution,
         session_id=session_id,
     )
-    caption_keywords = resolve_caption_keywords(draft_keywords, final_keywords)
+    caption_keywords = resolve_caption_keywords(draft_keywords, canonical_resolution)
     caption_request = CaptionGenerationRequest(
         purpose=purpose,
         keywords=caption_keywords,
