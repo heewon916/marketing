@@ -382,7 +382,11 @@ public class ContentService {
         AiExtractFramesResponse extracted = aiContentClient.extractFrames(
                 new AiExtractFramesRequest(sessionId.toString(), videoKey)
         );
-        List<String> drafts = extracted != null && extracted.drafts() != null ? extracted.drafts() : List.of();
+        List<String> drafts = extracted != null && extracted.drafts() != null
+                ? extracted.drafts().stream()
+                .filter(draft -> draft != null && !draft.isBlank())
+                .toList()
+                : List.of();
         AiFinalEditResponse edited = aiContentClient.finalEdit(
                 new AiFinalEditRequest(sessionId.toString(), drafts)
         );
