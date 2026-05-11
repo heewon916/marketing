@@ -3,7 +3,7 @@ import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import tossLoading from '@/assets/videos/toss-loading.mp4';
-import { authApi } from '@/features/auth/api.js';
+import { onboardingApi } from '@/features/auth/onboarding/api.js';
 
 function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
   const hasSyncedRef = useRef(false);
@@ -17,7 +17,7 @@ function LoadingStep({ onNext, onPrev, merchantId, onSynced }) {
         hasSyncedRef.current = true;
         setErrorMessage('');
 
-        const response = await authApi.syncPosStore(merchantId);
+        const response = await onboardingApi.syncPosStore(merchantId);
         const { success, storeId, message } = response.data;
 
         if (!success || !storeId) {

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
-import { authApi } from '@/features/auth/api.js';
+import { onboardingApi } from '@/features/auth/onboarding/api.js';
 
 function CodeInputStep({
   onNext,
@@ -49,7 +49,7 @@ function CodeInputStep({
       setIsLoading(true);
       setErrorMessage('');
 
-      const response = await authApi.verifyPosPin(value);
+      const response = await onboardingApi.verifyPosPin(value);
       const { success, merchantId, message } = response.data;
 
       if (!success || !merchantId) {
