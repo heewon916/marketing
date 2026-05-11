@@ -374,7 +374,7 @@ class CaptionGenerationService:
     def __init__(
         self,
         enabled: bool = True,
-        max_tokens: int = 128,
+        max_tokens: int = 256,
         temperature: float = 0.7,
         top_p: float = 0.9,
         timeout_seconds: float = 30.0,
