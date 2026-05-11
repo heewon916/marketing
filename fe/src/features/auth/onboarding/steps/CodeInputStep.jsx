@@ -42,17 +42,6 @@ function CodeInputStep({
     }
   };
 
-  const handleTempSuccess = () => {
-    if (isLoading) return;
-
-    const tempMerchantId = 'dev-merchant-id';
-
-    setErrorMessage([]);
-    setMerchantId(tempMerchantId);
-    onVerified?.(tempMerchantId);
-    onNext();
-  };
-
   const handleNext = async () => {
     if (isLoading) return;
 
@@ -161,16 +150,6 @@ function CodeInputStep({
           QR로 인증하기
         </button>
 
-        {import.meta.env.DEV && (
-          <button
-            type="button"
-            onClick={handleTempSuccess}
-            disabled={isLoading}
-            className="mt-4 w-full py-3 text-sm font-bold text-gray-500 underline disabled:text-gray-300"
-          >
-            개발용: 인증 코드 검증 완료 처리
-          </button>
-        )}
       </div>
     </OnboardingLayout>
   );

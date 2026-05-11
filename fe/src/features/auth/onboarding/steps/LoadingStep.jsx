@@ -3,11 +3,32 @@ import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import tossLoading from '@/assets/videos/toss-loading.mp4';
+import CharacterFail from '@/assets/character/CharacterFail.png';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
+const MIN_LOADING_TIME = 2000;
+
+const POS_SYNC_ERROR_MESSAGE =
+  'POS 연결 중 오류가 발생했습니다.\n다시 시도해 주세요.';
+
+const wait = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const waitRemainingTime = async (startedAt) => {
+  const elapsedTime = Date.now() - startedAt;
+  const remainingTime = Math.max(MIN_LOADING_TIME - elapsedTime, 0);
+
+  if (remainingTime > 0) {
+    await wait(remainingTime);
+  }
+};
+
 function LoadingStep({ onNext, onPrev }) {
   const hasSyncedRef = useRef(false);
+  const [status, setStatus] = useState('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [retryCount, setRetryCount] = useState(0);
 
@@ -18,14 +39,17 @@ function LoadingStep({ onNext, onPrev }) {
 
   const displayErrorMessage =
     errorMessage ||
-    (!merchantId ? 'POS 인증 정보가 없습니다. 다시 인증해 주세요.' : '');
+    (!merchantId ? 'POS 인증 정보가 없습니다.\n다시 인증해 주세요.' : '');
 
   useEffect(() => {
     if (!merchantId || hasSyncedRef.current) return;
 
     const syncStore = async () => {
+      const startedAt = Date.now();
+
       try {
         hasSyncedRef.current = true;
+        setStatus('loading');
         setErrorMessage('');
 
         const response = await onboardingApi.syncPosStore(merchantId);
@@ -38,8 +62,11 @@ function LoadingStep({ onNext, onPrev }) {
           message,
         } = response.data;
 
+        await waitRemainingTime(startedAt);
+
         if (!success || !storeId) {
-          setErrorMessage(message || 'POS 데이터 동기화에 실패했습니다.');
+          setStatus('error');
+          setErrorMessage(message || POS_SYNC_ERROR_MESSAGE);
           return;
         }
 
@@ -52,10 +79,12 @@ function LoadingStep({ onNext, onPrev }) {
 
         onNext();
       } catch (error) {
-        const message =
-          error.response?.data?.message ||
-          'POS 연결 중 오류가 발생했습니다. 다시 시도해 주세요.';
+        await waitRemainingTime(startedAt);
 
+        const message =
+          error.response?.data?.message || POS_SYNC_ERROR_MESSAGE;
+
+        setStatus('error');
         setErrorMessage(message);
       }
     };
@@ -64,41 +93,54 @@ function LoadingStep({ onNext, onPrev }) {
   }, [merchantId, onNext, setPosSyncResult, retryCount]);
 
   const handleRetry = () => {
+    if (!merchantId) {
+      onPrev?.();
+      return;
+    }
+
     hasSyncedRef.current = false;
+    setStatus('loading');
     setErrorMessage('');
     setRetryCount((prev) => prev + 1);
   };
 
-  const handleTempSuccess = () => {
-    setErrorMessage('');
-
-    setPosSyncResult({
-      storeId: 'dev-store-id',
-      storeName: '개발용 테스트 매장',
-      suggestedCategory: '카페',
-      menus: [],
-    });
-
-    onNext();
-  };
+  const isError = status === 'error' || !!displayErrorMessage;
 
   return (
     <OnboardingLayout
       currentStep={3}
       totalStep={7}
+      contentAlign="center"
       header={
         <OnboardingHeader
           title={
-            <>
-              토스 POS와
-              <br />
-              연결하고 있어요
-            </>
+            isError ? (
+              <>
+                토스 POS와
+                <br />
+                <span className="text-primary-100 font-extrabold">
+                  연결하지 못했어요
+                </span>
+              </>
+            ) : (
+              <>
+                토스 POS와
+                <br />
+                <span className="text-primary-100 font-extrabold">
+                  연결하고 있어요
+                </span>
+              </>
+            )
+          }
+          subtitle={
+            isError
+              ? '다시 시도하거나 이전 단계로 돌아갈 수 있어요'
+              : '잠시만 기다려 주세요'
           }
         />
       }
       footer={
-        displayErrorMessage ? (
+        isError ? (
           <OnboardingFooterButtons
             onPrev={onPrev}
             onNext={merchantId ? handleRetry : onPrev}
@@ -108,30 +150,29 @@ function LoadingStep({ onNext, onPrev }) {
       }
     >
       <div className="flex flex-col items-center w-full">
-        <video
-          src={tossLoading}
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="w-full h-full justify-center object-contain"
-        />
+        {isError ? (
+          <img
+            src={CharacterFail}
+            alt="character"
+            className="mt-10 w-full max-w-[320px]"
+          />
+        ) : (
+          <video
+            src={tossLoading}
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="w-full h-full justify-center object-contain"
+          />
+        )}
 
-        {displayErrorMessage && (
-          <p className="mt-4 text-sm font-medium text-red-500 text-center">
-            {displayErrorMessage}
+        {!isError && (
+          <p className="mt-8 text-base font-medium text-gray-400">
+            가게 정보를 불러오고 있어요.
           </p>
         )}
 
-        {import.meta.env.DEV && (
-          <button
-            type="button"
-            onClick={handleTempSuccess}
-            className="mt-4 w-full py-3 text-sm font-bold text-gray-500 underline"
-          >
-            개발용: POS 연결 완료 처리
-          </button>
-        )}
       </div>
     </OnboardingLayout>
   );

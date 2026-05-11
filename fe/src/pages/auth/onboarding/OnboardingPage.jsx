@@ -182,6 +182,7 @@ function OnboardingPage() {
         return (
           <StoreSelectStep
             {...commonProps}
+            onNext={() => moveToStep(13)}
             onManualInput={() => moveToStep(11)}
           />
         );
