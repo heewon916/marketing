@@ -33,11 +33,15 @@ public class Store {
     @Column(name = "store_name", nullable = false, length = 200)
     private String storeName;
 
-    @Column(name = "category")
-    private String category; // 향후 Enum으로 변경 가능
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "category", columnDefinition = "category_type")
+    private CategoryEnumType category;
 
-    @Column(name = "owner_persona")
-    private String ownerPersona; // 향후 Enum으로 변경 가능
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "owner_persona", columnDefinition = "owner_persona_type")
+    private OwnerPersonaEnumType ownerPersona;
 
     @Column(name = "address", columnDefinition = "TEXT")
     private String address;
@@ -61,7 +65,7 @@ public class Store {
     private OffsetDateTime updatedAt;
 
     @Builder
-    public Store(UUID userId, String merchantId, String storeName, String category, String ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+    public Store(UUID userId, String merchantId, String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
         this.userId = userId;
         this.merchantId = merchantId;
         this.storeName = storeName;
@@ -73,7 +77,7 @@ public class Store {
         this.operatingHours = operatingHours;
     }
 
-    public void updateAllDetails(String storeName, String category, String ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+    public void updateAllDetails(String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
         if (storeName != null) this.storeName = storeName;
         if (category != null) this.category = category;
         if (ownerPersona != null) this.ownerPersona = ownerPersona;
