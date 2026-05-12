@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import heapq
 from pathlib import Path
 
 import numpy as np
@@ -33,11 +32,17 @@ class BestFrameExtractor:
         video_path: Path,
         k: int,
     ) -> list[tuple[Image, float]]:
+        """Return up to k frames spread across the video timeline.
+
+        The video is split into k equal-length segments; the highest-scoring
+        frame within each segment is selected. Results are returned in
+        timeline order (segment 0 first), not score order.
+        """
+
         if k <= 0:
             return []
 
-        heap: list[tuple[float, int, Image]] = []
-        counter = 0
+        candidates: list[tuple[float, Image]] = []
         frames_batch_generator = self._video_processor.get_next_frames(
             video_path,
             self._config.batch_size,
@@ -51,14 +56,24 @@ class BestFrameExtractor:
             )
             scores = self._image_evaluator.evaluate_images(normalized_images)
             for frame, score in zip(frames, scores):
-                counter += 1
-                entry = (float(score), counter, frame)
-                if len(heap) < k:
-                    heapq.heappush(heap, entry)
-                elif entry[0] > heap[0][0]:
-                    heapq.heapreplace(heap, entry)
+                candidates.append((float(score), frame))
 
-        return [(frame, score) for score, _, frame in sorted(heap, key=lambda item: -item[0])]
+        if not candidates:
+            return []
+        if len(candidates) <= k:
+            return [(frame, score) for score, frame in candidates]
+
+        n = len(candidates)
+        selected: list[tuple[Image, float]] = []
+        for index in range(k):
+            lo = (index * n) // k
+            hi = ((index + 1) * n) // k
+            segment = candidates[lo:hi]
+            if not segment:
+                continue
+            best_score, best_frame = max(segment, key=lambda item: item[0])
+            selected.append((best_frame, best_score))
+        return selected
 
     def extract_best_frame(self, video_path: Path) -> tuple[Image, float] | None:
         best_frame: Image | None = None
