@@ -54,10 +54,10 @@ public class OnboardingService {
     private final StoreHoursRepository storeHoursRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${toss.api.access-key:}")
+    @Value("${TOSS_ACCESS_KEY:}")
     private String tossAccessKey;
 
-    @Value("${toss.api.secret-key:}")
+    @Value("${TOSS_SECRET_KEY:}")
     private String tossSecretKey;
 
     @Value("${FASTAPI_BASE_URL:http://fastapi:8000}")
