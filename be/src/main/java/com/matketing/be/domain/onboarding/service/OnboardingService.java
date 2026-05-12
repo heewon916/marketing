@@ -126,7 +126,7 @@ public class OnboardingService {
         }
 
         log.info("Successfully synced store data for merchantId: {}", merchantId);
-        return new SyncResponse(true, "가맹점 정보 동기화 및 DB 저장 완료", store.getId().toString());
+        return new SyncResponse(true, "가맹점 정보 동기화 및 DB 저장 완료", store.getId().toString(), storeName, null, null);
     }
 
     @Transactional
@@ -148,7 +148,7 @@ public class OnboardingService {
                 request.operatingHours()
         );
 
-        return new SyncResponse(true, "Store data updated successfully", store.getId().toString());
+        return new SyncResponse(true, "Store data updated successfully", store.getId().toString(), store.getStoreName(), null, null);
     }
 
     private Map<String, String> fetchPlaceInfo(String storeName) {
