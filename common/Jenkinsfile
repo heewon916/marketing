@@ -327,7 +327,6 @@ pipeline {
 
         stage('Provision Llama Models') {
             steps {
-              // withCredentials([string(credentialsId: 'HF_TOKEN', variable: 'HF_TOKEN')]) {
                 sh '''
                     set +x
                     set -eu
@@ -340,6 +339,8 @@ pipeline {
                       key="$1"
                       grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
                     }
+
+                    export HF_TOKEN=$(get_env HF_TOKEN)
 
                     provision_model() {
                       model_role="$1"
