@@ -1,0 +1,101 @@
+groups:
+  - name: project-infra
+    rules:
+      - alert: HostHighMemoryUsage
+        expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory usage is high"
+          description: "EC2 host memory usage has been above 90% for 5 minutes."
+
+      - alert: HostCriticalMemoryUsage
+        expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Host memory usage is critical"
+          description: "EC2 host memory usage has been above 95% for 2 minutes."
+
+      - alert: HostDiskUsageHigh
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}) > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root disk usage is high"
+          description: "Root filesystem usage has been above 85% for 10 minutes."
+
+      - alert: ContainerHighMemoryUsage
+        expr: container_memory_working_set_bytes{name=~"project-.+"} > 1073741824
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container memory usage is high"
+          description: "{{ $labels.name }} memory working set has been above 1GiB for 5 minutes."
+
+      - alert: SpringContainerDown
+        expr: absent(container_last_seen{name="project-spring"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Spring container metrics are missing"
+          description: "project-spring is missing from cAdvisor metrics for more than 1 minute."
+
+      - alert: FastApiContainerDown
+        expr: absent(container_last_seen{name="project-fastapi"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FastAPI container metrics are missing"
+          description: "project-fastapi is missing from cAdvisor metrics for more than 1 minute."
+
+      - alert: NginxContainerDown
+        expr: absent(container_last_seen{name="project-nginx"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Nginx container metrics are missing"
+          description: "project-nginx is missing from cAdvisor metrics for more than 1 minute."
+
+      - alert: PostgresContainerDown
+        expr: absent(container_last_seen{name="project-postgres"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres container metrics are missing"
+          description: "project-postgres is missing from cAdvisor metrics for more than 1 minute."
+
+      - alert: RedisContainerDown
+        expr: absent(container_last_seen{name="project-redis"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis container metrics are missing"
+          description: "project-redis is missing from cAdvisor metrics for more than 1 minute."
+
+      - alert: HttpEndpointDown
+        expr: probe_success{job="blackbox-http"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP endpoint is not returning 200"
+          description: "{{ $labels.instance }} has failed HTTP 200 probing for 2 minutes. This can catch 502 Bad Gateway, 5xx responses, timeouts, and connection failures."
+
+      - alert: HttpEndpointSlow
+        expr: probe_duration_seconds{job="blackbox-http"} > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP endpoint is slow"
+          description: "{{ $labels.instance }} probe duration has been above 3 seconds for 5 minutes."
