@@ -34,6 +34,11 @@ DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR = (
 )
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM = 384
 
+DEFAULT_NIMA_WEIGHTS_PATH = ROOT_DIR / "models" / "nima" / "weights.onnx"
+DEFAULT_NIMA_WEIGHTS_URL = (
+    "https://huggingface.co/BKDDFS/nima_weights/resolve/main/weights.onnx"
+)
+
 
 @dataclass(frozen=True)
 class LlamaModelClientSettings:
@@ -94,6 +99,8 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str | None = None
     S3_REGION: str | None = None
     CLOUDFRONT_DOMAIN: str | None = None
+
+    NIMA_WEIGHTS_URL: str = DEFAULT_NIMA_WEIGHTS_URL
 
     KEYWORD_MODEL_HOST_DIR: str = DEFAULT_KEYWORD_MODEL_HOST_DIR
     KEYWORD_MODEL_HF_REPO_ID: str = DEFAULT_KEYWORD_MODEL_HF_REPO_ID
