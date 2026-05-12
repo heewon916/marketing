@@ -256,8 +256,9 @@ public class OnboardingService {
     private String getMerchantNameFromToss(String merchantId) {
         try {
             HttpHeaders headers = new HttpHeaders();
-            headers.set("x-access-key", tossAccessKey);
-            headers.set("x-secret-key", tossSecretKey);
+            // 토스 API 문서(prompt8.md)에 따르면 key pair를 사용한 인증이 필요합니다.
+            // 보통 토스 오픈 API는 Authorization: Bearer {secretKey} 방식을 주로 사용합니다.
+            headers.set("Authorization", "Bearer " + tossSecretKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -268,12 +269,10 @@ public class OnboardingService {
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> body = response.getBody();
-                if ("SUCCESS".equals(body.get(KEY_RESULT_TYPE))) {
-                    Object successObj = body.get(KEY_SUCCESS);
-                    if (successObj instanceof Map<?, ?> successData && successData.containsKey(KEY_NAME)) {
-                        Object nameObj = successData.get(KEY_NAME);
-                        return nameObj instanceof String s ? s : "테스트 매장";
-                    }
+                // API 응답 객체 (Merchant) 자체에 name 필드가 바로 들어옵니다.
+                if (body.containsKey("name")) {
+                    Object nameObj = body.get("name");
+                    return nameObj instanceof String s ? s : "테스트 매장";
                 }
             }
         } catch (Exception e) {
