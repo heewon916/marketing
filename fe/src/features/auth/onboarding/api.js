@@ -8,7 +8,7 @@ export const onboardingApi = {
   },
 
   syncPosStore(merchantId) {
-    return api.post('/api/v1/onboarding/sync', {
+    return api.post('/api/v1/onboarding/toss/sync', {
       merchantId,
     });
   },
