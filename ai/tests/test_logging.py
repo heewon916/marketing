@@ -189,6 +189,7 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
     assert 'event="frame_extraction.download_video.completed"' in output
     assert 'event="frame_extraction.extract_frame.started"' in output
     assert 'event="frame_extraction.extract_frame.completed"' in output
+    assert 'frame_score="5.000000"' in output
     assert 'event="frame_extraction.resize_frame.started"' in output
     assert 'event="frame_extraction.resize_frame.completed"' in output
     assert 'resized_shape="1440x1080x3"' in output
