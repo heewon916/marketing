@@ -36,9 +36,6 @@ public class User {
     @Column(name = "token_expires_at")
     private OffsetDateTime tokenExpiresAt;
 
-    @Column(name = "camera_mic_granted")
-    private Boolean cameraMicGranted;
-
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private OffsetDateTime createdAt;
@@ -48,13 +45,12 @@ public class User {
     private OffsetDateTime updatedAt;
 
     @Builder
-    public User(String instagramUserId, String instagramUsername, String profileImageUrl, String accessToken, OffsetDateTime tokenExpiresAt, Boolean cameraMicGranted) {
+    public User(String instagramUserId, String instagramUsername, String profileImageUrl, String accessToken, OffsetDateTime tokenExpiresAt) {
         this.instagramUserId = instagramUserId;
         this.instagramUsername = instagramUsername;
         this.profileImageUrl = profileImageUrl;
         this.accessToken = accessToken;
         this.tokenExpiresAt = tokenExpiresAt;
-        this.cameraMicGranted = cameraMicGranted;
     }
 
     public User update(String instagramUsername, String accessToken, OffsetDateTime tokenExpiresAt) {

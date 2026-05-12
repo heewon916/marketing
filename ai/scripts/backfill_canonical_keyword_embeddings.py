@@ -16,7 +16,7 @@ async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
     query = text(
         """
         SELECT id, display_name
-        FROM maketing.canonical_keywords
+        FROM canonical_keywords
         ORDER BY id ASC
         OFFSET :offset
         LIMIT :limit
@@ -31,7 +31,7 @@ async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
 async def _update_rows(rows: list[dict[str, object]], embeddings: list[list[float]]) -> None:
     update_query = text(
         """
-        UPDATE maketing.canonical_keywords
+        UPDATE canonical_keywords
         SET embedding = CAST(:embedding AS vector)
         WHERE id = :id
         """

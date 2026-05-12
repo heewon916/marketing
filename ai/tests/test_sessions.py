@@ -1,6 +1,7 @@
-import asyncio
-from uuid import uuid4
 from collections.abc import Awaitable
+import asyncio
+import logging
+from uuid import uuid4
 
 import fakeredis
 import httpx
@@ -9,7 +10,6 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
-from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.caption_generation import (
     CaptionFallbackResult,
@@ -30,7 +30,17 @@ from app.services.keyword_extraction import (
     KeywordExtractionService,
     KeywordExtractionUnavailableError,
 )
+from app.services.reference_caption_retriever import (
+    ReferenceCaptionRetrievalResult,
+    RetrievedReferenceCaption,
+)
+from app.services.menu_promotion_context import (
+    MenuPromotionContext,
+    StoreMenuCandidate,
+)
 from app.services.sessions import (
+    HEALTH_CHECK_FAILURE_CAPTION,
+    HEALTH_CHECK_FAILURE_GUIDE_TEXT,
     resolve_caption_keywords,
     session_key,
 )
@@ -139,6 +149,7 @@ class FakeKeywordExtractionService:
         draft_keywords: list[str] | None = None,
         final_keywords: list[str] | None = None,
         error: Exception | None = None,
+        healthy: bool = True,
     ) -> None:
         self.purpose = purpose
         self.draft_keywords = (
@@ -148,7 +159,13 @@ class FakeKeywordExtractionService:
         )
         self.final_keywords = final_keywords if final_keywords is not None else []
         self.error = error
+        self.healthy = healthy
         self.calls: list[str] = []
+        self.health_check_calls: int = 0
+
+    async def is_healthy(self) -> bool:
+        self.health_check_calls += 1
+        return self.healthy
 
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         self.calls.append(utterance)
@@ -173,6 +190,16 @@ class FakeCanonicalKeywordResolverService:
         self.matched_indexes = matched_indexes
         self.calls: list[list[str]] = []
 
+    @staticmethod
+    def _parse_stored_final_keyword(value: str) -> tuple[int | None, str | None]:
+        keyword_id, separator, display_name = value.partition(":")
+        if not separator:
+            return None, None
+        try:
+            return int(keyword_id), display_name or None
+        except ValueError:
+            return None, None
+
     async def resolve_keywords(
         self,
         draft_keywords: list[str],
@@ -181,12 +208,17 @@ class FakeCanonicalKeywordResolverService:
         final_keywords = (
             list(self.final_keywords)
             if self.final_keywords is not None
-            else [f"CODE_{keyword.replace(' ', '_').upper()}" for keyword in draft_keywords]
+            else [f"{1000 + index}:{keyword}" for index, keyword in enumerate(draft_keywords)]
         )
         display_names = (
             list(self.display_names)
             if self.display_names is not None
-            else list(draft_keywords)
+            else [
+                self._parse_stored_final_keyword(final_keyword)[1] or draft_keyword
+                for draft_keyword, final_keyword in zip(
+                    draft_keywords, final_keywords, strict=True
+                )
+            ]
         )
         matched_indexes = (
             set(self.matched_indexes)
@@ -196,20 +228,26 @@ class FakeCanonicalKeywordResolverService:
         matches = []
         for index, draft_keyword in enumerate(draft_keywords):
             matched = index in matched_indexes
-            final_keyword = (
-                final_keywords[index] if matched else draft_keyword
+            stored_final_keyword = final_keywords[index] if matched else draft_keyword
+            canonical_keyword_id, parsed_display_name = self._parse_stored_final_keyword(
+                stored_final_keyword
             )
             matches.append(
                 CanonicalKeywordMatch(
                     draft_keyword=draft_keyword,
-                    final_keyword=final_keyword,
-                    display_name=display_names[index] if matched else None,
+                    canonical_keyword_id=canonical_keyword_id if matched else None,
+                    final_keyword=stored_final_keyword,
+                    display_name=(
+                        display_names[index] if matched else parsed_display_name
+                    )
+                    if matched
+                    else None,
                     score=0.99 if matched else None,
                     matched=matched,
                 )
             )
         return CanonicalKeywordResolution(
-            final_keywords=[match.final_keyword for match in matches],
+            final_keywords=[match.stored_final_keyword for match in matches],
             matches=matches,
         )
 
@@ -219,14 +257,21 @@ class FakeCaptionGenerationService:
         self,
         result: CaptionGenerationResult | None = None,
         error: Exception | None = None,
+        healthy: bool = True,
     ) -> None:
         self.result = result or CaptionGenerationResult(
             guide_text="키워드가 잘 보이도록 구도를 잡아보세요.",
             draft_caption="오늘의 메뉴를 자연스럽게 소개해보세요.",
         )
         self.error = error
+        self.healthy = healthy
         self.calls: list[dict[str, object]] = []
         self.fallback_calls: list[dict[str, object]] = []
+        self.health_check_calls: int = 0
+
+    async def is_healthy(self) -> bool:
+        self.health_check_calls += 1
+        return self.healthy
 
     async def generate_text(
         self,
@@ -238,6 +283,8 @@ class FakeCaptionGenerationService:
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
+                "reference_captions": list(request.reference_captions),
+                "menu_candidates": list(request.menu_candidates),
             }
         )
         if self.error is not None:
@@ -255,6 +302,8 @@ class FakeCaptionGenerationService:
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
+                "reference_captions": list(request.reference_captions),
+                "menu_candidates": list(request.menu_candidates),
                 "fallback_source": fallback_source,
             }
         )
@@ -278,9 +327,66 @@ class FakeCaptionGenerationService:
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=caption,
+                selected_menu_name=(
+                    request.menu_candidates[0].name if request.menu_candidates else None
+                ),
             ),
             fallback_source=effective_fallback_source,
         )
+
+
+class FakeReferenceCaptionRetrieverService:
+    def __init__(
+        self,
+        result: ReferenceCaptionRetrievalResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result or ReferenceCaptionRetrievalResult()
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def retrieve(
+        self,
+        *,
+        owner_persona: str,
+        utterance: str,
+        canonical_matches: list[CanonicalKeywordMatch],
+        max_references: int | None = None,
+    ) -> ReferenceCaptionRetrievalResult:
+        self.calls.append(
+            {
+                "owner_persona": owner_persona,
+                "utterance": utterance,
+                "canonical_matches": list(canonical_matches),
+                "max_references": max_references,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+class FakeMenuPromotionContextService:
+    def __init__(
+        self,
+        result: MenuPromotionContext | None = None,
+    ) -> None:
+        self.result = result or MenuPromotionContext()
+        self.calls: list[dict[str, object]] = []
+
+    async def fetch_context(
+        self,
+        *,
+        store_id,
+        weather_tags: list[str],
+    ) -> MenuPromotionContext:
+        self.calls.append(
+            {
+                "store_id": str(store_id),
+                "weather_tags": list(weather_tags),
+            }
+        )
+        return self.result
 
 
 class StubDraftDownloader:
@@ -289,15 +395,6 @@ class StubDraftDownloader:
     async def download_draft(self, draft_key: str, destination) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(draft_key.encode("utf-8"))
-
-
-class StubPredictor:
-    def predict_angle(self, image_path) -> float:
-        return 90.0
-
-    def correct_orientation(self, source_path, destination_path, predicted_angle):
-        destination_path.write_bytes(source_path.read_bytes())
-        return destination_path
 
 
 class FailingUploader:
@@ -316,6 +413,17 @@ class FailingUploader:
 
     async def delete_final(self, uploaded_path: str) -> None:
         self.deleted.append(uploaded_path)
+
+
+def _find_reference_caption_log_record(
+    caplog: pytest.LogCaptureFixture,
+) -> logging.LogRecord:
+    return next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "session.process_utterance.reference_caption_retrieval.completed"
+    )
 
 
 def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> None:
@@ -366,17 +474,19 @@ def test_keywords_not_exposed_even_when_debug_on(
 
 def test_resolve_caption_keywords_prefers_display_names() -> None:
     resolution = CanonicalKeywordResolution(
-        final_keywords=["CANONICAL_SIGNATURE_MENU", "draft notice"],
+        final_keywords=["1042:signature menu", "draft notice"],
         matches=[
             CanonicalKeywordMatch(
                 draft_keyword="draft menu",
-                final_keyword="CANONICAL_SIGNATURE_MENU",
-                display_name="시그니처 메뉴",
+                canonical_keyword_id=1042,
+                final_keyword="1042:signature menu",
+                display_name="signature menu",
                 score=0.99,
                 matched=True,
             ),
             CanonicalKeywordMatch(
                 draft_keyword="draft notice",
+                canonical_keyword_id=None,
                 final_keyword="draft notice",
                 display_name=None,
                 score=None,
@@ -386,7 +496,7 @@ def test_resolve_caption_keywords_prefers_display_names() -> None:
     )
 
     assert resolve_caption_keywords(["draft menu", "draft notice"], resolution) == [
-        "시그니처 메뉴",
+        "signature menu",
         "draft notice",
     ]
 
@@ -440,6 +550,121 @@ def test_process_utterance_returns_503_when_keyword_extraction_fails(
     assert saved["status"] == "STARTED"
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"] == ""
+
+
+def test_process_utterance_returns_fixed_caption_when_keyword_server_unhealthy(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-keyword-unhealthy"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    keyword_service = FakeKeywordExtractionService(healthy=False)
+    caption_service = FakeCaptionGenerationService(healthy=True)
+    app.state.keyword_extraction_service = keyword_service
+    app.state.caption_generation_service = caption_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "TEXT_GENERATED"
+    assert body["guide_text"] == HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert body["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert keyword_service.calls == []
+    assert caption_service.calls == []
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "TEXT_GENERATED"
+    assert saved["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert saved["utterance"] == VALID_PAYLOAD["utterance"]
+    assert saved["debug:text_generation_fallback_source"] == "health_check_fallback"
+    assert saved["debug:health_check_keyword_ok"] == "false"
+    assert saved["debug:health_check_caption_ok"] == "true"
+
+
+def test_process_utterance_returns_fixed_caption_when_caption_server_unhealthy(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-caption-unhealthy"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    keyword_service = FakeKeywordExtractionService(healthy=True)
+    caption_service = FakeCaptionGenerationService(healthy=False)
+    app.state.keyword_extraction_service = keyword_service
+    app.state.caption_generation_service = caption_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["guide_text"] == HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert body["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert keyword_service.calls == []
+    assert caption_service.calls == []
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:text_generation_fallback_source"] == "health_check_fallback"
+    assert saved["debug:health_check_keyword_ok"] == "true"
+    assert saved["debug:health_check_caption_ok"] == "false"
+
+
+def test_process_utterance_runs_health_checks_in_parallel(
+    client: TestClient,
+) -> None:
+    session_id = "sess-health-parallel"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    call_order: list[str] = []
+    keyword_started = asyncio.Event()
+    caption_started = asyncio.Event()
+
+    class ParallelKeywordService(FakeKeywordExtractionService):
+        async def is_healthy(self) -> bool:
+            call_order.append("keyword:start")
+            keyword_started.set()
+            await asyncio.wait_for(caption_started.wait(), timeout=1.0)
+            call_order.append("keyword:end")
+            return True
+
+    class ParallelCaptionService(FakeCaptionGenerationService):
+        async def is_healthy(self) -> bool:
+            call_order.append("caption:start")
+            caption_started.set()
+            await asyncio.wait_for(keyword_started.wait(), timeout=1.0)
+            call_order.append("caption:end")
+            return True
+
+    app.state.keyword_extraction_service = ParallelKeywordService()
+    app.state.caption_generation_service = ParallelCaptionService()
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    assert {"keyword:start", "caption:start"} <= set(call_order)
+    # Both must have started before either completed (parallel execution).
+    assert call_order.index("keyword:start") < call_order.index("caption:end")
+    assert call_order.index("caption:start") < call_order.index("keyword:end")
 
 
 def test_process_utterance_falls_back_when_caption_generation_fails(
@@ -496,7 +721,11 @@ def test_process_utterance_falls_back_to_korean_when_caption_model_returns_engli
             ),
         )
 
+    async def fake_is_healthy() -> bool:
+        return True
+
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+    monkeypatch.setattr(service, "is_healthy", fake_is_healthy)
     app.state.caption_generation_service = service
 
     try:
@@ -555,8 +784,8 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
         draft_keywords=["signature menu", "evening notice"],
     )
     app.state.canonical_keyword_resolver_service = FakeCanonicalKeywordResolverService(
-        final_keywords=["CANONICAL_SIGNATURE_MENU", "CANONICAL_EVENING_NOTICE"],
-        display_names=["시그니처 메뉴", "저녁 안내"],
+        final_keywords=["1042:signature menu", "2051:evening notice"],
+        display_names=["signature menu", "evening notice"],
         matched_indexes={0, 1},
     )
     fake_service = FakeCaptionGenerationService()
@@ -573,7 +802,355 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
         app.state.canonical_keyword_resolver_service = original_canonical_service
 
     assert response.status_code == 200
-    assert fake_service.calls[0]["keywords"] == ["시그니처 메뉴", "저녁 안내"]
+    assert fake_service.calls[0]["keywords"] == ["signature menu", "evening notice"]
+
+
+def test_process_utterance_fetches_menu_candidates_for_menu_promotion(
+    client: TestClient,
+) -> None:
+    session_id = "sess-menu-candidates-1"
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    assert fake_menu_service.calls[0]["store_id"] == VALID_PAYLOAD["store_id"]
+    assert fake_caption_service.calls[0]["menu_candidates"][0].name == "해물파전"
+
+
+def test_process_utterance_skips_menu_candidates_for_non_menu_purpose(
+    client: TestClient,
+) -> None:
+    session_id = "sess-menu-candidates-2"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose="영업 공지",
+        draft_keywords=["임시 휴무"],
+    )
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    assert fake_menu_service.calls == []
+    assert fake_caption_service.calls[0]["menu_candidates"] == []
+
+
+def test_process_utterance_stores_menu_context_debug_fields(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-menu-candidates-debug-1"
+    original_caption_service = app.state.caption_generation_service
+    original_menu_service = app.state.menu_promotion_context_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_menu_service = FakeMenuPromotionContextService(
+        result=MenuPromotionContext(
+            candidates=[
+                StoreMenuCandidate(
+                    id="menu-1",
+                    name="해물파전",
+                    price=18000,
+                    description="비 오는 날 잘 나가는 대표 메뉴",
+                    weather_tags=["PRECIP_RAIN"],
+                    matched_weather_tags=["PRECIP_RAIN"],
+                )
+            ],
+            source="weather_tag_menu",
+            weather_matched_count=1,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.menu_promotion_context_service = fake_menu_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.menu_promotion_context_service = original_menu_service
+
+    assert response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:menu_candidate_source"] == "weather_tag_menu"
+    assert saved["debug:menu_candidate_count"] == "1"
+    assert saved["debug:weather_matched_menu_count"] == "1"
+
+
+def test_process_utterance_passes_reference_captions_to_caption_request(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-reference-captions-1"
+    original_caption_service = app.state.caption_generation_service
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[
+                RetrievedReferenceCaption(
+                    caption_id=1,
+                    caption_content="첫 번째 레퍼런스 캡션",
+                    score=0.91,
+                ),
+                RetrievedReferenceCaption(
+                    caption_id=2,
+                    caption_content="두 번째 레퍼런스 캡션",
+                    score=0.88,
+                ),
+            ],
+            candidate_count=2,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.reference_caption_retriever_service = fake_retriever_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    assert fake_caption_service.calls[0]["reference_captions"] == [
+        "첫 번째 레퍼런스 캡션",
+        "두 번째 레퍼런스 캡션",
+    ]
+    assert fake_retriever_service.calls[0]["owner_persona"] == VALID_PAYLOAD["owner_persona"]
+
+
+def test_process_utterance_logs_selected_reference_caption_details(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-1"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[
+                RetrievedReferenceCaption(
+                    caption_id=1,
+                    caption_content="reference caption body one",
+                    score=0.91234,
+                ),
+                RetrievedReferenceCaption(
+                    caption_id=2,
+                    caption_content="reference caption body two",
+                    score=0.88,
+                ),
+            ],
+            candidate_count=2,
+        )
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.reference_caption_selected_ids == "1,2"
+    assert record.reference_caption_selected_count == 2
+    assert record.reference_caption_selected_details == [
+        {
+            "id": 1,
+            "score": 0.9123,
+            "content": "reference caption body one",
+        },
+        {
+            "id": 2,
+            "score": 0.88,
+            "content": "reference caption body two",
+        },
+    ]
+
+
+def test_process_utterance_skips_reference_captions_when_retriever_returns_no_matches(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-reference-captions-2"
+    original_caption_service = app.state.caption_generation_service
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[],
+            fallback_reason="no_reference_candidates",
+            candidate_count=0,
+        )
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.reference_caption_retriever_service = fake_retriever_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    assert fake_caption_service.calls[0]["reference_captions"] == []
+
+
+def test_process_utterance_omits_reference_caption_details_when_no_matches(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-2"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        result=ReferenceCaptionRetrievalResult(
+            references=[],
+            fallback_reason="no_reference_candidates",
+            candidate_count=0,
+        )
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.INFO, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.reference_caption_candidate_count == 0
+    assert record.reference_caption_fallback_reason == "no_reference_candidates"
+    assert not hasattr(record, "reference_caption_selected_details")
+
+
+def test_process_utterance_skips_reference_captions_when_retriever_fails(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-reference-captions-3"
+    original_caption_service = app.state.caption_generation_service
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_caption_service = FakeCaptionGenerationService()
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        error=RuntimeError("retriever unavailable")
+    )
+    app.state.caption_generation_service = fake_caption_service
+    app.state.reference_caption_retriever_service = fake_retriever_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.caption_generation_service = original_caption_service
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    assert fake_caption_service.calls[0]["reference_captions"] == []
+
+
+def test_process_utterance_omits_reference_caption_details_when_retriever_fails(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    session_id = "sess-caption-reference-captions-log-3"
+    original_retriever_service = app.state.reference_caption_retriever_service
+    fake_retriever_service = FakeReferenceCaptionRetrieverService(
+        error=RuntimeError("retriever unavailable")
+    )
+    app.state.reference_caption_retriever_service = fake_retriever_service
+    app_logger = logging.getLogger("app")
+    app_logger.addHandler(caplog.handler)
+    caplog.set_level(logging.WARNING, logger="app")
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app_logger.removeHandler(caplog.handler)
+        app.state.reference_caption_retriever_service = original_retriever_service
+
+    assert response.status_code == 200
+    record = _find_reference_caption_log_record(caplog)
+    assert record.outcome == "failed"
+    assert record.error_type == "RuntimeError"
+    assert not hasattr(record, "reference_caption_selected_details")
 
 
 def test_empty_utterance_rejected(client: TestClient) -> None:
@@ -653,8 +1230,8 @@ def test_redis_payload_persisted(
     assert 1 <= len(draft_keyword_fields) <= 3
     assert len(draft_keyword_fields) == len(final_keyword_fields)
     assert saved["draft_keyword:1"] == "signature menu"
-    assert saved["final_keyword:1"] == "CANONICAL_SIGNATURE_MENU"
-    assert saved["final_keyword:2"] == "CANONICAL_COZY_TABLE"
+    assert saved["final_keyword:1"] == "1042:signature menu"
+    assert saved["final_keyword:2"] == "2051:cozy table"
     weather_tag_fields = [
         field for field in saved if field.startswith("weather_tag:")
     ]
@@ -822,6 +1399,40 @@ def test_extract_frames_returns_success_and_persists_result(
     assert saved["video"] == payload["video"]
 
 
+def test_extract_frames_preserves_existing_final_keywords(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
+    fake_service = FakeFrameExtractionService(
+        ExtractFramesResult(
+            status="FRAME_EXTRACTED",
+            drafts=["/ai-drafts/session-123/draft-001.jpg"],
+        )
+    )
+    app.state.frame_extraction_service = fake_service
+
+    try:
+        process_response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+        assert process_response.status_code == 200
+
+        extract_response = client.post(
+            f"/ai/sessions/{session_id}/extract-frames",
+            json={"session_id": session_id, "video": "/inputs/test-session/test-video.mp4"},
+        )
+    finally:
+        app.state.frame_extraction_service = original_service
+
+    assert extract_response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["final_keyword:1"] == "1042:signature menu"
+    assert saved["final_keyword:2"] == "2051:cozy table"
+
+
 def test_extract_frames_returns_fail_when_service_fails(
     client: TestClient,
     fake_redis_sync: fakeredis.FakeStrictRedis,
@@ -918,6 +1529,43 @@ def test_final_edit_returns_success_and_persists_result(
     assert saved["photo:2"] == "/ai-finals/session-123/final-002.jpg"
 
 
+def test_final_edit_preserves_existing_final_keywords(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.final_edit_service
+    session_id = str(uuid4())
+    fake_service = FakeFinalEditService(
+        FinalEditResult(
+            status="PHOTO_EDITED",
+            results=["/ai-finals/session-123/final-001.jpg"],
+        )
+    )
+    app.state.final_edit_service = fake_service
+
+    try:
+        process_response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+        assert process_response.status_code == 200
+
+        edit_response = client.post(
+            f"/ai/sessions/{session_id}/final-edit",
+            json={
+                "session_id": session_id,
+                "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+            },
+        )
+    finally:
+        app.state.final_edit_service = original_service
+
+    assert edit_response.status_code == 200
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["final_keyword:1"] == "1042:signature menu"
+    assert saved["final_keyword:2"] == "2051:cozy table"
+
+
 def test_final_edit_returns_fail_and_clears_photo_results(
     client: TestClient,
     fake_redis_sync: fakeredis.FakeStrictRedis,
@@ -928,7 +1576,7 @@ def test_final_edit_returns_fail_and_clears_photo_results(
         FinalEditResult(
             status="FRAME_EXTRACTED",
             results=[],
-            failure_reason="orientation_model_load_failed",
+            failure_reason="final_edit_failed",
         )
     )
     app.state.final_edit_service = fake_service
@@ -975,7 +1623,6 @@ def test_final_edit_response_limits_results_to_three() -> None:
 def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     uploader = FailingUploader()
     service = FinalEditService(
-        predictor=StubPredictor(),
         downloader=StubDraftDownloader(),
         uploader=uploader,
         temp_root=tmp_path,
@@ -1007,31 +1654,9 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.frame_extraction_service is not None
     assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor
     assert app.state.final_edit_service is not None
-    assert app.state.final_edit_service.predictor.weights_path is not None
     assert app.state.keyword_extraction_service is not None
     assert app.state.caption_generation_service is not None
     assert app.state.canonical_keyword_resolver_service is not None
-
-
-def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() -> None:
-    predictor = OrientationPredictor()
-    calls: list[tuple[str, dict[str, object]]] = []
-
-    class FakeTFAutoModel:
-        @staticmethod
-        def from_pretrained(model_id: str, **kwargs):
-            calls.append((model_id, kwargs))
-            if len(calls) == 1:
-                raise TypeError("'builtins.safe_open' object is not iterable")
-            return "vit-model"
-
-    model = predictor._load_vit_base_model(FakeTFAutoModel)
-
-    assert model == "vit-model"
-    assert calls == [
-        ("google/vit-base-patch16-224", {}),
-        ("google/vit-base-patch16-224", {"use_safetensors": False}),
-    ]
 
 
 def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:

@@ -33,6 +33,14 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class WeatherService implements WeatherContextProvider {
 
+    private static final double DEFAULT_TEMPERATURE = 18.0;
+    private static final double DEFAULT_PRECIPITATION = 0.0;
+    private static final String DEFAULT_CLOUD_COVER = "정보없음";
+    private static final int DEFAULT_HUMIDITY = 50;
+    private static final double DEFAULT_WIND_SPEED = 0.0;
+    private static final int DEFAULT_AIR_QUALITY = 0;
+    private static final double DEFAULT_DIURNAL_RANGE = 0.0;
+    private static final int DEFAULT_DISCOMFORT_INDEX = 60;
     private static final DateTimeFormatter CACHE_HOUR_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHH");
     private static final TypeReference<List<Station>> STATION_LIST_TYPE = new TypeReference<>() {
     };
@@ -65,14 +73,14 @@ public class WeatherService implements WeatherContextProvider {
         String cached = redisTemplate.opsForValue().get(cacheKey);
         if (cached != null && !cached.isBlank()) {
             try {
-                return objectMapper.readValue(cached, AiWeatherRequest.class);
+                return normalizeForAi(objectMapper.readValue(cached, AiWeatherRequest.class));
             } catch (JsonProcessingException exception) {
                 log.warn("weather.cache.invalid: key={}", cacheKey, exception);
             }
         }
 
         // 3. 외부 API를 호출해서 필요한 데이터를 가져온다.
-        AiWeatherRequest weather = fetchWeatherContext(store, now);
+        AiWeatherRequest weather = normalizeForAi(fetchWeatherContext(store, now));
         try {
             // 4. 받아온 데이터를 기반으로 redis에 캐싱한다
             redisTemplate.opsForValue().set(
@@ -180,17 +188,19 @@ public class WeatherService implements WeatherContextProvider {
      */
     private AirQualityData getAirQuality(String address, double longitude, double latitude) {
         String sido = AirKoreaStationClient.extractSido(address);
+        List<Station> stations;
         if (sido == null || sido.isBlank()) {
             log.warn("weather.airkorea.station-region-unmatched: address={}", address);
-            return AirQualityData.empty();
+            stations = getCachedAllStations();
+        } else {
+            // 1. 주소에서 sido를 추출해 주변의 가까운 측정소를 찾는다.
+            stations = getCachedStations(sido);  // 이때 측정소 목록은 캐시에서 먼저 조회시킨다.
         }
 
-        // 1. 주소에서 sido를 추출해 주변의 가까운 측정소를 찾는다.
-        List<Station> stations = getCachedStations(sido);  // 이때 측정소 목록은 캐시에서 먼저 조회시킨다.
         Station nearestStation = airKoreaStationClient.nearestStation(stations, longitude, latitude);
         // TODO 2. 실패한 경우, 서울시 용산구 기준으로 대기질을 조회하게 된다.
         if (nearestStation == null) {
-            log.warn("weather.airkorea.station-not-found: sido={}", sido);
+            log.warn("weather.airkorea.station-not-found: sido={} address={}", sido, address);
             String fallbackStationName = extractDistrictStationName(address);
             if (fallbackStationName == null || fallbackStationName.isBlank()) {
                 return AirQualityData.empty();
@@ -200,6 +210,12 @@ public class WeatherService implements WeatherContextProvider {
         }
         // 3. 해당 측정소에서의 대기질을 조회해 리턴한다.
         return airKoreaAirQualityClient.getAirQuality(nearestStation.stationName());
+    }
+
+    private List<Station> getCachedAllStations() {
+        return AirKoreaStationClient.SUPPORTED_SIDOS.stream()
+                .flatMap(sido -> getCachedStations(sido).stream())
+                .toList();
     }
 
     /**
@@ -255,6 +271,50 @@ public class WeatherService implements WeatherContextProvider {
     // 실황 API 값을 우선 사용하고, 없을 때 예보 API fallback 값을 사용한다.
     private <T> T firstNonNull(T first, T second) {
         return first != null ? first : second;
+    }
+
+    private AiWeatherRequest normalizeForAi(AiWeatherRequest weather) {
+        if (weather == null) {
+            return new AiWeatherRequest(
+                    DEFAULT_TEMPERATURE,
+                    DEFAULT_PRECIPITATION,
+                    DEFAULT_CLOUD_COVER,
+                    DEFAULT_HUMIDITY,
+                    DEFAULT_WIND_SPEED,
+                    DEFAULT_AIR_QUALITY,
+                    DEFAULT_AIR_QUALITY,
+                    DEFAULT_DIURNAL_RANGE,
+                    DEFAULT_DISCOMFORT_INDEX,
+                    null,
+                    null
+            );
+        }
+
+        return new AiWeatherRequest(
+                valueOrDefault(weather.temperature(), DEFAULT_TEMPERATURE),
+                valueOrDefault(weather.precipitation(), DEFAULT_PRECIPITATION),
+                valueOrDefault(weather.cloudCover(), DEFAULT_CLOUD_COVER),
+                valueOrDefault(weather.humidity(), DEFAULT_HUMIDITY),
+                valueOrDefault(weather.windSpeed(), DEFAULT_WIND_SPEED),
+                valueOrDefault(weather.pm10(), DEFAULT_AIR_QUALITY),
+                valueOrDefault(weather.pm25(), DEFAULT_AIR_QUALITY),
+                valueOrDefault(weather.diurnalRange(), DEFAULT_DIURNAL_RANGE),
+                valueOrDefault(weather.discomfortIndex(), DEFAULT_DISCOMFORT_INDEX),
+                weather.heavyRainWarning(),
+                weather.typhoonWarning()
+        );
+    }
+
+    private Double valueOrDefault(Double value, double defaultValue) {
+        return value != null ? value : defaultValue;
+    }
+
+    private Integer valueOrDefault(Integer value, int defaultValue) {
+        return value != null ? value : defaultValue;
+    }
+
+    private String valueOrDefault(String value, String defaultValue) {
+        return value != null && !value.isBlank() ? value : defaultValue;
     }
 
     private String extractDistrictStationName(String address) {

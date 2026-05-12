@@ -62,16 +62,24 @@ public class ContentService {
             "audio/mpeg",
             "audio/mp3",
             "audio/mp4",
-            "audio/webm",
-            "audio/ogg"
+            "audio/x-m4a",
+            "audio/m4a",
+            "audio/aac",
+            "audio/ac3",
+            "audio/ogg",
+            "audio/flac",
+            "audio/webm"
     );
     private static final Set<String> ALLOWED_AUDIO_EXTENSIONS = Set.of(
             "wav",
             "mp3",
             "m4a",
             "mp4",
-            "webm",
-            "ogg"
+            "aac",
+            "ac3",
+            "ogg",
+            "flac",
+            "webm"
     );
     private static final String TEXT_RECOGNIZED = "TEXT_RECOGNIZED";
 
@@ -382,7 +390,11 @@ public class ContentService {
         AiExtractFramesResponse extracted = aiContentClient.extractFrames(
                 new AiExtractFramesRequest(sessionId.toString(), videoKey)
         );
-        List<String> drafts = extracted != null && extracted.drafts() != null ? extracted.drafts() : List.of();
+        List<String> drafts = extracted != null && extracted.drafts() != null
+                ? extracted.drafts().stream()
+                .filter(draft -> draft != null && !draft.isBlank())
+                .toList()
+                : List.of();
         AiFinalEditResponse edited = aiContentClient.finalEdit(
                 new AiFinalEditRequest(sessionId.toString(), drafts)
         );
@@ -408,8 +420,8 @@ public class ContentService {
         }
 
         // 클라이언트/브라우저별 content-type 누락 가능성을 고려해 확장자를 보조 검증으로 허용한다.
-        String contentType = audioFile.getContentType();
-        if (contentType != null && ALLOWED_AUDIO_CONTENT_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
+        String contentType = normalizeContentType(audioFile.getContentType());
+        if (contentType != null && ALLOWED_AUDIO_CONTENT_TYPES.contains(contentType)) {
             return;
         }
 
@@ -425,6 +437,13 @@ public class ContentService {
         }
 
         throw new BusinessException(ErrorCode.INVALID_AUDIO_FILE);
+    }
+
+    private String normalizeContentType(String contentType) {
+        if (contentType == null || contentType.isBlank()) {
+            return null;
+        }
+        return contentType.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
     }
 
     private void validateVideoFile(MultipartFile videoFile) {

@@ -17,7 +17,7 @@ async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
     query = text(
         """
         SELECT id, code, display_name, created_at
-        FROM maketing.canonical_keywords
+        FROM canonical_keywords
         ORDER BY id ASC
         OFFSET :offset
         LIMIT :limit
@@ -32,7 +32,7 @@ async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
 async def _update_rows(rows: list[dict[str, object]], embeddings: list[list[float]]) -> None:
     update_query = text(
         """
-        UPDATE maketing.canonical_keywords
+        UPDATE canonical_keywords
         SET embedding = CAST(:embedding AS vector)
         WHERE id = :id
         """
@@ -55,7 +55,7 @@ async def _load_dump_rows() -> list[dict[str, object]]:
     query = text(
         """
         SELECT id, code, display_name, embedding::text AS embedding_text, created_at
-        FROM maketing.canonical_keywords
+        FROM canonical_keywords
         ORDER BY id ASC
         """
     )
@@ -77,7 +77,7 @@ def _format_timestamp(value: object) -> str:
 
 def _build_insert_statement(row: dict[str, object]) -> str:
     return (
-        "INSERT INTO maketing.canonical_keywords "
+        "INSERT INTO canonical_keywords "
         '(id, code, display_name, embedding, created_at) VALUES '
         f"({row['id']}, "
         f"'{_escape_sql_string(str(row['code']))}', "

@@ -17,11 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app.api.main import api_router
-from app.core.config import (
-    DEFAULT_ORIENTATION_MODEL_NAME,
-    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
-    settings,
-)
+from app.core.config import settings
 from app.db.postgres import dispose_engine
 from app.db.redis import close_redis, get_redis_client
 from app.logging import (
@@ -32,8 +28,6 @@ from app.logging import (
     reset_request_id,
     set_request_id,
 )
-from app.orientation.predictor import OrientationPredictor
-from app.orientation.weights import ensure_orientation_weights_available
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.schemas import ExtractorConfig
@@ -57,6 +51,12 @@ from app.services.keyword_extraction import (
 )
 from app.services.canonical_keyword_resolver import (
     build_canonical_keyword_resolver_service,
+)
+from app.services.reference_caption_retriever import (
+    build_reference_caption_retriever_service,
+)
+from app.services.menu_promotion_context import (
+    build_menu_promotion_context_service,
 )
 
 logger = logging.getLogger(__name__)
@@ -154,7 +154,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             temp_root=str(temp_root),
         ),
     )
-    orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
     extractor_config = ExtractorConfig(
         input_directory=temp_root,
         output_directory=temp_root,
@@ -178,49 +177,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root,
     )
 
-    try:
-        logger.info(
-            "Ensuring orientation weights are available.",
-            extra=build_log_extra(
-                "app.startup.orientation_weights_prepare",
-                component="startup",
-                stage="orientation_weights_prepare",
-                outcome="started",
-                weights_path=str(orientation_weights_path),
-            ),
-        )
-        orientation_weights_path = await ensure_orientation_weights_available()
-        logger.info(
-            "Orientation weights are available.",
-            extra=build_log_extra(
-                "app.startup.orientation_weights_ready",
-                component="startup",
-                stage="orientation_weights_prepare",
-                outcome="succeeded",
-                weights_path=str(orientation_weights_path),
-            ),
-        )
-    except Exception:
-        orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-        logger.warning(
-            "Orientation weights are unavailable at startup. "
-            "The app will continue, but final-edit may fail until weights are present.",
-            exc_info=True,
-            extra=build_log_extra(
-                "app.startup.orientation_weights_prepare",
-                component="startup",
-                stage="orientation_weights_prepare",
-                outcome="failed",
-                error_type="orientation_weights_unavailable",
-                weights_path=str(orientation_weights_path),
-            ),
-        )
-
     app.state.final_edit_service = FinalEditService(
-        predictor=OrientationPredictor(
-            model_name=DEFAULT_ORIENTATION_MODEL_NAME,
-            weights_path=str(orientation_weights_path),
-        ),
         downloader=S3DraftImageDownloader(),
         uploader=S3FinalImageUploader(),
         temp_root=temp_root / "final-edit",
@@ -229,6 +186,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.caption_generation_service = build_caption_generation_service()
     app.state.canonical_keyword_resolver_service = (
         build_canonical_keyword_resolver_service()
+    )
+    app.state.reference_caption_retriever_service = (
+        build_reference_caption_retriever_service(
+            app.state.canonical_keyword_resolver_service,
+            enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+            max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+        )
+    )
+    app.state.menu_promotion_context_service = (
+        build_menu_promotion_context_service()
     )
     logger.info(
         "Keyword extraction configured.",
@@ -262,6 +229,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             canonical_embedding_cache_dir=str(
                 settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR
             ),
+        ),
+    )
+    logger.info(
+        "Reference caption retriever configured.",
+        extra=build_log_extra(
+            "app.startup.reference_caption_retriever_configured",
+            component="startup",
+            reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+            reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+        ),
+    )
+    logger.info(
+        "Menu promotion context service configured.",
+        extra=build_log_extra(
+            "app.startup.menu_promotion_context_configured",
+            component="startup",
         ),
     )
 
@@ -380,6 +363,62 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 outcome="failed",
                 error_type=exc.__class__.__name__,
                 canonical_embedding_model_name=settings.CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME,
+            ),
+        )
+
+    try:
+        await app.state.reference_caption_retriever_service.preload()
+        logger.info(
+            "Reference caption retriever preload completed.",
+            extra=build_log_extra(
+                "app.startup.reference_caption_retriever_preload",
+                component="startup",
+                stage="reference_caption_retriever_preload",
+                outcome="succeeded",
+                reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+                reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Reference caption retriever is unavailable at startup: %s. "
+            "The app will continue and skip caption RAG until the retriever is reachable.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.reference_caption_retriever_preload",
+                component="startup",
+                stage="reference_caption_retriever_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
+                reference_caption_rag_enabled=settings.REFERENCE_CAPTION_RAG_ENABLED,
+                reference_caption_max_references=settings.REFERENCE_CAPTION_MAX_REFERENCES,
+            ),
+        )
+
+    try:
+        await app.state.menu_promotion_context_service.preload()
+        logger.info(
+            "Menu promotion context service preload completed.",
+            extra=build_log_extra(
+                "app.startup.menu_promotion_context_preload",
+                component="startup",
+                stage="menu_promotion_context_preload",
+                outcome="succeeded",
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Menu promotion context service is unavailable at startup: %s. "
+            "The app will continue and skip menu candidate lookup until the database is reachable.",
+            exc,
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.menu_promotion_context_preload",
+                component="startup",
+                stage="menu_promotion_context_preload",
+                outcome="failed",
+                error_type=exc.__class__.__name__,
             ),
         )
 

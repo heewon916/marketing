@@ -9,18 +9,24 @@ import OperatingHoursSection from '@/features/mypage/sections/OperatingHoursSect
 import { mypageApi } from '@/features/mypage/api';
 import { authApi } from '@/features/auth/api';
 
-const myPageMockData = {
-  weeklyPostAchievementRate: 25,
-  targetPostCount: 4,
-  achievedPostCount: 1,
-  weeklyReachCount: 17,
-  weeklyVisitIntentScore: -29,
-};
-
 const clearAuthStorage = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
   sessionStorage.removeItem('instagramAuthPurpose');
+};
+
+const DEFAULT_ANALYTICS_DATA = {
+  reachWeekStart: '',
+  reachWeekEnd: '',
+  visitIntentWeekStart: '',
+  visitIntentWeekEnd: '',
+  achievementWeekStart: '',
+  achievementWeekEnd: '',
+  weeklyPostAchievementRate: 0,
+  targetPostCount: 0,
+  achievedPostCount: 0,
+  weeklyReachCount: 0,
+  weeklyVisitIntentScore: 0,
 };
 
 export default function MyPage() {
@@ -28,13 +34,12 @@ export default function MyPage() {
 
   const [activeTab, setActiveTab] = useState('stats');
   const [myInfo, setMyInfo] = useState(null);
+  const [analyticsData, setAnalyticsData] = useState(DEFAULT_ANALYTICS_DATA);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchMyInfo = async () => {
     try {
       const response = await mypageApi.getMyInfo();
-
-      console.log('마이페이지 정보:', response.data);
 
       setMyInfo(response.data);
     } catch (error) {
@@ -45,25 +50,59 @@ export default function MyPage() {
   useEffect(() => {
     let isMounted = true;
 
-    const loadMyInfo = async () => {
+    const loadMyPageData = async () => {
       try {
-        const response = await mypageApi.getMyInfo();
+        const myInfoResponse = await mypageApi.getMyInfo();
 
-        console.log('마이페이지 정보:', response.data);
+        if (!isMounted) return;
 
-        if (isMounted) {
-          setMyInfo(response.data);
-        }
+        setMyInfo(myInfoResponse.data);
       } catch (error) {
         console.error('마이페이지 정보 조회 실패:', error);
+        return;
       } finally {
         if (isMounted) {
           setIsLoading(false);
         }
       }
+
+      try {
+        const [
+          reachResponse,
+          visitIntentResponse,
+          achievementResponse,
+        ] = await Promise.all([
+          mypageApi.getWeeklyReach(),
+          mypageApi.getWeeklyVisitIntent(),
+          mypageApi.getWeeklyAchievement(),
+        ]);
+
+        if (!isMounted) return;
+
+        setAnalyticsData({
+          reachWeekStart: reachResponse.data.week_start ?? '',
+          reachWeekEnd: reachResponse.data.week_end ?? '',
+          visitIntentWeekStart: visitIntentResponse.data.week_start ?? '',
+          visitIntentWeekEnd: visitIntentResponse.data.week_end ?? '',
+          achievementWeekStart: achievementResponse.data.week_start ?? '',
+          achievementWeekEnd: achievementResponse.data.week_end ?? '',
+          weeklyPostAchievementRate:
+            achievementResponse.data.achievement_rate ?? 0,
+          targetPostCount:
+            achievementResponse.data.target_post_count ?? 0,
+          achievedPostCount:
+            achievementResponse.data.actual_post_count ?? 0,
+          weeklyReachCount:
+            reachResponse.data.total_reach ?? 0,
+          weeklyVisitIntentScore:
+            visitIntentResponse.data.visit_intent_score ?? 0,
+        });
+      } catch (error) {
+        console.error('마이페이지 통계 조회 실패:', error);
+      }
     };
 
-    loadMyInfo();
+    loadMyPageData();
 
     return () => {
       isMounted = false;
@@ -102,6 +141,26 @@ export default function MyPage() {
     navigate('/', { replace: true });
   };
 
+  const handleInstagramUpdate = async () => {
+    try {
+      const response = await mypageApi.syncInstagramProfile();
+      const syncedProfile = response.data.data;
+
+      setMyInfo((prev) => ({
+        ...prev,
+        user: {
+          ...prev.user,
+          instagramUserId: syncedProfile.instagramUserId,
+          instagramUsername: syncedProfile.instagramUsername,
+          profileImageUrl: syncedProfile.profileImageUrl,
+        },
+      }));
+    } catch (error) {
+      console.error('인스타그램 프로필 동기화 실패:', error);
+      throw error;
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#f4f4f6] text-base text-gray-500">
@@ -115,6 +174,8 @@ export default function MyPage() {
       <MyPageHeader
         storeName={storeName}
         instagramUsername={instagramUsername}
+        profileImageUrl={user?.profileImageUrl}
+        onInstagramUpdate={handleInstagramUpdate}
       />
 
       <MyPageTabSwitcher activeTab={activeTab} onChange={setActiveTab} />
@@ -122,11 +183,17 @@ export default function MyPage() {
       <main className="mx-auto flex min-h-0 w-full max-w-[430px] flex-1 flex-col gap-2 overflow-y-auto px-5 pt-4 pb-5">
         {activeTab === 'stats' && (
           <MyPageStatsSection
-            weeklyPostAchievementRate={myPageMockData.weeklyPostAchievementRate}
-            targetPostCount={myPageMockData.targetPostCount}
-            achievedPostCount={myPageMockData.achievedPostCount}
-            weeklyReachCount={myPageMockData.weeklyReachCount}
-            weeklyVisitIntentScore={myPageMockData.weeklyVisitIntentScore}
+            reachWeekStart={analyticsData.reachWeekStart}
+            reachWeekEnd={analyticsData.reachWeekEnd}
+            visitIntentWeekStart={analyticsData.visitIntentWeekStart}
+            visitIntentWeekEnd={analyticsData.visitIntentWeekEnd}
+            achievementWeekStart={analyticsData.achievementWeekStart}
+            achievementWeekEnd={analyticsData.achievementWeekEnd}
+            weeklyPostAchievementRate={analyticsData.weeklyPostAchievementRate}
+            targetPostCount={analyticsData.targetPostCount}
+            achievedPostCount={analyticsData.achievedPostCount}
+            weeklyReachCount={analyticsData.weeklyReachCount}
+            weeklyVisitIntentScore={analyticsData.weeklyVisitIntentScore}
           />
         )}
 

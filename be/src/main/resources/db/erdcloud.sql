@@ -19,7 +19,6 @@ CREATE TABLE "users" (
                          "instagram_username"   VARCHAR(100)   NULL,
                          "access_token"         TEXT           NULL,
                          "token_expires_at"     TIMESTAMPTZ    NULL,
-                         "camera_mic_granted"   BOOLEAN        NULL,
                          "created_at"           TIMESTAMPTZ    NULL,
                          "updated_at"           TIMESTAMPTZ    NULL,
                          "profile_image_url"    TEXT           NULL,
@@ -93,7 +92,7 @@ COMMENT ON COLUMN "reference_images"."lighting_params" IS '표준 키:
 CREATE TABLE "reference_captions" (
                                       "id"                BIGINT         NOT NULL,
                                       "caption_content"   TEXT           NOT NULL,
-                                      "embedding"         VECTOR(768)   NOT NULL,
+                                      "embedding"         VECTOR(384)   NOT NULL,
                                       CONSTRAINT "PK_REFERENCE_CAPTIONS" PRIMARY KEY ("id") -- PK 추가
 );
 
@@ -274,18 +273,22 @@ CREATE TABLE "upload_history" (
 --  매장 계정의 주간 성과 지표와 목표 달성 정보를 저장한다.
 -- =============================================================
 CREATE TABLE "account_weekly_metrics" (
-                                          "id"                   UUID            NOT NULL,
-                                          "store_id"             UUID            NOT NULL,
-                                          "total_reach"          INTEGER         NULL,
-                                          "target_post_count"    INTEGER         NULL,
-                                          "actual_post_count"    INTEGER         NULL,
-                                          "achievement_rate"     DECIMAL(5, 2)   NULL,
-                                          "visit_intent_score"   INTEGER         NULL,
+                                           "id"                   UUID            NOT NULL,
+                                           "store_id"             UUID            NOT NULL,
+                                           "week_start"           DATE            NULL,
+                                           "total_reach"          INTEGER         NULL,
+                                           "total_saves"          INTEGER         NULL,
+                                           "total_shares"         INTEGER         NULL,
+                                           "target_post_count"    INTEGER         NULL,
+                                           "actual_post_count"    INTEGER         NULL,
+                                           "achievement_rate"     DECIMAL(5, 2)   NULL,
+                                           "visit_intent_score"   DECIMAL(5, 2)   NULL,
                                           "created_at"           TIMESTAMPTZ     NULL,
                                           "is_deleted"           BOOLEAN         NULL,
                                           CONSTRAINT "PK_ACCOUNT_WEEKLY_METRICS" PRIMARY KEY ("id"),
                                           CONSTRAINT "FK_stores_TO_account_weekly_metrics"
-                                              FOREIGN KEY ("store_id") REFERENCES "stores"("id") -- FK 추가
+                                              FOREIGN KEY ("store_id") REFERENCES "stores"("id"), -- FK 추가
+                                          CONSTRAINT "UK_account_weekly_metrics_store_week" UNIQUE ("store_id", "week_start")
 );
 
 -- =============================================================
@@ -318,7 +321,7 @@ CREATE TABLE "menus" (
                          "holiday_tags"   JSONB DEFAULT '[]'::jsonb NULL,
                          "created_at"     TIMESTAMPTZ    NULL,
                          "updated_at"     TIMESTAMPTZ    NULL,
-                         "embedding"      VECTOR(768)   NULL,
+                         "embedding"      VECTOR(384)   NULL,
                          CONSTRAINT "PK_MENUS" PRIMARY KEY ("id"),
                          CONSTRAINT "FK_stores_TO_menus" FOREIGN KEY ("store_id") REFERENCES "stores"("id") -- FK 추가
 );
@@ -333,8 +336,8 @@ CREATE TABLE "notifications" (
                                  "notification"     TEXT          NOT NULL,
                                  "scheduled_at"     TIMESTAMPTZ   NOT NULL,
                                  "created_at"       TIMESTAMPTZ   NOT NULL,
-                                 "type"             VARCHAR(50)   NOT NULL,
-                                 "status"           VARCHAR(50)   NOT NULL,
+                                   "type"             VARCHAR(50)   NOT NULL,
+                                   "status"           VARCHAR(50)   NOT NULL,
                                  "sent_at"          TIMESTAMPTZ   NULL,
                                  "updated_at"       TIMESTAMPTZ   NOT NULL,
                                  "retry_count"      INTEGER       NOT NULL,
@@ -401,20 +404,23 @@ CREATE TABLE "video_recordings" (
 --  Instagram 게시물별 도달/저장/공유/좋아요 지표를 저장한다.
 -- =============================================================
 CREATE TABLE "instagram_metrics" (
-                                     "id"                   UUID           NOT NULL,
-                                     "contents_id"          BIGINT         NULL,
-                                     "store_id"             UUID           NOT NULL,
-                                     "instagram_media_id"   VARCHAR(100)   NOT NULL,
-                                     "reaches"              INTEGER        NULL,
-                                     "saves"                INTEGER        NULL,
-                                     "shares"               INTEGER        NULL,
-                                     "likes"                INTEGER        NULL,
+                                       "id"                   UUID           NOT NULL,
+                                       "contents_id"          BIGINT         NULL,
+                                       "store_id"             UUID           NOT NULL,
+                                       "instagram_media_id"   VARCHAR(100)   NOT NULL,
+                                       "week_start"           DATE           NULL,
+                                       "week_end"             DATE           NULL,
+                                       "reaches"              INTEGER        NULL,
+                                       "saves"                INTEGER        NULL,
+                                       "shares"               INTEGER        NULL,
+                                       "likes"                INTEGER        NULL,
                                      "created_at"           TIMESTAMPTZ    NULL,
                                      CONSTRAINT "PK_INSTAGRAM_METRICS" PRIMARY KEY ("id"),
                                      CONSTRAINT "FK_contents_TO_instagram_metrics"
                                          FOREIGN KEY ("contents_id") REFERENCES "contents"("id"), -- FK 추가
                                      CONSTRAINT "FK_stores_TO_instagram_metrics"
-                                         FOREIGN KEY ("store_id") REFERENCES "stores"("id") -- FK 추가
+                                         FOREIGN KEY ("store_id") REFERENCES "stores"("id"), -- FK 추가
+                                     CONSTRAINT "UK_instagram_metrics_media_week" UNIQUE ("instagram_media_id", "week_start")
 );
 
 -- ==============================================================================

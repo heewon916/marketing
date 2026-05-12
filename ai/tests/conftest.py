@@ -19,6 +19,10 @@ from app.services.caption_generation import (
     DEFAULT_FALLBACK_GUIDE_TEXT,
 )
 from app.services.keyword_extraction import KeywordExtractionResult
+from app.services.reference_caption_retriever import (
+    ReferenceCaptionRetrievalResult,
+)
+from app.services.menu_promotion_context import MenuPromotionContext
 from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
 
 
@@ -35,6 +39,9 @@ def _weather_context_for_tests(weather_tags: list[str]) -> str:
 
 
 class DefaultKeywordExtractionService:
+    async def is_healthy(self) -> bool:
+        return True
+
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         return KeywordExtractionResult(
             purpose="메뉴 홍보",
@@ -48,27 +55,37 @@ class DefaultCanonicalKeywordResolverService:
         self,
         draft_keywords: list[str],
     ) -> CanonicalKeywordResolution:
-        code_map = {
-            "signature menu": "CANONICAL_SIGNATURE_MENU",
-            "cozy table": "CANONICAL_COZY_TABLE",
+        keyword_map = {
+            "signature menu": (1042, "signature menu"),
+            "cozy table": (2051, "cozy table"),
         }
         matches = [
             CanonicalKeywordMatch(
                 draft_keyword=keyword,
-                final_keyword=code_map.get(keyword, keyword),
-                display_name=keyword if keyword in code_map else None,
-                score=0.99 if keyword in code_map else None,
-                matched=keyword in code_map,
+                canonical_keyword_id=(
+                    keyword_map[keyword][0] if keyword in keyword_map else None
+                ),
+                final_keyword=(
+                    f"{keyword_map[keyword][0]}:{keyword_map[keyword][1]}"
+                    if keyword in keyword_map
+                    else keyword
+                ),
+                display_name=keyword_map[keyword][1] if keyword in keyword_map else None,
+                score=0.99 if keyword in keyword_map else None,
+                matched=keyword in keyword_map,
             )
             for keyword in draft_keywords
         ]
         return CanonicalKeywordResolution(
-            final_keywords=[match.final_keyword for match in matches],
+            final_keywords=[match.stored_final_keyword for match in matches],
             matches=matches,
         )
 
 
 class DefaultCaptionGenerationService:
+    async def is_healthy(self) -> bool:
+        return True
+
     async def generate_text(
         self,
         request: CaptionGenerationRequest,
@@ -110,6 +127,16 @@ class DefaultCaptionGenerationService:
             ),
             fallback_source=effective_fallback_source,
         )
+
+
+class DefaultReferenceCaptionRetrieverService:
+    async def retrieve(self, **kwargs) -> ReferenceCaptionRetrievalResult:
+        return ReferenceCaptionRetrievalResult()
+
+
+class DefaultMenuPromotionContextService:
+    async def fetch_context(self, **kwargs) -> MenuPromotionContext:
+        return MenuPromotionContext()
 
 
 @pytest.fixture(scope="session")
@@ -162,6 +189,12 @@ def client(
             app.state.caption_generation_service = DefaultCaptionGenerationService()
             app.state.canonical_keyword_resolver_service = (
                 DefaultCanonicalKeywordResolverService()
+            )
+            app.state.reference_caption_retriever_service = (
+                DefaultReferenceCaptionRetrieverService()
+            )
+            app.state.menu_promotion_context_service = (
+                DefaultMenuPromotionContextService()
             )
             yield test_client
         finally:

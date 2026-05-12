@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 const VIDEO_TYPES = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
 const MAX_RECORD_SECONDS = 60
-const TARGET_ASPECT_RATIO = 4 / 5
+const TARGET_ASPECT_RATIO = 3 / 4
 const MAX_CANVAS_LONG_SIDE = 1440
 const OUTPUT_FPS = 30
 

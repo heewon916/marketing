@@ -28,7 +28,7 @@ export default function WeeklyStatCard({
       const elapsedTime = currentTime - startTime;
       const progress = Math.min(elapsedTime / duration, 1);
       const easedProgress = 1 - Math.pow(1 - progress, 3);
-      const currentPercent = Math.round(targetPercent * easedProgress);
+      const currentPercent = targetPercent * easedProgress;
 
       setAnimatedPercent(currentPercent);
 
@@ -42,12 +42,51 @@ export default function WeeklyStatCard({
     return () => cancelAnimationFrame(animationFrameId);
   }, [percent]);
 
+  const displayPercent = animatedPercent.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+
+  const progressPercent = Math.min(animatedPercent, 100);
+
   const radius = 85;
   const strokeWidth = 18;
   const normalizedRadius = radius - strokeWidth / 2;
   const circumference = normalizedRadius * 2 * Math.PI;
   const strokeDashoffset =
-    circumference - (animatedPercent / 100) * circumference;
+    circumference - (progressPercent / 100) * circumference;
+
+  let statusTitle;
+  let statusMessage;
+
+  if (achievedCount === 0) {
+    statusTitle = '주간 포스팅 현황';
+    statusMessage = (
+      <>
+        목표 <strong className="font-semibold text-primary-100">{plannedCount}개</strong> 중 현재 <strong className="font-semibold text-primary-100">{achievedCount}개</strong> 달성!
+        <br />
+        기분 좋게 첫 포스팅을 시작해 볼까요?
+      </>
+    );
+  } else if (achievedCount >= plannedCount) {
+    statusTitle = '목표 달성 완료';
+    statusMessage = (
+      <>
+        목표 <strong className="font-semibold text-primary-100">{plannedCount}개</strong> 중 <strong className="font-semibold text-primary-100">{achievedCount}개</strong> 달성!
+        <br />
+        이번 주 목표를 완벽하게 채우셨네요!
+      </>
+    );
+  } else {
+    statusTitle = '이번 주 달성률';
+    statusMessage = (
+      <>
+        목표 <strong className="font-semibold text-primary-100">{plannedCount}개</strong> 중 현재 <strong className="font-semibold text-primary-100">{achievedCount}개</strong> 달성!
+        <br />
+        목표까지 조금만 더 힘내보세요!
+      </>
+    );
+  }
 
   return (
     <CardShell className="flex flex-col items-center justify-center py-6">
@@ -82,7 +121,7 @@ export default function WeeklyStatCard({
 
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <strong className="text-[50px] font-semibold tracking-tighter text-accent-100">
-            {animatedPercent}
+            {displayPercent}
             <span className="ml-1 text-[25px] font-medium text-gray-500">
               %
             </span>
@@ -92,20 +131,11 @@ export default function WeeklyStatCard({
 
       <div className="mt-4 text-center">
         <h2 className="text-[24px] font-semibold tracking-tight text-accent-100">
-          주간 포스팅 달성률
+          {statusTitle}
         </h2>
 
         <p className="mt-2 text-[17px] font-normal leading-relaxed text-gray-500">
-          지난 7일간 계획한{' '}
-          <strong className="font-semibold text-primary-100">
-            {plannedCount}개
-          </strong>
-          의 게시물 중
-          <br />
-          <strong className="font-semibold text-primary-100">
-            {achievedCount}개
-          </strong>
-          를 달성했어요!
+          {statusMessage}
         </p>
       </div>
     </CardShell>

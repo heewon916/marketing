@@ -6,10 +6,10 @@ import com.matketing.be.domain.onboarding.dto.PinVerifyResponse;
 import com.matketing.be.domain.onboarding.dto.SyncRequest;
 import com.matketing.be.domain.onboarding.dto.SyncResponse;
 import com.matketing.be.domain.onboarding.service.OnboardingService;
+import com.matketing.be.global.auth.jwt.AuthUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,20 +31,6 @@ public class OnboardingController {
 
     private final OnboardingService onboardingService;
     private final UserRepository userRepository;
-
-    private UUID getUserIdFromOAuth(OAuth2User oauth2User) {
-        if (oauth2User == null) {
-            throw new IllegalArgumentException("User not authenticated");
-        }
-        String instagramUserId = oauth2User.getName();
-        if (oauth2User.getAttributes().containsKey("id")) {
-            instagramUserId = oauth2User.getAttributes().get("id").toString();
-        }
-        
-        User user = userRepository.findByInstagramUserId(instagramUserId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found in DB"));
-        return user.getId();
-    }
 
     // [API 1] POS 플러그인에서 난수와 가맹점 식별자
     @PostMapping("/pin/register")
@@ -77,14 +63,17 @@ public class OnboardingController {
     @PostMapping("/toss/sync")
     public ResponseEntity<SyncResponse> syncStoreData(
             @RequestBody SyncRequest request,
-            @AuthenticationPrincipal OAuth2User oauth2User) { // 인증된 사용자 정보 가져오기
+            @AuthenticationPrincipal AuthUser authUser) { // 인증된 사용자 정보 가져오기
 
         if (request.merchantId() == null) {
             return ResponseEntity.badRequest().body(new SyncResponse(false, "Merchant ID is required", null));
         }
 
         try {
-            UUID userId = getUserIdFromOAuth(oauth2User);
+            if (authUser == null) {
+                throw new IllegalArgumentException("User not authenticated");
+            }
+            UUID userId = authUser.getId();
             SyncResponse response = onboardingService.syncStoreData(userId, request.merchantId());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -99,10 +88,13 @@ public class OnboardingController {
     public ResponseEntity<SyncResponse> updateStoreData(
             @PathVariable UUID storeId,
             @RequestBody StoreUpdateRequest request,
-            @AuthenticationPrincipal OAuth2User oauth2User) {
+            @AuthenticationPrincipal AuthUser authUser) {
 
         try {
-            UUID userId = getUserIdFromOAuth(oauth2User);
+            if (authUser == null) {
+                throw new IllegalArgumentException("User not authenticated");
+            }
+            UUID userId = authUser.getId();
             SyncResponse response = onboardingService.updateStoreData(storeId, userId, request);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
@@ -138,4 +130,3 @@ public class OnboardingController {
         }
     }
 }
-
