@@ -64,6 +64,11 @@ public class OnboardingService {
     private String fastapiBaseUrl;
 
     public void registerPin(String pin, String merchantId) {
+        log.info("Registering PIN: {} for merchant: {}", pin, merchantId);
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Paths.get("/app/pin_debug.log"), "REGISTER: " + pin + " for " + merchantId + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch(Exception e) {}
+        
         // Redis에 난수와 merchantId 저장 (엔티티에 설정된 TTL 3분 자동 적용)
         posPinRepository.save(PosPin.builder()
                 .pin(pin)
@@ -72,6 +77,11 @@ public class OnboardingService {
     }
 
     public PinVerifyResponse verifyPin(String pin) {
+        log.info("Verifying PIN: {}", pin);
+        try {
+            java.nio.file.Files.writeString(java.nio.file.Paths.get("/app/pin_debug.log"), "VERIFY: " + pin + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch(Exception e) {}
+        
         Optional<PosPin> posPinOptional = posPinRepository.findById(pin);
 
         if (posPinOptional.isPresent()) {

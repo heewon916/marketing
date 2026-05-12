@@ -77,26 +77,28 @@ function App() {
     merchantRef.current = mId;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/onboarding/pin/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // 🚨 브라우저 내장 fetch 대신 토스 POS SDK의 전용 HTTP 클라이언트를 사용해야 ACL을 통과합니다.
+      const response = await posPluginSdk.http.post(
+        `${API_BASE_URL}/api/v1/onboarding/pin/register`,
+        {
           pin: randomPin,
           merchantId: mId
-        })
-      });
+        },
+        [
+          ['Content-Type', 'application/json']
+        ]
+      );
 
       // [에러 케이스 C] 백엔드 서버에서 거절한 경우 (4xx, 5xx)
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("서버 응답 에러:", response.status, errorData);
+      if (response.code !== 200) {
+        console.error("서버 응답 에러:", response.code, response.body);
         
-        if (response.status === 400 || response.status === 404) {
+        if (response.code === 400 || response.code === 404) {
           setStatus("잘못된 요청입니다. 다시 시도해주세요.");
-        } else if (response.status === 500) {
+        } else if (response.code === 500) {
           setStatus("서버에 일시적인 오류가 발생했습니다. 잠시 후 다시 눌러주세요.");
         } else {
-          setStatus(`인증 번호 등록에 실패했습니다. (코드: ${response.status})`);
+          setStatus(`인증 번호 등록에 실패했습니다. (코드: ${response.code})`);
         }
         setStep('initial');
         return; // 함수 종료
@@ -174,12 +176,12 @@ function App() {
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                 <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>인증 번호 생성</span>
               </div>
-              <div style={{ width: '40px', borderTop: '2px dashed #EAEAEA', margin: '0 8px', marginTop: '14px' }}></div>
+              <div style={{ width: '40px', borderTop: '2px dashed #B0B0B0', margin: '0 8px', marginTop: '14px' }}></div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8" cy="8" r="1"></circle><circle cx="12" cy="8" r="1"></circle><circle cx="16" cy="8" r="1"></circle><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><circle cx="8" cy="16" r="1"></circle><circle cx="12" cy="16" r="1"></circle><circle cx="16" cy="16" r="1"></circle></svg>
                 <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>맡케팅 서비스에<br/>번호 입력</span>
               </div>
-              <div style={{ width: '40px', borderTop: '2px dashed #EAEAEA', margin: '0 8px', marginTop: '14px' }}></div>
+              <div style={{ width: '40px', borderTop: '2px dashed #B0B0B0', margin: '0 8px', marginTop: '14px' }}></div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
                 <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>서비스 연결 완료</span>
