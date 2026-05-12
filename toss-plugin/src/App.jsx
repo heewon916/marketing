@@ -299,34 +299,46 @@ function App() {
               </p>
 
               <div style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                position: 'relative',
+                backgroundColor: '#ffffff',
+                border: '2px solid #EAEAEA',
                 borderRadius: '16px',
                 marginBottom: '16px',
                 display: 'flex',
-                flexDirection: 'column',
                 justifyContent: 'center',
                 alignItems: 'center',
                 height: '124px',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                overflow: 'hidden'
               }}>
                 <div style={{
-                  fontSize: '32px',
+                  fontSize: '56px',
                   fontWeight: '800',
                   letterSpacing: '14px',
-                  color: '#ffffff',
-                  marginLeft: '14px', // letterSpacing 보정
-                  marginBottom: '8px'
+                  color: '#FF7A3D',
+                  textShadow: '0 2px 4px rgba(255, 122, 61, 0.15)',
+                  marginLeft: '14px' // letterSpacing 보정
                 }}>
                   ******
                 </div>
                 <div style={{
-                  fontSize: '15px',
-                  fontWeight: '500',
-                  color: '#ffffff',
-                  textAlign: 'center',
-                  lineHeight: '1.4'
+                  position: 'absolute',
+                  top: 0, left: 0, right: 0, bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  zIndex: 10
                 }}>
-                  입력시간이 다 되었어요.<br />인증 번호를 다시 발급해주세요.
+                  <div style={{
+                    fontSize: '15px',
+                    fontWeight: '600',
+                    color: '#ffffff',
+                    textAlign: 'center',
+                    lineHeight: '1.4'
+                  }}>
+                    입력시간이 다 되었어요.<br />인증 번호를 다시 발급해주세요.
+                  </div>
                 </div>
               </div>
 
