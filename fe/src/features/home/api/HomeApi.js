@@ -52,7 +52,7 @@ export async function requestCaptionGeneration(utterance, requestId = createRequ
 		if (data.status && data.status !== 'TEXT_GENERATED') {
 			throw new Error('게시글 생성이 아직 완료되지 않았습니다.');
 		}
-
+		console.log(data)
 		return {
 			requestId,
 			sessionId: data.session_id ?? '',
