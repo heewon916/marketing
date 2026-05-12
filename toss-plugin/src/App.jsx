@@ -152,7 +152,7 @@ function App() {
         width: '100%',
         maxWidth: '500px', // 넓이 조정
         minHeight: '460px', // 높이 고정
-        backgroundColor: 'rgba(255, 255, 255, 0.85)', // 흰색 반투명 컨테이너
+        backgroundColor: 'rgba(255, 255, 255, 0.65)', // 흰색 반투명 컨테이너
         backdropFilter: 'blur(12px)', // 글래스모피즘 효과
         borderRadius: '24px',
         padding: '40px',
@@ -273,20 +273,21 @@ function App() {
                   width: '100%',
                   height: '56px',
                   borderRadius: '12px',
-                  backgroundColor: '#FFF0E6',
-                  color: '#FF7A3D',
-                  fontSize: '16px',
-                  fontWeight: '700',
-                  border: '1px solid #FFD1B3',
+                  backgroundColor: '#FF7A3D',
+                  color: '#ffffff',
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  border: 'none',
                   cursor: 'pointer',
+                  boxShadow: '0 4px 6px rgba(255, 122, 61, 0.2)',
                   transition: 'background-color 0.2s'
-                }}
-                onMouseOver={(e) => e.target.style.backgroundColor = '#FFE5D4'}
-                onMouseOut={(e) => e.target.style.backgroundColor = '#FFF0E6'}
-                onFocus={(e) => e.target.style.backgroundColor = '#FFE5D4'}
-                onBlur={(e) => e.target.style.backgroundColor = '#FFF0E6'}
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#e86a32'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#FF7A3D'}
+                onFocus={(e) => e.target.style.backgroundColor = '#e86a32'}
+                onBlur={(e) => e.target.style.backgroundColor = '#FF7A3D'}
               >
-                🔄 재발급
+                🔄 다시 발급하기
               </button>
             </>
           )}
@@ -298,23 +299,34 @@ function App() {
               </p>
 
               <div style={{
-                backgroundColor: '#ffffff',
-                border: '2px dashed #de3a3a',
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
                 borderRadius: '16px',
-                padding: '30px 0',
                 marginBottom: '16px',
                 display: 'flex',
+                flexDirection: 'column',
                 justifyContent: 'center',
                 alignItems: 'center',
                 height: '124px',
                 boxSizing: 'border-box'
               }}>
                 <div style={{
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#de3a3a',
+                  fontSize: '32px',
+                  fontWeight: '800',
+                  letterSpacing: '14px',
+                  color: '#ffffff',
+                  marginLeft: '14px', // letterSpacing 보정
+                  marginBottom: '8px'
                 }}>
-                  {status}
+                  ******
+                </div>
+                <div style={{
+                  fontSize: '15px',
+                  fontWeight: '500',
+                  color: '#ffffff',
+                  textAlign: 'center',
+                  lineHeight: '1.4'
+                }}>
+                  입력시간이 다 되었어요.<br />인증 번호를 다시 발급해주세요.
                 </div>
               </div>
 
