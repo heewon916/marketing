@@ -8,29 +8,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR.parent / ".env"
 
-DEFAULT_ORIENTATION_MODEL_NAME = "vit"
-DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = (
-    ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
-)
-
 DEFAULT_KEYWORD_MODEL_SERVER_PORT = 8001
-DEFAULT_KEYWORD_MODEL_HOST_DIR = "./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
+DEFAULT_KEYWORD_MODEL_HOST_DIR = "./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m"
 DEFAULT_KEYWORD_MODEL_PATH = (
-    ROOT_DIR / "models" / "qwen2-1.5b-instruct" / "q3_k_m" / "model.gguf"
+    ROOT_DIR / "models" / "exaone-3.5-7.8b-instruct" / "q4_k_m" / "model.gguf"
 )
-DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "Qwen/Qwen2-1.5B-Instruct-GGUF"
-DEFAULT_KEYWORD_MODEL_HF_FILENAME = "qwen2-1_5b-instruct-q3_k_m.gguf"
+DEFAULT_KEYWORD_MODEL_HF_REPO_ID = "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+DEFAULT_KEYWORD_MODEL_HF_FILENAME = "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
 DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS = 60.0
 DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT = "/health"
 
 DEFAULT_CAPTION_MODEL_SERVER_PORT = 8002
-DEFAULT_CAPTION_MODEL_HOST_DIR = "./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
+DEFAULT_CAPTION_MODEL_HOST_DIR = "./.models/caption/exaone-4.0-32b/q4_k_m"
 DEFAULT_CAPTION_MODEL_PATH = (
-    ROOT_DIR / "models" / "exaone-3.5-7.8b-instruct" / "q4_k_m" / "model.gguf"
+    ROOT_DIR / "models" / "exaone-4.0-32b" / "q4_k_m" / "model.gguf"
 )
-DEFAULT_CAPTION_MODEL_HF_REPO_ID = "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
-DEFAULT_CAPTION_MODEL_HF_FILENAME = "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
-DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS = 120.0
+DEFAULT_CAPTION_MODEL_HF_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
+DEFAULT_CAPTION_MODEL_HF_FILENAME = "EXAONE-4.0-32B-Q4_K_M.gguf"
+DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS = 600.0
 DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT = "/health"
 
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
@@ -85,6 +80,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
+    POSTGRES_SCHEMA: str = "public"
 
     REDIS_HOST: str = "project-redis"
     REDIS_PORT: int = 6379
@@ -98,9 +94,6 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str | None = None
     S3_REGION: str | None = None
     CLOUDFRONT_DOMAIN: str | None = None
-    ORIENTATION_MODEL_DOWNLOAD_URL: str = (
-        "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
-    )
 
     KEYWORD_MODEL_HOST_DIR: str = DEFAULT_KEYWORD_MODEL_HOST_DIR
     KEYWORD_MODEL_HF_REPO_ID: str = DEFAULT_KEYWORD_MODEL_HF_REPO_ID
@@ -132,8 +125,8 @@ class Settings(BaseSettings):
     CAPTION_MODEL_API_KEY: str | None = None
     CAPTION_MODEL_CTX_SIZE: int = 2048
     CAPTION_MODEL_GPU_LAYERS: int = 20
-    CAPTION_MODEL_MAX_TOKENS: int = 256
-    CAPTION_MODEL_TEMPERATURE: float = 0.7
+    CAPTION_MODEL_MAX_TOKENS: int = 512
+    CAPTION_MODEL_TEMPERATURE: float = 1
     CAPTION_MODEL_TOP_P: float = 0.9
     CAPTION_MODEL_ENABLED: bool = True
     CAPTION_MODEL_TIMEOUT_SECONDS: float = DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
@@ -148,6 +141,8 @@ class Settings(BaseSettings):
     CANONICAL_KEYWORD_EMBEDDING_DIM: int = (
         DEFAULT_CANONICAL_KEYWORD_EMBEDDING_DIM
     )
+    REFERENCE_CAPTION_RAG_ENABLED: bool = True
+    REFERENCE_CAPTION_MAX_REFERENCES: int = 2
 
     @field_validator("DEBUG", mode="before")
     @classmethod
@@ -167,6 +162,14 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @computed_field
+    @property
+    def postgres_search_path(self) -> str:
+        normalized_schema = self.POSTGRES_SCHEMA.strip() or "public"
+        if normalized_schema == "public":
+            return "public"
+        return f"{normalized_schema},public"
 
     @computed_field
     @property

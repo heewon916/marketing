@@ -17,12 +17,25 @@ from app.logging import build_log_extra
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
+from app.perfectframe.video_processors import _import_cv2
 from app.schemas.sessions import ExtractFramesRequest
 from app.services.sessions import STATUS_STARTED, STATUS_TEXT_GENERATED, session_key, upsert_content_session
 
 STATUS_FAIL = STATUS_TEXT_GENERATED
 STATUS_FRAME_EXTRACTED = "FRAME_EXTRACTED"
+DRAFT_TARGET_WIDTH = 1080
+DRAFT_TARGET_HEIGHT = 1440
 logger = logging.getLogger(__name__)
+
+
+def _resize_to_draft_target(frame: Image) -> Image:
+    cv2 = _import_cv2()
+    interp = cv2.INTER_AREA if frame.shape[0] >= DRAFT_TARGET_HEIGHT else cv2.INTER_CUBIC
+    return cv2.resize(
+        frame,
+        (DRAFT_TARGET_WIDTH, DRAFT_TARGET_HEIGHT),
+        interpolation=interp,
+    )
 
 
 @dataclass
@@ -249,7 +262,9 @@ class FrameExtractionService:
                 )
 
             debug_fields["debug:extractor_result"] = "frame_found"
-            debug_fields["debug:frame_shape"] = "x".join(str(dimension) for dimension in frame.shape)
+            debug_fields["debug:frame_shape:source"] = "x".join(
+                str(dimension) for dimension in frame.shape
+            )
             logger.info(
                 "Best-frame extraction completed.",
                 extra=build_log_extra(
@@ -259,10 +274,47 @@ class FrameExtractionService:
                     session_id=session_id,
                     outcome="succeeded",
                     video_key=video_key,
-                    frame_shape=debug_fields["debug:frame_shape"],
+                    frame_shape=debug_fields["debug:frame_shape:source"],
                     elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
                 ),
             )
+
+            debug_fields["debug:stage"] = "resize_frame"
+            resize_started_at = time.perf_counter()
+            logger.info(
+                "Resizing frame to draft target resolution.",
+                extra=build_log_extra(
+                    "frame_extraction.resize_frame.started",
+                    component="frame_extraction",
+                    stage="resize_frame",
+                    session_id=session_id,
+                    outcome="started",
+                    video_key=video_key,
+                    source_shape=debug_fields["debug:frame_shape:source"],
+                    target_width=DRAFT_TARGET_WIDTH,
+                    target_height=DRAFT_TARGET_HEIGHT,
+                ),
+            )
+            frame = await asyncio.to_thread(_resize_to_draft_target, frame)
+            debug_fields["debug:frame_shape:resized"] = "x".join(
+                str(dimension) for dimension in frame.shape
+            )
+            logger.info(
+                "Frame resize completed.",
+                extra=build_log_extra(
+                    "frame_extraction.resize_frame.completed",
+                    component="frame_extraction",
+                    stage="resize_frame",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    video_key=video_key,
+                    resized_shape=debug_fields["debug:frame_shape:resized"],
+                    target_width=DRAFT_TARGET_WIDTH,
+                    target_height=DRAFT_TARGET_HEIGHT,
+                    elapsed_ms=int((time.perf_counter() - resize_started_at) * 1000),
+                ),
+            )
+
             debug_fields["debug:stage"] = "upload_frame"
             upload_started_at = time.perf_counter()
             logger.info(
@@ -274,7 +326,7 @@ class FrameExtractionService:
                     session_id=session_id,
                     outcome="started",
                     video_key=video_key,
-                    frame_shape=debug_fields["debug:frame_shape"],
+                    frame_shape=debug_fields["debug:frame_shape:resized"],
                 ),
             )
             uploaded_path = await self.uploader.upload_frame(session_id, frame, session_dir)

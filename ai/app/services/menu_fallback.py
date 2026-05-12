@@ -67,7 +67,7 @@ class MenuKeywordFallbackService:
         query = text(
             """
             SELECT name
-            FROM maketing.menus
+            FROM menus
             WHERE store_id = :store_id
               AND weather_tags @> CAST(:weather_tag AS jsonb)
             ORDER BY name ASC
@@ -90,7 +90,7 @@ class MenuKeywordFallbackService:
         query = text(
             """
             SELECT name
-            FROM maketing.menus
+            FROM menus
             WHERE store_id = :store_id
             ORDER BY name ASC
             """

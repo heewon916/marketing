@@ -36,15 +36,15 @@ export default function PublishResultStep({ type, stepNum, onGoHome, onViewInsta
 			{/* 버튼 */}
 			<section className="flex w-full flex-col items-center gap-3 pb-10">
 				{isSuccess ? (
-					<Button variant="primary" size="lg" onClick={onViewInstagram}>
-						인스타그램에서 보기
+					<Button variant="instagram" size="lg" onClick={onViewInstagram} className="shadow-lg shadow-gray-300">
+						에서 보기
 					</Button>
 				) : (
-					<Button variant="primary" size="lg" onClick={onRetry}>
+					<Button variant="primary" size="lg" onClick={onRetry} className="shadow-lg shadow-gray-300">
 						다시 발행하기
 					</Button>
 				)}
-				<Button variant="navy" size="lg" onClick={onGoHome}>
+				<Button variant="navy" size="lg" onClick={onGoHome} className="shadow-lg shadow-gray-300">
 					홈으로 돌아가기
 				</Button>
 			</section>

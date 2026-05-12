@@ -1,4 +1,4 @@
-"""Services for draft orientation correction and final image upload."""
+"""Services for uploading final images from extracted draft frames."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.logging import build_log_extra
-from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import FinalEditRequest
 from app.services.sessions import session_key, upsert_content_session
 
@@ -130,16 +129,14 @@ class S3FinalImageUploader:
 
 
 class FinalEditService:
-    """Correct draft image orientation and upload final images."""
+    """Upload final images from extracted draft frames."""
 
     def __init__(
         self,
-        predictor: OrientationPredictor,
         downloader: S3DraftImageDownloader,
         uploader: S3FinalImageUploader,
         temp_root: Path,
     ) -> None:
-        self.predictor = predictor
         self.downloader = downloader
         self.uploader = uploader
         self.temp_root = temp_root
@@ -217,82 +214,6 @@ class FinalEditService:
                     ),
                 )
 
-                debug_fields["debug:stage"] = f"predict_orientation_{final_index}"
-                predict_started_at = time.perf_counter()
-                logger.info(
-                    "Predicting draft image orientation.",
-                    extra=build_log_extra(
-                        "final_edit.predict_orientation.started",
-                        component="final_edit",
-                        stage="predict_orientation",
-                        session_id=session_id,
-                        final_index=final_index,
-                        draft_key=draft_key,
-                        outcome="started",
-                    ),
-                )
-                predicted_angle = await asyncio.to_thread(
-                    self.predictor.predict_angle,
-                    draft_path,
-                )
-                debug_fields[f"debug:predicted_angle:{final_index}"] = (
-                    f"{predicted_angle:.6f}"
-                )
-                logger.info(
-                    "Predicted orientation angle for draft image.",
-                    extra=build_log_extra(
-                        "final_edit.predict_orientation.completed",
-                        component="final_edit",
-                        stage="predict_orientation",
-                        session_id=session_id,
-                        final_index=final_index,
-                        draft_key=draft_key,
-                        predicted_angle=f"{predicted_angle:.6f}",
-                        outcome="succeeded",
-                        elapsed_ms=int((time.perf_counter() - predict_started_at) * 1000),
-                    ),
-                )
-
-                debug_fields["debug:stage"] = f"correct_orientation_{final_index}"
-                corrected_path = session_dir / f"final-{final_index:03d}.jpg"
-                applied_rotation = -predicted_angle
-                correct_started_at = time.perf_counter()
-                logger.info(
-                    "Applying orientation correction to draft image.",
-                    extra=build_log_extra(
-                        "final_edit.correct_orientation.started",
-                        component="final_edit",
-                        stage="correct_orientation",
-                        session_id=session_id,
-                        final_index=final_index,
-                        draft_key=draft_key,
-                        predicted_angle=f"{predicted_angle:.6f}",
-                        applied_rotation=f"{applied_rotation:.6f}",
-                        outcome="started",
-                    ),
-                )
-                await asyncio.to_thread(
-                    self.predictor.correct_orientation,
-                    draft_path,
-                    corrected_path,
-                    predicted_angle,
-                )
-                logger.info(
-                    "Orientation correction completed for draft image.",
-                    extra=build_log_extra(
-                        "final_edit.correct_orientation.completed",
-                        component="final_edit",
-                        stage="correct_orientation",
-                        session_id=session_id,
-                        final_index=final_index,
-                        draft_key=draft_key,
-                        predicted_angle=f"{predicted_angle:.6f}",
-                        applied_rotation=f"{applied_rotation:.6f}",
-                        outcome="succeeded",
-                        elapsed_ms=int((time.perf_counter() - correct_started_at) * 1000),
-                    ),
-                )
-
                 debug_fields["debug:stage"] = f"upload_final_{final_index}"
                 upload_started_at = time.perf_counter()
                 logger.info(
@@ -309,7 +230,7 @@ class FinalEditService:
                 )
                 uploaded_path = await self.uploader.upload_final(
                     session_id,
-                    corrected_path,
+                    draft_path,
                     final_index,
                 )
                 uploaded_results.append(uploaded_path)

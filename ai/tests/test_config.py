@@ -18,8 +18,6 @@ from app.core.config import (
     DEFAULT_KEYWORD_MODEL_PATH,
     DEFAULT_KEYWORD_MODEL_SERVER_PORT,
     DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
-    DEFAULT_ORIENTATION_MODEL_NAME,
-    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
     Settings,
 )
 
@@ -84,6 +82,7 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
 
     assert settings.POSTGRES_HOST == "project-postgres"
     assert settings.POSTGRES_PORT == 5432
+    assert settings.POSTGRES_SCHEMA == "public"
     assert settings.REDIS_HOST == "project-redis"
     assert settings.REDIS_PORT == 6379
     assert settings.REDIS_DB == 0
@@ -130,6 +129,7 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
         == "intfloat/multilingual-e5-small"
     )
     assert settings.CANONICAL_KEYWORD_EMBEDDING_DIM == 384
+    assert settings.postgres_search_path == "public"
 
 
 def test_postgres_dsn_format(env_setup: None) -> None:
@@ -138,6 +138,15 @@ def test_postgres_dsn_format(env_setup: None) -> None:
     assert settings.postgres_dsn == (
         "postgresql+asyncpg://tester:secret@project-postgres:5432/testdb"
     )
+
+
+def test_postgres_search_path_uses_custom_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("POSTGRES_SCHEMA", "custom_schema")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.postgres_search_path == "custom_schema,public"
 
 
 def test_redis_url_with_password(env_setup: None) -> None:
@@ -233,25 +242,22 @@ def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
 
 
 def test_model_defaults_resolve_without_env(env_setup: None) -> None:
-    assert DEFAULT_ORIENTATION_MODEL_NAME == "vit"
-    assert DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH.name == "model-vit-ang-loss.h5"
-
     assert DEFAULT_KEYWORD_MODEL_PATH.name == "model.gguf"
-    assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q3_k_m"
-    assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "qwen2-1.5b-instruct"
-    assert DEFAULT_KEYWORD_MODEL_HOST_DIR == "./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
-    assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "Qwen/Qwen2-1.5B-Instruct-GGUF"
-    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "qwen2-1_5b-instruct-q3_k_m.gguf"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q4_k_m"
+    assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "exaone-3.5-7.8b-instruct"
+    assert DEFAULT_KEYWORD_MODEL_HOST_DIR == "./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m"
+    assert DEFAULT_KEYWORD_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+    assert DEFAULT_KEYWORD_MODEL_HF_FILENAME == "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
     assert DEFAULT_KEYWORD_MODEL_SERVER_PORT == 8001
     assert DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS == 60.0
     assert DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT == "/health"
 
     assert DEFAULT_CAPTION_MODEL_PATH.name == "model.gguf"
     assert DEFAULT_CAPTION_MODEL_PATH.parent.name == "q4_k_m"
-    assert DEFAULT_CAPTION_MODEL_PATH.parent.parent.name == "exaone-3.5-7.8b-instruct"
-    assert DEFAULT_CAPTION_MODEL_HOST_DIR == "./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
-    assert DEFAULT_CAPTION_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
-    assert DEFAULT_CAPTION_MODEL_HF_FILENAME == "EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
+    assert DEFAULT_CAPTION_MODEL_PATH.parent.parent.name == "exaone-4.0-32b"
+    assert DEFAULT_CAPTION_MODEL_HOST_DIR == "./.models/caption/exaone-4.0-32b/q4_k_m"
+    assert DEFAULT_CAPTION_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
+    assert DEFAULT_CAPTION_MODEL_HF_FILENAME == "EXAONE-4.0-32B-Q4_K_M.gguf"
     assert DEFAULT_CAPTION_MODEL_SERVER_PORT == 8002
     assert DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS == 120.0
     assert DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT == "/health"
@@ -300,7 +306,33 @@ def test_model_client_defaults_apply_when_env_is_missing(
         settings.caption_model_client.timeout_seconds
         == DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
     )
-    assert settings.caption_model_client.max_tokens == 256
+    assert settings.caption_model_client.max_tokens == 1024
+
+
+def test_reference_caption_rag_defaults_apply_when_env_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.delenv("REFERENCE_CAPTION_RAG_ENABLED", raising=False)
+    monkeypatch.delenv("REFERENCE_CAPTION_MAX_REFERENCES", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REFERENCE_CAPTION_RAG_ENABLED is True
+    assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 2
+
+
+def test_reference_caption_rag_env_vars_are_applied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("REFERENCE_CAPTION_RAG_ENABLED", "false")
+    monkeypatch.setenv("REFERENCE_CAPTION_MAX_REFERENCES", "4")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.REFERENCE_CAPTION_RAG_ENABLED is False
+    assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 4
 
 
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:

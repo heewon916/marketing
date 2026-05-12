@@ -50,8 +50,22 @@ services:
       INSTAGRAM_CLIENT_SECRET: ${INSTAGRAM_CLIENT_SECRET}
       FIREBASE_ENABLED: ${FIREBASE_ENABLED:-false}
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-file:/run/secrets/firebase-service-account.json}
+      CLOVA_STT_BASE_URL: ${CLOVA_STT_BASE_URL:-https://clovaspeech-gw.ncloud.com/recog/v1}
+      CLOVA_STT_SECRET_KEY: ${CLOVA_STT_SECRET_KEY}
+      CLOVA_STT_LANG: ${CLOVA_STT_LANG:-Kor}
+      CLOVA_STT_ASSESSMENT: ${CLOVA_STT_ASSESSMENT:-false}
+      CLOVA_STT_UTTERANCE: ${CLOVA_STT_UTTERANCE:-}
+      CLOVA_STT_BOOSTINGS: ${CLOVA_STT_BOOSTINGS:-}
+      CLOVA_STT_GRAPH: ${CLOVA_STT_GRAPH:-false}
+      CLOVA_STT_FFMPEG_PATH: ${CLOVA_STT_FFMPEG_PATH:-ffmpeg}
+      CLOVA_STT_TIMEOUT_SECONDS: ${CLOVA_STT_TIMEOUT_SECONDS:-10}
     volumes:
-      - ./secrets/firebase-service-account.json:/run/secrets/firebase-service-account.json:ro
+      - type: bind
+        source: ./secrets/firebase-service-account.json
+        target: /run/secrets/firebase-service-account.json
+        read_only: true
+        bind:
+          create_host_path: false
     expose:
       - "8080"
     depends_on:
@@ -123,50 +137,53 @@ services:
     networks:
       - project-network
 
-  keyword-server:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    container_name: project-keyword-server
-    restart: unless-stopped
-    command:
-      - --host
-      - 0.0.0.0
-      - --port
-      - "${KEYWORD_MODEL_SERVER_PORT:-8001}"
-      - -m
-      - /models/qwen2-1.5b-instruct/q3_k_m/model.gguf
-      - -c
-      - "${KEYWORD_MODEL_CTX_SIZE:-2048}"
-      - --n-gpu-layers
-      - "${KEYWORD_MODEL_GPU_LAYERS:-0}"
-    volumes:
-      # Provision the GGUF model from the host without baking it into the image.
-      - ${KEYWORD_MODEL_HOST_DIR:-./.models/keyword/qwen2-1.5b-instruct/q3_k_m}:/models/qwen2-1.5b-instruct/q3_k_m:ro
-    expose:
-      - "${KEYWORD_MODEL_SERVER_PORT:-8001}"
-    networks:
-      - project-network
-
-  caption-server:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    container_name: project-caption-server
-    restart: unless-stopped
-    command:
-      - --host
-      - 0.0.0.0
-      - --port
-      - "${CAPTION_MODEL_SERVER_PORT:-8002}"
-      - -m
-      - /models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf
-      - -c
-      - "${CAPTION_MODEL_CTX_SIZE:-2048}"
-      - --n-gpu-layers
-      - "${CAPTION_MODEL_GPU_LAYERS:-0}"
-    volumes:
-      - ${CAPTION_MODEL_HOST_DIR:-./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m}:/models/exaone-3.5-7.8b-instruct/q4_k_m:ro
-    expose:
-      - "${CAPTION_MODEL_SERVER_PORT:-8002}"
-    networks:
-      - project-network
+  # keyword-server / caption-server are deployed on separate EC2 instances.
+  # fastapi now reaches them via KEYWORD_MODEL_BASE_URL / CAPTION_MODEL_BASE_URL from .env.
+  # Restore these blocks if returning to single-host deployment.
+  # keyword-server:
+  #   image: ghcr.io/ggml-org/llama.cpp:server
+  #   container_name: project-keyword-server
+  #   restart: unless-stopped
+  #   command:
+  #     - --host
+  #     - 0.0.0.0
+  #     - --port
+  #     - "${KEYWORD_MODEL_SERVER_PORT:-8001}"
+  #     - -m
+  #     - /models/exaone-3.5-7.8b-instruct/q4_k_m/model.gguf
+  #     - -c
+  #     - "${KEYWORD_MODEL_CTX_SIZE:-2048}"
+  #     - --n-gpu-layers
+  #     - "${KEYWORD_MODEL_GPU_LAYERS:-0}"
+  #   volumes:
+  #     # Provision the GGUF model from the host without baking it into the image.
+  #     - ${KEYWORD_MODEL_HOST_DIR:-/home/ubuntu/marketing/models/keyword/exaone-3.5-7.8b-instruct/q4_k_m}:/models/exaone-3.5-7.8b-instruct/q4_k_m:ro
+  #   expose:
+  #     - "${KEYWORD_MODEL_SERVER_PORT:-8001}"
+  #   networks:
+  #     - project-network
+  #
+  # caption-server:
+  #   image: ghcr.io/ggml-org/llama.cpp:server
+  #   container_name: project-caption-server
+  #   restart: unless-stopped
+  #   command:
+  #     - --host
+  #     - 0.0.0.0
+  #     - --port
+  #     - "${CAPTION_MODEL_SERVER_PORT:-8002}"
+  #     - -m
+  #     - /models/exaone-4.0-32b/q4_k_m/model.gguf
+  #     - -c
+  #     - "${CAPTION_MODEL_CTX_SIZE:-2048}"
+  #     - --n-gpu-layers
+  #     - "${CAPTION_MODEL_GPU_LAYERS:-0}"
+  #   volumes:
+  #     - ${CAPTION_MODEL_HOST_DIR:-/home/ubuntu/marketing/models/caption/exaone-4.0-32b/q4_k_m}:/models/exaone-4.0-32b/q4_k_m:ro
+  #   expose:
+  #     - "${CAPTION_MODEL_SERVER_PORT:-8002}"
+  #   networks:
+  #     - project-network
 
   fastapi:
     build:
@@ -203,9 +220,10 @@ services:
       CAPTION_MODEL_ENABLED: ${CAPTION_MODEL_ENABLED:-true}
     expose:
       - "8000"
-    depends_on:
-      - keyword-server
-      - caption-server
+    # Model servers run on separate EC2 instances; no compose-level dependency.
+    # depends_on:
+    #   - keyword-server
+    #   - caption-server
     networks:
       - project-network
 

@@ -14,6 +14,26 @@ import org.springframework.web.client.RestClientException;
 @Component
 public class AirKoreaStationClient {
 
+    public static final List<String> SUPPORTED_SIDOS = List.of(
+            "서울",
+            "부산",
+            "대구",
+            "인천",
+            "광주",
+            "대전",
+            "울산",
+            "세종",
+            "경기",
+            "강원",
+            "충북",
+            "충남",
+            "전북",
+            "전남",
+            "경북",
+            "경남",
+            "제주"
+    );
+
     private final RestClient restClient;
     private final WeatherProperties properties;
 
@@ -106,6 +126,8 @@ public class AirKoreaStationClient {
         }
         String first = address.trim().split("\\s+")[0];
         return switch (first) {
+            case "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+                 "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주" -> first;
             case "서울특별시" -> "서울";
             case "부산광역시" -> "부산";
             case "대구광역시" -> "대구";
@@ -123,7 +145,7 @@ public class AirKoreaStationClient {
             case "경상북도" -> "경북";
             case "경상남도" -> "경남";
             case "제주특별자치도" -> "제주";
-            default -> first;
+            default -> null;
         };
     }
 

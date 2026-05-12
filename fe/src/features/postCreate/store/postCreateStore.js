@@ -4,6 +4,12 @@ import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep
 export const usePostCreateStore = create((set) => ({
   step: POST_CREATE_STEP.POST_QUESTION,
 
+  requestId: "",
+  sessionId: "",
+  utterance: "",
+  guideText: "",
+  draftCaption: "",
+
   postAnswer: "",
   cameraAnswer: "",
 
@@ -11,6 +17,9 @@ export const usePostCreateStore = create((set) => ({
   generatedPost: null,
 
   setStep: (step) => set({ step }),
+
+  setGenerationContext: ({ requestId = "", sessionId = "", utterance = "", guideText = "", draftCaption = "" }) =>
+    set({ requestId, sessionId, utterance, guideText, draftCaption }),
 
   setPostAnswer: (postAnswer) => set({ postAnswer }),
   setCameraAnswer: (cameraAnswer) => set({ cameraAnswer }),
@@ -21,6 +30,11 @@ export const usePostCreateStore = create((set) => ({
   resetPostCreate: () =>
     set({
       step: POST_CREATE_STEP.POST_QUESTION,
+      requestId: "",
+      sessionId: "",
+      utterance: "",
+      guideText: "",
+      draftCaption: "",
       postAnswer: "",
       cameraAnswer: "",
       photos: [],

@@ -140,6 +140,9 @@ pipeline {
                         cp "$FIREBASE_SERVICE_ACCOUNT_FILE" "${DEPLOY_DIR}/secrets/firebase-service-account.json"
                         chmod 600 "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
+                        test -s "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                        grep -q '"type"[[:space:]]*:[[:space:]]*"service_account"' "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+
                         echo "Firebase service account secret file created."
                     '''
                 }
@@ -291,6 +294,11 @@ pipeline {
                       exit 1
                     }
 
+                    if [ "$FIREBASE_ENABLED_VALUE" != "true" ]; then
+                      echo "ERROR: FIREBASE_ENABLED must be true for this deployment"
+                      exit 1
+                    fi
+
                     echo ".env validation passed"
                 '''
             }
@@ -309,12 +317,17 @@ pipeline {
                     test -f "${DEPLOY_DIR}/fe/Dockerfile"
                     test -f "${DEPLOY_DIR}/ai/Dockerfile"
                     test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                    test -s "${DEPLOY_DIR}/secrets/firebase-service-account.json"
+                    test ! -d "${DEPLOY_DIR}/secrets/firebase-service-account.json"
 
                     echo "All required files exist."
                 '''
             }
         }
 
+        /*
+         * Model provisioning disabled — keyword-server / caption-server moved to separate EC2 instances.
+         * AI 모델 다운로드/검증은 더 이상 이 인스턴스의 책임이 아님.
         stage('Provision Llama Models') {
             steps {
                 sh '''
@@ -330,25 +343,25 @@ pipeline {
                       grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
                     }
 
+                    export HF_TOKEN=$(get_env HF_TOKEN)
+
                     provision_model() {
                       model_role="$1"
 
                       case "$model_role" in
                         KEYWORD)
                           MODEL_LABEL="keyword-model"
-                          DEFAULT_MODEL_HOST_DIR="./.models/keyword/qwen2-1.5b-instruct/q3_k_m"
-                          DEFAULT_MODEL_HF_REPO_ID="Qwen/Qwen2-1.5B-Instruct-GGUF"
-                          DEFAULT_MODEL_HF_FILENAME="qwen2-1_5b-instruct-q3_k_m.gguf"
-                          LEGACY_MODEL_HF_FILENAME="qwen2-1.5b-instruct-q3_k_m.gguf"
-                          MODEL_CONTAINER_DIR="/models/qwen2-1.5b-instruct/q3_k_m"
+                          DEFAULT_MODEL_HOST_DIR="/home/ubuntu/marketing/models/keyword/exaone-3.5-7.8b-instruct/q4_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
+                          MODEL_CONTAINER_DIR="/models/exaone-3.5-7.8b-instruct/q4_k_m"
                           ;;
                         CAPTION)
                           MODEL_LABEL="caption-model"
-                          DEFAULT_MODEL_HOST_DIR="./.models/caption/exaone-3.5-7.8b-instruct/q4_k_m"
-                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-GGUF"
-                          DEFAULT_MODEL_HF_FILENAME="EXAONE-3.5-7.8B-Instruct-Q4_K_M.gguf"
-                          LEGACY_MODEL_HF_FILENAME=""
-                          MODEL_CONTAINER_DIR="/models/exaone-3.5-7.8b-instruct/q4_k_m"
+                          DEFAULT_MODEL_HOST_DIR="/home/ubuntu/marketing/models/caption/exaone-4.0-32b/q4_k_m"
+                          DEFAULT_MODEL_HF_REPO_ID="LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
+                          DEFAULT_MODEL_HF_FILENAME="EXAONE-4.0-32B-Q4_K_M.gguf"
+                          MODEL_CONTAINER_DIR="/models/exaone-4.0-32b/q4_k_m"
                           ;;
                         *)
                           echo "ERROR: unsupported model role: $model_role"
@@ -371,12 +384,6 @@ pipeline {
                       fi
 
                       if [ -z "$MODEL_HF_FILENAME_VALUE" ]; then
-                        MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
-                      fi
-
-                      if [ -n "$LEGACY_MODEL_HF_FILENAME" ] && [ "$MODEL_HF_FILENAME_VALUE" = "$LEGACY_MODEL_HF_FILENAME" ]; then
-                        echo "[${MODEL_LABEL}] WARN: legacy MODEL_HF_FILENAME detected in .env: ${MODEL_HF_FILENAME_VALUE}"
-                        echo "[${MODEL_LABEL}] WARN: rewriting to current filename: ${DEFAULT_MODEL_HF_FILENAME}"
                         MODEL_HF_FILENAME_VALUE="$DEFAULT_MODEL_HF_FILENAME"
                       fi
 
@@ -461,10 +468,18 @@ pipeline {
 
                       if [ ! -f "$MODEL_PATH" ]; then
                         echo "${MODEL_LABEL} is missing. Downloading the GGUF artifact..."
+                        if [ -n "${HF_TOKEN:-}" ]; then
+                          echo "${MODEL_LABEL} will download from the HF Hub with authentication."
+                          HF_TOKEN_DOCKER_ARG="-e HF_TOKEN=$HF_TOKEN"
+                        else
+                          echo "${MODEL_LABEL} will download from the HF Hub without authentication."
+                          HF_TOKEN_DOCKER_ARG=""
+                        fi
 
                         docker_run_rc=0
                         docker run --rm \
                           -e HF_HOME=/tmp/hf-home \
+                          ${HF_TOKEN_DOCKER_ARG} \
                           -e MODEL_HF_REPO_ID="$MODEL_HF_REPO_ID_VALUE" \
                           -e MODEL_HF_FILENAME="$MODEL_HF_FILENAME_VALUE" \
                           -e TARGET_PATH="$MODEL_CONTAINER_PATH" \
@@ -525,8 +540,9 @@ PY
                     provision_model CAPTION
                 '''
             }
+        // }
         }
-
+         */
         stage('Check Docker') {
             steps {
                 sh '''
@@ -582,7 +598,8 @@ PY
                         docker image inspect "${PROJECT_NAME}-nginx" >/dev/null 2>&1 || BUILD_SERVICES="$(append_service "$BUILD_SERVICES" nginx)"
 
                         # Start shared dependencies before application container recreation.
-                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server caption-server
+                        # Model servers moved to separate EC2 instances; removed from up: keyword-server caption-server
+                        docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis
 
                         echo "Build commit: $BUILD_COMMIT"
                         echo "Build services: ${BUILD_SERVICES:-none}"
@@ -592,7 +609,8 @@ PY
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env build $BUILD_SERVICES
 
                           # 애플리케이션 컨테이너 교체 전에 공용 인프라 컨테이너를 먼저 보장한다.
-                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis keyword-server caption-server
+                          # Model servers moved to separate EC2 instances; removed from up: keyword-server caption-server
+                          docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d postgres redis
 
                           # 변경된 서비스만 새 이미지로 교체한다. DB/Redis 같은 의존 서비스는 불필요하게 재시작하지 않는다.
                           docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env up -d --no-deps --force-recreate $BUILD_SERVICES
@@ -611,8 +629,9 @@ PY
                         docker inspect project-frontend --format 'frontend={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-nginx --format 'nginx={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
                         docker inspect project-fastapi --format 'fastapi={{ index .Config.Labels "org.opencontainers.image.revision" }}' || true
-                        docker inspect project-keyword-server --format 'keyword-server={{ .Config.Image }}' || true
-                        docker inspect project-caption-server --format 'caption-server={{ .Config.Image }}' || true
+                        # Model servers moved to separate EC2 instances; inspect happens on those hosts.
+                        # docker inspect project-keyword-server --format 'keyword-server={{ .Config.Image }}' || true
+                        # docker inspect project-caption-server --format 'caption-server={{ .Config.Image }}' || true
                     '''
                 }
             }
@@ -654,16 +673,17 @@ PY
                             grep -E "^${key}=" "$ENV_PATH" | tail -n 1 | cut -d= -f2- || true
                         }
 
-                        KEYWORD_SERVER_PORT="$(get_env KEYWORD_MODEL_SERVER_PORT)"
-                        CAPTION_SERVER_PORT="$(get_env CAPTION_MODEL_SERVER_PORT)"
-
-                        if [ -z "$KEYWORD_SERVER_PORT" ]; then
-                            KEYWORD_SERVER_PORT="8001"
-                        fi
-
-                        if [ -z "$CAPTION_SERVER_PORT" ]; then
-                            CAPTION_SERVER_PORT="8002"
-                        fi
+                        # Model servers moved to separate EC2 instances; port resolution no longer needed here.
+                        # KEYWORD_SERVER_PORT="$(get_env KEYWORD_MODEL_SERVER_PORT)"
+                        # CAPTION_SERVER_PORT="$(get_env CAPTION_MODEL_SERVER_PORT)"
+                        #
+                        # if [ -z "$KEYWORD_SERVER_PORT" ]; then
+                        #     KEYWORD_SERVER_PORT="8001"
+                        # fi
+                        #
+                        # if [ -z "$CAPTION_SERVER_PORT" ]; then
+                        #     CAPTION_SERVER_PORT="8002"
+                        # fi
 
                         echo "Using network: $NETWORK"
 
@@ -720,39 +740,41 @@ PY
                             fi
                         done
 
-                        echo "===== Checking Keyword Server Health ====="
-                        for i in $(seq 1 30); do
-                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS "http://keyword-server:${KEYWORD_SERVER_PORT}/health"; then
-                                echo "keyword-server is ready"
-                                break
-                            fi
-
-                            echo "keyword-server health not ready yet... retry $i/30"
-                            sleep 2
-
-                            if [ "$i" -eq 30 ]; then
-                                echo "keyword-server health check failed"
-                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs keyword-server --tail=100
-                                exit 1
-                            fi
-                        done
-
-                        echo "===== Checking Caption Server Health ====="
-                        for i in $(seq 1 30); do
-                            if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS "http://caption-server:${CAPTION_SERVER_PORT}/health"; then
-                                echo "caption-server is ready"
-                                break
-                            fi
-
-                            echo "caption-server health not ready yet... retry $i/30"
-                            sleep 2
-
-                            if [ "$i" -eq 30 ]; then
-                                echo "caption-server health check failed"
-                                docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs caption-server --tail=100
-                                exit 1
-                            fi
-                        done
+                        # Model servers moved to separate EC2 instances; health is verified externally.
+                        # TODO: replace with HTTP health check against the remote model server hosts.
+                        # echo "===== Checking Keyword Server Health ====="
+                        # for i in $(seq 1 30); do
+                        #     if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS "http://keyword-server:${KEYWORD_SERVER_PORT}/health"; then
+                        #         echo "keyword-server is ready"
+                        #         break
+                        #     fi
+                        #
+                        #     echo "keyword-server health not ready yet... retry $i/30"
+                        #     sleep 2
+                        #
+                        #     if [ "$i" -eq 30 ]; then
+                        #         echo "keyword-server health check failed"
+                        #         docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs keyword-server --tail=100
+                        #         exit 1
+                        #     fi
+                        # done
+                        #
+                        # echo "===== Checking Caption Server Health ====="
+                        # for i in $(seq 1 30); do
+                        #     if docker run --rm --network "$NETWORK" curlimages/curl:latest -fsS "http://caption-server:${CAPTION_SERVER_PORT}/health"; then
+                        #         echo "caption-server is ready"
+                        #         break
+                        #     fi
+                        #
+                        #     echo "caption-server health not ready yet... retry $i/30"
+                        #     sleep 2
+                        #
+                        #     if [ "$i" -eq 30 ]; then
+                        #         echo "caption-server health check failed"
+                        #         docker compose -p "${PROJECT_NAME}" -f "${COMPOSE_FILE}" --env-file .env logs caption-server --tail=100
+                        #         exit 1
+                        #     fi
+                        # done
                     '''
                 }
             }
