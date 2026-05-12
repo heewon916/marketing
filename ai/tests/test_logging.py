@@ -69,8 +69,11 @@ class StubDraftUploader:
 
 
 class StubFrameExtractor:
-    def extract_best_frame(self, video_path: Path):
-        return np.zeros((8, 8, 3), dtype=np.uint8), 5.0
+    def extract_top_k_frames(self, video_path: Path, k: int):
+        return [
+            (np.zeros((8, 8, 3), dtype=np.uint8), float(5 - index))
+            for index in range(k)
+        ]
 
 
 class StubDraftDownloader:
@@ -184,17 +187,20 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
         )
 
     assert result.status == "FRAME_EXTRACTED"
+    assert len(result.drafts) == 3
     output = stream.getvalue()
     assert 'event="frame_extraction.download_video.started"' in output
     assert 'event="frame_extraction.download_video.completed"' in output
     assert 'event="frame_extraction.extract_frame.started"' in output
     assert 'event="frame_extraction.extract_frame.completed"' in output
     assert 'frame_score="5.000000"' in output
-    assert 'event="frame_extraction.resize_frame.started"' in output
-    assert 'event="frame_extraction.resize_frame.completed"' in output
+    assert 'frame_score="4.000000"' in output
+    assert 'frame_score="3.000000"' in output
+    assert output.count('event="frame_extraction.resize_frame.started"') == 3
+    assert output.count('event="frame_extraction.resize_frame.completed"') == 3
     assert 'resized_shape="1440x1080x3"' in output
-    assert 'event="frame_extraction.upload_frame.started"' in output
-    assert 'event="frame_extraction.upload_frame.completed"' in output
+    assert output.count('event="frame_extraction.upload_frame.started"') == 3
+    assert output.count('event="frame_extraction.upload_frame.completed"') == 3
     assert 'event="frame_extraction.cleanup_tempdir"' in output
 
 
