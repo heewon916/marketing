@@ -47,10 +47,10 @@ api.interceptors.response.use(
 
         return api(originalRequest);
       } catch (refreshError) {
-        // localStorage.removeItem('accessToken');
-        // window.location.href = '/';
-//
-        // return Promise.reject(refreshError);
+        localStorage.removeItem('accessToken');
+        window.location.href = '/';
+
+        return Promise.reject(refreshError);
       }
     }
 
