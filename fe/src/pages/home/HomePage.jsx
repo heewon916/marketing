@@ -5,16 +5,35 @@ import InputBar from "@/components/common/InputBar"
 import Character from "@/components/common/Character"
 import TitleText from "@/components/common/TitleText"
 import { registerFcmToken } from "@/features/notification/api/FcmApi"
+import { requestCaptionGeneration } from "@/features/home/api/HomeApi"
+import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
+import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep"
 
 function HomePage() {
   const [isTyping, setIsTyping] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const navigate = useNavigate()
+  const setStep = usePostCreateStore((state) => state.setStep)
+  const setGenerationContext = usePostCreateStore((state) => state.setGenerationContext)
 
   const isActive = isTyping || isRecording
   const handleFcmRegisterClick = () => {
     console.log("FCM 권한 요청 및 토큰 등록 시도")
     void registerFcmToken()
+  }
+
+  const handleSubmitUtterance = async (utterance) => {
+    const result = await requestCaptionGeneration(utterance)
+
+    setGenerationContext({
+      requestId: result.requestId,
+      sessionId: result.sessionId,
+      utterance,
+      guideText: result.guideText,
+      draftCaption: result.caption,
+    })
+    setStep(POST_CREATE_STEP.POST_QUESTION)
+    navigate("/post-create")
   }
 
   return (
@@ -52,6 +71,7 @@ function HomePage() {
         <InputBar
           onTyping={setIsTyping}
           onRecordingChange={setIsRecording}
+          onSubmit={handleSubmitUtterance}
         />
       </section>
 
