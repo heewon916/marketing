@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +27,38 @@ class BestFrameExtractor:
         self._image_processor = image_processor
         self._video_processor = video_processor
         self._image_evaluator = image_evaluator
+
+    def extract_top_k_frames(
+        self,
+        video_path: Path,
+        k: int,
+    ) -> list[tuple[Image, float]]:
+        if k <= 0:
+            return []
+
+        heap: list[tuple[float, int, Image]] = []
+        counter = 0
+        frames_batch_generator = self._video_processor.get_next_frames(
+            video_path,
+            self._config.batch_size,
+        )
+        for frames in frames_batch_generator:
+            if not frames:
+                continue
+            normalized_images = self._image_processor.normalize_images(
+                frames,
+                self._config.input_size,
+            )
+            scores = self._image_evaluator.evaluate_images(normalized_images)
+            for frame, score in zip(frames, scores):
+                counter += 1
+                entry = (float(score), counter, frame)
+                if len(heap) < k:
+                    heapq.heappush(heap, entry)
+                elif entry[0] > heap[0][0]:
+                    heapq.heapreplace(heap, entry)
+
+        return [(frame, score) for score, _, frame in sorted(heap, key=lambda item: -item[0])]
 
     def extract_best_frame(self, video_path: Path) -> tuple[Image, float] | None:
         best_frame: Image | None = None
