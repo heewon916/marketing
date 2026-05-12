@@ -9,6 +9,10 @@ RUN ./gradlew clean bootJar -x test
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 # 배포 후 docker inspect로 실제 배포된 Git 커밋을 확인하기 위한 이미지 메타데이터
 ARG BUILD_COMMIT=unknown
 LABEL org.opencontainers.image.revision=$BUILD_COMMIT

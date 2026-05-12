@@ -8,14 +8,12 @@ import com.matketing.be.global.exception.ErrorCode;
 import java.io.IOException;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
@@ -25,44 +23,74 @@ public class ClovaSttClient {
     private final RestClient restClient;
     private final ClovaSttProperties properties;
     private final ObjectMapper objectMapper;
+    private final ClovaSttAudioConverter audioConverter;
 
-    public ClovaSttClient(RestClient.Builder builder, ClovaSttProperties properties, ObjectMapper objectMapper) {
+    public ClovaSttClient(
+            RestClient.Builder builder,
+            ClovaSttProperties properties,
+            ObjectMapper objectMapper,
+            ClovaSttAudioConverter audioConverter
+    ) {
         // STT API도 외부 의존성이므로 연결/응답 timeout을 설정 파일에서 제어한다.
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
         requestFactory.setReadTimeout(Duration.ofSeconds(properties.timeoutSeconds()));
-        RestClient.Builder restClientBuilder = builder.requestFactory(requestFactory);
-        if (properties.baseUrl() != null && !properties.baseUrl().isBlank()) {
-            restClientBuilder.baseUrl(properties.baseUrl());
-        }
-        this.restClient = restClientBuilder.build();
+        this.restClient = builder
+                .requestFactory(requestFactory)
+                .baseUrl(properties.baseUrl())
+                .build();
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.audioConverter = audioConverter;
     }
 
     /***
-     * Clova STT API에 오디오 파일을 전달하고, 인식된 텍스트를 반환받는 함수
+     * CLOVA Speech 단문 STT API에 오디오 파일을 전달하고, 인식된 텍스트를 반환받는 함수
      * @param audioFile 사용자의 음성 파일
      * @return 인식된 텍스트
      */
     public String recognize(MultipartFile audioFile) {
         try {
-            // 1. ByteArrayResource는 기본 파일명이 없어 multipart filename을 별도 Resource에서 보존한다.
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("media", new MultipartByteArrayResource(audioFile.getBytes(), audioFile.getOriginalFilename()));
+            validateProperties();
+            byte[] audioBytes = audioConverter.toSupportedAudioBytes(audioFile);
 
-            // 2. Clova STT에 multipart media로 전달한다
+            // CLOVA Speech 단문 STT는 POST /recog/v1/stt에 음성 바이너리를 그대로 싣는다.
+            // 프론트 audio/webm은 호출 전에 WAV로 변환되어 여기에는 API가 처리 가능한 바이트만 들어온다.
             String responseBody = restClient.post()
+                    .uri(uriBuilder -> {
+                        uriBuilder.path("/stt")
+                                .queryParam("lang", properties.lang());
+                        if (properties.assessment()) {
+                            uriBuilder.queryParam("assessment", true);
+                        }
+                        if (properties.utterance() != null && !properties.utterance().isBlank()) {
+                            uriBuilder.queryParam("utterance", properties.utterance());
+                        }
+                        if (properties.boostings() != null && !properties.boostings().isBlank()) {
+                            uriBuilder.queryParam("boostings", properties.boostings());
+                        }
+                        if (properties.graph()) {
+                            uriBuilder.queryParam("graph", true);
+                        }
+                        return uriBuilder.build();
+                    })
                     .header("X-CLOVASPEECH-API-KEY", properties.secretKey())
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(body)
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(audioBytes)
                     .retrieve()
                     .body(String.class);
 
-            // 3. Clova 응답에서 text, utterance, result 중 텍스트를 추출한다
             return parseUtterance(responseBody);
         } catch (BusinessException exception) {
             throw exception;
+        } catch (RestClientResponseException exception) {
+            log.warn(
+                    "content.clova-stt.recognize.failed-response: status={}, body={}",
+                    exception.getStatusCode(),
+                    exception.getResponseBodyAsString(),
+                    exception
+            );
+            throw new BusinessException(ErrorCode.STT_FAILED, exception);
         } catch (IOException | RestClientException exception) {
             log.warn("content.clova-stt.recognize.failed: Clova STT request failed.", exception);
             throw new BusinessException(ErrorCode.STT_FAILED, exception);
@@ -72,9 +100,16 @@ public class ClovaSttClient {
         }
     }
 
+    private void validateProperties() {
+        if (properties.secretKey() == null || properties.secretKey().isBlank()) {
+            log.warn("content.clova-stt.recognize.missing-credentials: CLOVA Speech secret key is not configured.");
+            throw new BusinessException(ErrorCode.STT_FAILED);
+        }
+    }
+
     /***
-     * Clover 응답 본문에서 실제 발화 텍스트를 추출한다
-     * 운영 환경의 응답 필드가 text/utterance/result 중 무엇인지 달라질 수 있어 여러 후보를 순서대로 확인한다.
+     * CLOVA Speech 단문 STT 응답 본문에서 실제 발화 텍스트를 추출한다.
+     * 단문 API의 표준 필드는 text이며, 기존 호환성을 위해 utterance/result도 보조로 확인한다.
      * 텍스트를 못 찾으면 정상 HTTP 응답이어도 STT 실패로 처리한다
      * @param responseBody
      * @return
@@ -107,22 +142,5 @@ public class ClovaSttClient {
             }
         }
         return null;
-    }
-
-    private static class MultipartByteArrayResource extends ByteArrayResource {
-
-        private final String filename;
-
-        // ByteArrayResource는 파일명을 제공하지 않으므로 multipart 업로드용 파일명을 별도로 들고 있는 Resource다.
-        private MultipartByteArrayResource(byte[] byteArray, String filename) {
-            super(byteArray);
-            this.filename = filename == null || filename.isBlank() ? "audio" : filename;
-        }
-
-        @Override
-        public String getFilename() {
-            // RestClient의 multipart encoder가 Content-Disposition filename을 만들 수 있게 한다.
-            return filename;
-        }
     }
 }
