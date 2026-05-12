@@ -282,12 +282,13 @@ CREATE TABLE "account_weekly_metrics" (
                                            "target_post_count"    INTEGER         NULL,
                                            "actual_post_count"    INTEGER         NULL,
                                            "achievement_rate"     DECIMAL(5, 2)   NULL,
-                                           "visit_intent_score"   INTEGER         NULL,
+                                           "visit_intent_score"   DECIMAL(5, 2)   NULL,
                                           "created_at"           TIMESTAMPTZ     NULL,
                                           "is_deleted"           BOOLEAN         NULL,
                                           CONSTRAINT "PK_ACCOUNT_WEEKLY_METRICS" PRIMARY KEY ("id"),
                                           CONSTRAINT "FK_stores_TO_account_weekly_metrics"
-                                              FOREIGN KEY ("store_id") REFERENCES "stores"("id") -- FK 추가
+                                              FOREIGN KEY ("store_id") REFERENCES "stores"("id"), -- FK 추가
+                                          CONSTRAINT "UK_account_weekly_metrics_store_week" UNIQUE ("store_id", "week_start")
 );
 
 -- =============================================================
@@ -418,7 +419,8 @@ CREATE TABLE "instagram_metrics" (
                                      CONSTRAINT "FK_contents_TO_instagram_metrics"
                                          FOREIGN KEY ("contents_id") REFERENCES "contents"("id"), -- FK 추가
                                      CONSTRAINT "FK_stores_TO_instagram_metrics"
-                                         FOREIGN KEY ("store_id") REFERENCES "stores"("id") -- FK 추가
+                                         FOREIGN KEY ("store_id") REFERENCES "stores"("id"), -- FK 추가
+                                     CONSTRAINT "UK_instagram_metrics_media_week" UNIQUE ("instagram_media_id", "week_start")
 );
 
 -- ==============================================================================

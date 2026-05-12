@@ -18,6 +18,9 @@ import coffeeTest1 from "@/assets/test/coffee_test1.jpg"
 import coffeeTest2 from "@/assets/test/coffee_test2.jpg"
 import coffeeTest3 from "@/assets/test/coffee_test3.jpg"
 import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreateLeaveHomeModal"
+import { requestVideoUpload } from "@/features/postCreate/api/VideoApi"
+import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate/api/PostApi"
+import { requestPublishStart, requestPublishStatus } from "@/features/postCreate/api/PublishApi"
 
 const STEP_NUM = {
   [POST_CREATE_STEP.POST_QUESTION]: 1,
@@ -35,13 +38,12 @@ const STEP_NUM = {
 
 export default function PostCreatePage() {
   const navigate = useNavigate()
-  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false)
   const [isNavigationConfirmed, setIsNavigationConfirmed] = useState(false)
   const step = usePostCreateStore((state) => state.step)
   const stepNum = STEP_NUM[step] ?? 1
 
-  const postAnswer = usePostCreateStore((state) => state.postAnswer)
-  const cameraAnswer = usePostCreateStore((state) => state.cameraAnswer)
+  const guideText = usePostCreateStore((state) => state.guideText)
+  const sessionId = usePostCreateStore((state) => state.sessionId)
 
   const photos = usePostCreateStore((state) => state.photos)
   const generatedPost = usePostCreateStore((state) => state.generatedPost)
@@ -77,30 +79,78 @@ export default function PostCreatePage() {
       return () => clearTimeout(timer)
     }
     if (step === POST_CREATE_STEP.PUBLISH_LOADING) {
-      const timer = setTimeout(() => {
-        const isSuccess = true
-        setStep(isSuccess ? POST_CREATE_STEP.PUBLISH_SUCCESS : POST_CREATE_STEP.PUBLISH_FAIL)
-      }, 1500)
-      return () => clearTimeout(timer)
-    }
-  }, [step])
+      let isActive = true
+      let intervalId = null
 
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      setIsLeaveModalOpen(true)
+      const startPublishAndPoll = async () => {
+        try {
+          await requestPublishStart(sessionId)
+
+          if (!isActive) {
+            return
+          }
+
+          intervalId = setInterval(async () => {
+            try {
+              const status = await requestPublishStatus(sessionId)
+
+              if (!isActive) {
+                return
+              }
+
+              const progress = String(status.publishProgress || "").toLowerCase()
+
+              if (progress === "completed") {
+                clearInterval(intervalId)
+                const currentPost = usePostCreateStore.getState().generatedPost ?? {}
+                setGeneratedPost({
+                  ...currentPost,
+                  contentId: status.contentId,
+                  instagramMediaId: status.instagramMediaId,
+                  instagramPermalink: status.instagramPermalink,
+                })
+                setStep(POST_CREATE_STEP.PUBLISH_SUCCESS)
+                return
+              }
+
+              if (progress === "failed" || progress === "error") {
+                clearInterval(intervalId)
+                setStep(POST_CREATE_STEP.PUBLISH_FAIL)
+              }
+            } catch (error) {
+              clearInterval(intervalId)
+              if (isActive) {
+                window.alert(error.message || "발행 상태 확인에 실패했습니다.")
+                setStep(POST_CREATE_STEP.PUBLISH_FAIL)
+              }
+            }
+          }, 1000)
+        } catch (error) {
+          if (isActive) {
+            window.alert(error.message || "발행 시작에 실패했습니다.")
+            setStep(POST_CREATE_STEP.PUBLISH_FAIL)
+          }
+        }
+      }
+
+      startPublishAndPoll()
+
+      return () => {
+        isActive = false
+        if (intervalId) {
+          clearInterval(intervalId)
+        }
+      }
     }
-  }, [blocker])
+  }, [sessionId, setGeneratedPost, setPhotos, setStep, step])
 
   const handleCancelLeave = () => {
-    setIsLeaveModalOpen(false)
-
     if (blocker.state === "blocked") {
       blocker.reset()
     }
   }
 
   const handleConfirmLeave = () => {
-    setIsLeaveModalOpen(false)
     setIsNavigationConfirmed(true)
     resetPostCreate()
 
@@ -122,33 +172,82 @@ export default function PostCreatePage() {
     setStep(POST_CREATE_STEP.CAMERA)
   }
 
-  const handleVideoRecorded = (videoFile) => {
+  const handleVideoRecorded = async (videoFile) => {
     setStep(POST_CREATE_STEP.EXTRACT_LOADING)
+
+    try {
+      await requestVideoUpload(videoFile, sessionId)
+    } catch (error) {
+      window.alert(error.message || "영상 업로드에 실패했습니다.")
+      setStep(POST_CREATE_STEP.CAMERA_QUESTION)
+    }
   }
 
-  const handlePhotoConfirmNext = () => {
-    setGeneratedPost({
-      content: `"다시 생각해보고 연락드릴게요" 케익 예약을 할까 말까 망설이다 끊게 되면 그만이기 마련. 간혹 오늘 오전처럼 설령 주문하지 않더라도 정중하게 양해를 구하는 전화를 다시 주는 분들도 계신데 과연 나는 저 나이때 이런 사려깊음이 있었던가? 돌이켜 보면서 한편으론, 어떤 일이든 어떤 관계든간에 그 성사 여부와는 별개로 서로간에 개운치 않는 기분을 남기지 않고 일을 일단락하는게 중요하지 않나 싶은. 성가시고 어렵기도 하지만 사람의 발전, 성숙이란 그런 데 있지 않나. 젊어서부터 체득한 분들.. 손님으로 모셔서 영광입니다..
+  const handlePhotoConfirmNext = async (selectedPhotos = []) => {
+    if (selectedPhotos.length > 0) {
+      setPhotos(selectedPhotos)
+    }
 
-가게의 케익은 초여름 산딸기를 지나, 지금은 #여름복숭아케익 그리고 올해 처음으로 #살구케익 도 시작하고 있습니다. 제철 과일 농작물들이 제 때 나오기가 점점 어려운 시대. 케익도 아껴 먹고, 소중한 지구 더 살뜰히 보살펴줘야겠습니다.
+    try {
+      const draft = await requestDraftPost(sessionId)
 
-#수요휴무`
-    })
+      if (draft.images.length > 0) {
+        setPhotos(draft.images)
+      }
 
-    setStep(POST_CREATE_STEP.GENERATED_POST)
+      setGeneratedPost({
+        content: draft.caption,
+        status: draft.status,
+        sessionId: draft.sessionId,
+        instagramUsername: draft.instagramUsername,
+        instagramProfileImageUrl: draft.instagramProfileImageUrl,
+      })
+
+      setStep(POST_CREATE_STEP.GENERATED_POST)
+    } catch (error) {
+      window.alert(error.message || "임시 게시물을 불러오지 못했습니다.")
+    }
   }
 
-  const handlePublish = (post) => {
-    if (post) {
+  const handlePublish = async (post) => {
+    if (post?.content !== undefined) {
+      try {
+        const updated = await requestEditDraftCaption(sessionId, post.content)
+        setGeneratedPost({
+          ...(generatedPost ?? {}),
+          ...post,
+          content: updated.caption,
+          updatedAt: updated.updatedAt,
+        })
+      } catch (error) {
+        window.alert(error.message || "캡션 수정에 실패했습니다.")
+        return
+      }
+    } else if (post) {
       setGeneratedPost(post)
     }
+
     setStep(POST_CREATE_STEP.PUBLISH_LOADING)
   }
 
-  const handlePreviewFromEdit = (post) => {
-    if (post) {
+  const handlePreviewFromEdit = async (post) => {
+    if (post?.content !== undefined) {
+      try {
+        const updated = await requestEditDraftCaption(sessionId, post.content)
+        setGeneratedPost({
+          ...(generatedPost ?? {}),
+          ...post,
+          content: updated.caption,
+          updatedAt: updated.updatedAt,
+        })
+      } catch (error) {
+        window.alert(error.message || "캡션 수정에 실패했습니다.")
+        return
+      }
+    } else if (post) {
       setGeneratedPost(post)
     }
+
     setStep(POST_CREATE_STEP.GENERATED_POST)
   }
 
@@ -183,7 +282,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.CAMERA_QUESTION) {
     content = (
       <QuestionStep
-        title="신메뉴 치즈라떼를 만드는 영상을 찍어볼까요?"
+        title={guideText?.trim() || "신메뉴 치즈라떼를 만드는 영상을 찍어볼까요?"}
         onNext={handleCameraQuestionNext}
         onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
@@ -204,9 +303,10 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.PHOTO_CONFIRM) {
     content = (
       <PhotoConfirmStep
+        sessionId={sessionId}
         photos={photos}
         onNext={handlePhotoConfirmNext}
-        onRetake={() => setStep(POST_CREATE_STEP.CAMERA)}
+        onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
       />
     )
@@ -251,7 +351,15 @@ export default function PostCreatePage() {
         type="success"
         stepNum={stepNum}
         onGoHome={() => { resetPostCreate(); navigate("/home") }}
-        onViewInstagram={() => window.open("https://www.instagram.com", "_blank", "noopener,noreferrer")}
+        onViewInstagram={() => {
+          const permalink = generatedPost?.instagramPermalink?.trim()
+          if (permalink) {
+            window.open(permalink, "_blank", "noopener,noreferrer")
+            return
+          }
+
+          window.alert("인스타그램 게시물 링크를 찾지 못했습니다.")
+        }}
       />
     )
   }
@@ -272,7 +380,7 @@ export default function PostCreatePage() {
       {content}
 
       <PostCreateLeaveHomeModal
-        isOpen={isLeaveModalOpen}
+        isOpen={blocker.state === "blocked"}
         onClose={handleCancelLeave}
         onCancel={handleCancelLeave}
         onConfirm={handleConfirmLeave}

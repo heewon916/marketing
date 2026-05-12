@@ -11,6 +11,8 @@ import {
 
 function GeneratedPostPreview({ post, photos = [] }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const instagramUsername = post?.instagramUsername?.trim() || "insta_id";
+  const instagramProfileImageUrl = post?.instagramProfileImageUrl?.trim() || "";
 
   const handleScroll = (e) => {
     const el = e.currentTarget;
@@ -23,11 +25,20 @@ function GeneratedPostPreview({ post, photos = [] }) {
     <div className="mt-2 rounded-lg border border-gray-200 bg-white">
       <header className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-gray-100">
-            <UserRound size={20} className="text-gray-400" />
-          </div>
+          {instagramProfileImageUrl ? (
+            <img
+              src={instagramProfileImageUrl}
+              alt="instagram profile"
+              className="h-8 w-8 rounded-full border border-gray-300 object-cover"
+              draggable={false}
+            />
+          ) : (
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-300 bg-gray-100">
+              <UserRound size={20} className="text-gray-400" />
+            </div>
+          )}
           <p className="text-[18px] font-semibold leading-none text-accent-100">
-            insta_id
+            {instagramUsername}
           </p>
         </div>
 
@@ -86,7 +97,7 @@ function GeneratedPostPreview({ post, photos = [] }) {
         </div>
 
         <p className="mt-2 whitespace-pre-wrap break-words text-[18px] leading-tight text-accent-100">
-          <span className="font-semibold">insta_id </span>
+          <span className="font-semibold">{instagramUsername} </span>
           {post?.content ?? ""}
         </p>
       </div>

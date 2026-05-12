@@ -289,3 +289,34 @@ INSERT INTO reference_caption_keywords (reference_caption_id, canonical_keyword_
 INSERT INTO reference_caption_keywords (reference_caption_id, canonical_keyword_id) VALUES (2, 5) ON CONFLICT (reference_caption_id, canonical_keyword_id) DO NOTHING;
 INSERT INTO reference_caption_keywords (reference_caption_id, canonical_keyword_id) VALUES (2, 6) ON CONFLICT (reference_caption_id, canonical_keyword_id) DO NOTHING;
 
+
+-- ----------------------------------------------------
+-- 7. Analytics 테스트용 주간 통계 데이터
+-- ----------------------------------------------------
+INSERT INTO account_weekly_metrics (
+    id,
+    store_id,
+    total_reach,
+    target_post_count,
+    actual_post_count,
+    achievement_rate,
+    visit_intent_score,
+    created_at,
+    is_deleted,
+    week_start,
+    total_saves,
+    total_shares
+) VALUES (
+             gen_random_uuid(),
+             '663c31d7-87c6-4b83-bc0b-756e84a7a3a7',
+             4200,
+             3,
+             2,
+             66.67,
+             1.07,
+             now(),
+             false,
+             '2026-04-14',
+             30,
+             15
+         );
