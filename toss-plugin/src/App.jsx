@@ -168,148 +168,151 @@ function App() {
           포스를 연결하여<br/>사장님의 마케팅 전략을 분석, 제안해드립니다
         </p>
 
-        {step === 'initial' && (
-          <>
-            {/* 3단계 UI */}
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', marginBottom: '40px' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>인증 번호 생성</span>
-              </div>
-              <div style={{ width: '40px', borderTop: '2px dashed #B0B0B0', margin: '0 8px', marginTop: '14px' }}></div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8" cy="8" r="1"></circle><circle cx="12" cy="8" r="1"></circle><circle cx="16" cy="8" r="1"></circle><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><circle cx="8" cy="16" r="1"></circle><circle cx="12" cy="16" r="1"></circle><circle cx="16" cy="16" r="1"></circle></svg>
-                <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>맡케팅 서비스에<br/>번호 입력</span>
-              </div>
-              <div style={{ width: '40px', borderTop: '2px dashed #B0B0B0', margin: '0 8px', marginTop: '14px' }}></div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>서비스 연결 완료</span>
-              </div>
-            </div>
-
-            <button
-              onClick={generatePin}
-              style={{
-                width: '100%',
-                height: '56px',
-                borderRadius: '12px',
-                backgroundColor: '#FF7A3D',
-                color: '#ffffff',
-                fontSize: '18px',
-                fontWeight: '600',
-                border: 'none',
-                cursor: 'pointer',
-                boxShadow: '0 4px 6px rgba(255, 122, 61, 0.2)',
-                transition: 'background-color 0.2s',
-                marginBottom: '12px'
-              }}
-              onMouseOver={(e) => e.target.style.backgroundColor = '#e86a32'}
-              onMouseOut={(e) => e.target.style.backgroundColor = '#FF7A3D'}
-            >
-              인증 번호 생성 하기
-            </button>
-            <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>
-              생성 후 맡케팅 서비스에 입력해주세요
-            </p>
-            {status && (
-              <p style={{ color: '#de3a3a', marginTop: '16px', fontSize: '14px' }}>{status}</p>
-            )}
-          </>
-        )}
-
-        {step === 'loading' && (
-          <div style={{
-            padding: '24px',
-            borderRadius: '16px',
-            backgroundColor: 'rgba(249, 250, 251, 0.8)',
-            color: '#8b95a1',
-            fontSize: '16px',
-            fontWeight: '600'
-          }}>
-            <span className="spinner" style={{ marginRight: '8px' }}>⏳</span> {status}
+        {/* 3단계 UI (항상 표시됨) */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', marginBottom: '40px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>인증 번호 생성</span>
           </div>
-        )}
+          <div style={{ width: '40px', borderTop: '2px dashed #B0B0B0', margin: '0 8px', marginTop: '14px' }}></div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8" cy="8" r="1"></circle><circle cx="12" cy="8" r="1"></circle><circle cx="16" cy="8" r="1"></circle><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><circle cx="8" cy="16" r="1"></circle><circle cx="12" cy="16" r="1"></circle><circle cx="16" cy="16" r="1"></circle></svg>
+            <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>맡케팅 서비스에<br/>번호 입력</span>
+          </div>
+          <div style={{ width: '40px', borderTop: '2px dashed #B0B0B0', margin: '0 8px', marginTop: '14px' }}></div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '110px' }}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FF7A3D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <span style={{ fontSize: '13px', color: '#222', marginTop: '8px', fontWeight: '500', width: '100%', wordBreak: 'keep-all' }}>서비스 연결 완료</span>
+          </div>
+        </div>
 
-        {step === 'generated' && (
-          <>
-            <p style={{ color: '#666', margin: '0 0 24px 0', fontSize: '16px', lineHeight: '1.5' }}>
-              아래 6자리 숫자를 앱에 입력해주세요.<br/>
-              남은 시간: <strong style={{ color: '#FF7A3D' }}>{formatTime(timeLeft)}</strong>
-            </p>
-
-            <div style={{
-              backgroundColor: '#ffffff',
-              border: '2px solid #EAEAEA',
-              borderRadius: '16px',
-              padding: '30px 0',
-              marginBottom: '28px'
-            }}>
-              <div style={{
-                fontSize: '56px',
-                fontWeight: '800',
-                letterSpacing: '14px',
-                color: '#FF7A3D',
-                textShadow: '0 2px 4px rgba(255, 122, 61, 0.15)'
-              }}>
-                {pinCode}
-              </div>
-            </div>
-
-            <button
-              onClick={generatePin}
-              style={{
-                width: '100%',
-                height: '56px',
-                borderRadius: '12px',
-                backgroundColor: '#f2f4f6',
-                color: '#666',
-                fontSize: '16px',
-                fontWeight: '600',
-                border: 'none',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s'
-              }}
-              onMouseOver={(e) => e.target.style.backgroundColor = '#EAEAEA'}
-              onMouseOut={(e) => e.target.style.backgroundColor = '#f2f4f6'}
-              onFocus={(e) => e.target.style.backgroundColor = '#EAEAEA'}
-              onBlur={(e) => e.target.style.backgroundColor = '#f2f4f6'}
-            >
-              재발급
-            </button>
-          </>
-        )}
-
-        {step === 'expired' && (
-          <>
-            <p style={{ color: '#FF7A3D', margin: '0 0 32px 0', fontSize: '16px', lineHeight: '1.5', fontWeight: '600' }}>
-              {status}
-            </p>
-
-            <button
-              onClick={generatePin}
-              style={{
-                width: '100%',
-                height: '56px',
-                borderRadius: '12px',
-                backgroundColor: '#FF7A3D',
-                color: '#ffffff',
-                fontSize: '18px',
-                fontWeight: '600',
-                border: 'none',
-                cursor: 'pointer',
-                boxShadow: '0 4px 6px rgba(255, 122, 61, 0.2)',
-                transition: 'background-color 0.2s'
+        {/* 상태에 따라 변하는 동적 영역 */}
+        <div style={{ width: '100%', minHeight: '160px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          {step === 'initial' && (
+            <>
+              <button
+                onClick={generatePin}
+                style={{
+                  width: '100%',
+                  height: '56px',
+                  borderRadius: '12px',
+                  backgroundColor: '#FF7A3D',
+                  color: '#ffffff',
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px rgba(255, 122, 61, 0.2)',
+                  transition: 'background-color 0.2s',
+                  marginBottom: '12px'
                 }}
                 onMouseOver={(e) => e.target.style.backgroundColor = '#e86a32'}
                 onMouseOut={(e) => e.target.style.backgroundColor = '#FF7A3D'}
-              onFocus={(e) => e.target.style.backgroundColor = '#e86a32'}
-              onBlur={(e) => e.target.style.backgroundColor = '#FF7A3D'}
-            >
-              재발급
-            </button>
-          </>
-        )}
+              >
+                인증 번호 생성 하기
+              </button>
+              <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>
+                생성 후 맡케팅 서비스에 입력해주세요
+              </p>
+              {status && (
+                <p style={{ color: '#de3a3a', marginTop: '16px', fontSize: '14px' }}>{status}</p>
+              )}
+            </>
+          )}
+
+          {step === 'loading' && (
+            <div style={{
+              padding: '24px',
+              borderRadius: '16px',
+              backgroundColor: 'rgba(249, 250, 251, 0.8)',
+              color: '#8b95a1',
+              fontSize: '16px',
+              fontWeight: '600'
+            }}>
+              <span className="spinner" style={{ marginRight: '8px' }}>⏳</span> {status}
+            </div>
+          )}
+
+          {step === 'generated' && (
+            <>
+              <p style={{ color: '#666', margin: '0 0 24px 0', fontSize: '16px', lineHeight: '1.5' }}>
+                아래 6자리 숫자를 앱에 입력해주세요.<br/>
+                남은 시간: <strong style={{ color: '#FF7A3D' }}>{formatTime(timeLeft)}</strong>
+              </p>
+
+              <div style={{
+                backgroundColor: '#ffffff',
+                border: '2px solid #EAEAEA',
+                borderRadius: '16px',
+                padding: '30px 0',
+                marginBottom: '28px'
+              }}>
+                <div style={{
+                  fontSize: '56px',
+                  fontWeight: '800',
+                  letterSpacing: '14px',
+                  color: '#FF7A3D',
+                  textShadow: '0 2px 4px rgba(255, 122, 61, 0.15)'
+                }}>
+                  {pinCode}
+                </div>
+              </div>
+
+              <button
+                onClick={generatePin}
+                style={{
+                  width: '100%',
+                  height: '56px',
+                  borderRadius: '12px',
+                  backgroundColor: '#f2f4f6',
+                  color: '#666',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.backgroundColor = '#EAEAEA'}
+                onMouseOut={(e) => e.target.style.backgroundColor = '#f2f4f6'}
+                onFocus={(e) => e.target.style.backgroundColor = '#EAEAEA'}
+                onBlur={(e) => e.target.style.backgroundColor = '#f2f4f6'}
+              >
+                재발급
+              </button>
+            </>
+          )}
+
+          {step === 'expired' && (
+            <>
+              <p style={{ color: '#FF7A3D', margin: '0 0 32px 0', fontSize: '16px', lineHeight: '1.5', fontWeight: '600' }}>
+                {status}
+              </p>
+
+              <button
+                onClick={generatePin}
+                style={{
+                  width: '100%',
+                  height: '56px',
+                  borderRadius: '12px',
+                  backgroundColor: '#FF7A3D',
+                  color: '#ffffff',
+                  fontSize: '18px',
+                  fontWeight: '600',
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 6px rgba(255, 122, 61, 0.2)',
+                  transition: 'background-color 0.2s'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#e86a32'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#FF7A3D'}
+                onFocus={(e) => e.target.style.backgroundColor = '#e86a32'}
+                onBlur={(e) => e.target.style.backgroundColor = '#FF7A3D'}
+              >
+                재발급
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
