@@ -113,7 +113,7 @@ public class OnboardingService {
                 .userId(userId)
                 .merchantId(merchantId)
                 .storeName(storeName)
-                .category(CategoryEnumType.식당) // 임시 기본값
+                .category(CategoryEnumType.카페) // 임시 기본값 수정
                 .address("")
                 .build());
 
@@ -124,21 +124,10 @@ public class OnboardingService {
         }
 
         // 3. 메뉴 이름들을 분석하여 카테고리 자동 유추 후 Store 업데이트
-        CategoryEnumType guessedCategory = guessCategory(tossMenus);
+        CategoryEnumType guessedCategory = com.matketing.be.domain.onboarding.util.CategoryInferenceUtil.guessCategory(tossMenus);
         store.updateAllDetails(storeName, guessedCategory, null, "", null, null, null);
 
-        // 4. 크롤러 호출 (상호명 기반)
-        Map<String, String> placeInfo = fetchPlaceInfo(storeName);
-        String placeId = placeInfo.get(KEY_PLACE_ID);
-        String address = placeInfo.getOrDefault(KEY_ADDRESS, "");
-        store.updateAllDetails(storeName, guessedCategory, null, address, null, null, null);
-
-        // 5. 크롤러로 영업시간만 상세 조회 후 저장
-        if (placeId != null && !placeId.isEmpty()) {
-            fetchAndSaveStoreDetails(placeId, store);
-        }
-
-        log.info("Successfully synced store data for merchantId: {}", merchantId);
+        log.info("Successfully synced Toss store data for merchantId: {}", merchantId);
         
         // 프론트엔드로 전달할 메뉴 리스트 변환 (간소화)
         List<Object> responseMenus = tossMenus.stream()
