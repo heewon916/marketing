@@ -18,8 +18,6 @@ from app.core.config import (
     DEFAULT_KEYWORD_MODEL_PATH,
     DEFAULT_KEYWORD_MODEL_SERVER_PORT,
     DEFAULT_KEYWORD_MODEL_TIMEOUT_SECONDS,
-    DEFAULT_ORIENTATION_MODEL_NAME,
-    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
     Settings,
 )
 
@@ -244,9 +242,6 @@ def test_s3_configured_when_required_fields_exist(env_setup: None) -> None:
 
 
 def test_model_defaults_resolve_without_env(env_setup: None) -> None:
-    assert DEFAULT_ORIENTATION_MODEL_NAME == "vit"
-    assert DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH.name == "model-vit-ang-loss.h5"
-
     assert DEFAULT_KEYWORD_MODEL_PATH.name == "model.gguf"
     assert DEFAULT_KEYWORD_MODEL_PATH.parent.name == "q4_k_m"
     assert DEFAULT_KEYWORD_MODEL_PATH.parent.parent.name == "exaone-3.5-7.8b-instruct"

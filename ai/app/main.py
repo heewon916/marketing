@@ -17,11 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from app.api.main import api_router
-from app.core.config import (
-    DEFAULT_ORIENTATION_MODEL_NAME,
-    DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH,
-    settings,
-)
+from app.core.config import settings
 from app.db.postgres import dispose_engine
 from app.db.redis import close_redis, get_redis_client
 from app.logging import (
@@ -32,8 +28,6 @@ from app.logging import (
     reset_request_id,
     set_request_id,
 )
-from app.orientation.predictor import OrientationPredictor
-from app.orientation.weights import ensure_orientation_weights_available
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.schemas import ExtractorConfig
@@ -160,7 +154,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             temp_root=str(temp_root),
         ),
     )
-    orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
     extractor_config = ExtractorConfig(
         input_directory=temp_root,
         output_directory=temp_root,
@@ -184,49 +177,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root,
     )
 
-    try:
-        logger.info(
-            "Ensuring orientation weights are available.",
-            extra=build_log_extra(
-                "app.startup.orientation_weights_prepare",
-                component="startup",
-                stage="orientation_weights_prepare",
-                outcome="started",
-                weights_path=str(orientation_weights_path),
-            ),
-        )
-        orientation_weights_path = await ensure_orientation_weights_available()
-        logger.info(
-            "Orientation weights are available.",
-            extra=build_log_extra(
-                "app.startup.orientation_weights_ready",
-                component="startup",
-                stage="orientation_weights_prepare",
-                outcome="succeeded",
-                weights_path=str(orientation_weights_path),
-            ),
-        )
-    except Exception:
-        orientation_weights_path = DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH
-        logger.warning(
-            "Orientation weights are unavailable at startup. "
-            "The app will continue, but final-edit may fail until weights are present.",
-            exc_info=True,
-            extra=build_log_extra(
-                "app.startup.orientation_weights_prepare",
-                component="startup",
-                stage="orientation_weights_prepare",
-                outcome="failed",
-                error_type="orientation_weights_unavailable",
-                weights_path=str(orientation_weights_path),
-            ),
-        )
-
     app.state.final_edit_service = FinalEditService(
-        predictor=OrientationPredictor(
-            model_name=DEFAULT_ORIENTATION_MODEL_NAME,
-            weights_path=str(orientation_weights_path),
-        ),
         downloader=S3DraftImageDownloader(),
         uploader=S3FinalImageUploader(),
         temp_root=temp_root / "final-edit",
