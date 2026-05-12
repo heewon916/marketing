@@ -40,6 +40,8 @@ from app.services.menu_promotion_context import (
     StoreMenuCandidate,
 )
 from app.services.sessions import (
+    HEALTH_CHECK_FAILURE_CAPTION,
+    HEALTH_CHECK_FAILURE_GUIDE_TEXT,
     resolve_caption_keywords,
     session_key,
 )
@@ -148,6 +150,7 @@ class FakeKeywordExtractionService:
         draft_keywords: list[str] | None = None,
         final_keywords: list[str] | None = None,
         error: Exception | None = None,
+        healthy: bool = True,
     ) -> None:
         self.purpose = purpose
         self.draft_keywords = (
@@ -157,7 +160,13 @@ class FakeKeywordExtractionService:
         )
         self.final_keywords = final_keywords if final_keywords is not None else []
         self.error = error
+        self.healthy = healthy
         self.calls: list[str] = []
+        self.health_check_calls: int = 0
+
+    async def is_healthy(self) -> bool:
+        self.health_check_calls += 1
+        return self.healthy
 
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         self.calls.append(utterance)
@@ -249,14 +258,21 @@ class FakeCaptionGenerationService:
         self,
         result: CaptionGenerationResult | None = None,
         error: Exception | None = None,
+        healthy: bool = True,
     ) -> None:
         self.result = result or CaptionGenerationResult(
             guide_text="키워드가 잘 보이도록 구도를 잡아보세요.",
             draft_caption="오늘의 메뉴를 자연스럽게 소개해보세요.",
         )
         self.error = error
+        self.healthy = healthy
         self.calls: list[dict[str, object]] = []
         self.fallback_calls: list[dict[str, object]] = []
+        self.health_check_calls: int = 0
+
+    async def is_healthy(self) -> bool:
+        self.health_check_calls += 1
+        return self.healthy
 
     async def generate_text(
         self,
@@ -546,6 +562,121 @@ def test_process_utterance_returns_503_when_keyword_extraction_fails(
     assert saved["caption"] == ""
 
 
+def test_process_utterance_returns_fixed_caption_when_keyword_server_unhealthy(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-keyword-unhealthy"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    keyword_service = FakeKeywordExtractionService(healthy=False)
+    caption_service = FakeCaptionGenerationService(healthy=True)
+    app.state.keyword_extraction_service = keyword_service
+    app.state.caption_generation_service = caption_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "TEXT_GENERATED"
+    assert body["guide_text"] == HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert body["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert keyword_service.calls == []
+    assert caption_service.calls == []
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["status"] == "TEXT_GENERATED"
+    assert saved["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert saved["utterance"] == VALID_PAYLOAD["utterance"]
+    assert saved["debug:text_generation_fallback_source"] == "health_check_fallback"
+    assert saved["debug:health_check_keyword_ok"] == "false"
+    assert saved["debug:health_check_caption_ok"] == "true"
+
+
+def test_process_utterance_returns_fixed_caption_when_caption_server_unhealthy(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    session_id = "sess-caption-unhealthy"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    keyword_service = FakeKeywordExtractionService(healthy=True)
+    caption_service = FakeCaptionGenerationService(healthy=False)
+    app.state.keyword_extraction_service = keyword_service
+    app.state.caption_generation_service = caption_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["guide_text"] == HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert body["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert keyword_service.calls == []
+    assert caption_service.calls == []
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["debug:text_generation_fallback_source"] == "health_check_fallback"
+    assert saved["debug:health_check_keyword_ok"] == "true"
+    assert saved["debug:health_check_caption_ok"] == "false"
+
+
+def test_process_utterance_runs_health_checks_in_parallel(
+    client: TestClient,
+) -> None:
+    session_id = "sess-health-parallel"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    call_order: list[str] = []
+    keyword_started = asyncio.Event()
+    caption_started = asyncio.Event()
+
+    class ParallelKeywordService(FakeKeywordExtractionService):
+        async def is_healthy(self) -> bool:
+            call_order.append("keyword:start")
+            keyword_started.set()
+            await asyncio.wait_for(caption_started.wait(), timeout=1.0)
+            call_order.append("keyword:end")
+            return True
+
+    class ParallelCaptionService(FakeCaptionGenerationService):
+        async def is_healthy(self) -> bool:
+            call_order.append("caption:start")
+            caption_started.set()
+            await asyncio.wait_for(keyword_started.wait(), timeout=1.0)
+            call_order.append("caption:end")
+            return True
+
+    app.state.keyword_extraction_service = ParallelKeywordService()
+    app.state.caption_generation_service = ParallelCaptionService()
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+
+    assert response.status_code == 200
+    assert {"keyword:start", "caption:start"} <= set(call_order)
+    # Both must have started before either completed (parallel execution).
+    assert call_order.index("keyword:start") < call_order.index("caption:end")
+    assert call_order.index("caption:start") < call_order.index("keyword:end")
+
+
 def test_process_utterance_falls_back_when_caption_generation_fails(
     client: TestClient,
     fake_redis_sync: fakeredis.FakeStrictRedis,
@@ -600,7 +731,11 @@ def test_process_utterance_falls_back_to_korean_when_caption_model_returns_engli
             ),
         )
 
+    async def fake_is_healthy() -> bool:
+        return True
+
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
+    monkeypatch.setattr(service, "is_healthy", fake_is_healthy)
     app.state.caption_generation_service = service
 
     try:
