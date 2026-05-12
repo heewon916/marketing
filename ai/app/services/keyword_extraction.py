@@ -259,6 +259,13 @@ class KeywordExtractionService:
     async def preload(self) -> None:
         await self._check_server_connection()
 
+    async def is_healthy(self) -> bool:
+        try:
+            await self._check_server_connection()
+        except KeywordExtractionUnavailableError:
+            return False
+        return True
+
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         if not self.enabled:
             raise KeywordExtractionUnavailableError(

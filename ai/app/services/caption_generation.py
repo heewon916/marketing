@@ -403,6 +403,13 @@ class CaptionGenerationService:
     async def preload(self) -> None:
         await self._check_server_connection()
 
+    async def is_healthy(self) -> bool:
+        try:
+            await self._check_server_connection()
+        except CaptionGenerationUnavailableError:
+            return False
+        return True
+
     async def generate_text(
         self,
         request: CaptionGenerationRequest,

@@ -39,6 +39,9 @@ def _weather_context_for_tests(weather_tags: list[str]) -> str:
 
 
 class DefaultKeywordExtractionService:
+    async def is_healthy(self) -> bool:
+        return True
+
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         return KeywordExtractionResult(
             purpose="메뉴 홍보",
@@ -80,6 +83,9 @@ class DefaultCanonicalKeywordResolverService:
 
 
 class DefaultCaptionGenerationService:
+    async def is_healthy(self) -> bool:
+        return True
+
     async def generate_text(
         self,
         request: CaptionGenerationRequest,

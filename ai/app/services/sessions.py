@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 from dataclasses import dataclass
@@ -34,6 +35,14 @@ from app.services.weather_tags import evaluate_weather_tags
 CONTENTS_KEY_PREFIX = "contents"
 STATUS_STARTED = "STARTED"
 STATUS_TEXT_GENERATED = "TEXT_GENERATED"
+HEALTH_CHECK_FAILURE_GUIDE_TEXT = (
+    "사장님, 잠시 후 다시 시도해 주세요. "
+    "지금은 가게의 분위기와 메뉴가 잘 보이도록 자유롭게 촬영해보세요."
+)
+HEALTH_CHECK_FAILURE_CAPTION = (
+    "지금은 AI 캡션 생성을 잠시 이용할 수 없어요. 잠시 후 다시 시도해 주세요."
+)
+HEALTH_CHECK_FALLBACK_SOURCE = "health_check_fallback"
 logger = logging.getLogger(__name__)
 
 def resolve_caption_keywords(
@@ -356,6 +365,57 @@ async def _persist_process_utterance_result(
     )
 
 
+async def _build_health_check_fallback_result(
+    redis: Redis,
+    session_id: str,
+    utterance: str,
+    weather_tags: list[str],
+    *,
+    keyword_ok: bool,
+    caption_ok: bool,
+) -> ProcessUtteranceResult:
+    logger.warning(
+        "Pre-flight health check failed; returning fixed fallback caption.",
+        extra=build_log_extra(
+            "session.process_utterance.health_check.failed",
+            component="session",
+            stage="health_check",
+            session_id=session_id,
+            outcome="failed",
+            keyword_server_healthy=keyword_ok,
+            caption_server_healthy=caption_ok,
+        ),
+    )
+    debug_fields = {
+        "debug:text_generation_fallback_source": HEALTH_CHECK_FALLBACK_SOURCE,
+        "debug:health_check_keyword_ok": "true" if keyword_ok else "false",
+        "debug:health_check_caption_ok": "true" if caption_ok else "false",
+    }
+    await upsert_content_session(
+        redis,
+        session_id,
+        scalar_fields={
+            "status": STATUS_TEXT_GENERATED,
+            "caption": HEALTH_CHECK_FAILURE_CAPTION,
+            "utterance": utterance,
+        },
+        weather_tags=weather_tags,
+        draft_keywords=[],
+        final_keywords=[],
+        debug_fields=debug_fields,
+    )
+    return ProcessUtteranceResult(
+        status=STATUS_TEXT_GENERATED,
+        purpose="일상 공유",
+        weather_tags=weather_tags,
+        draft_keywords=[],
+        final_keywords=[],
+        draft_caption=HEALTH_CHECK_FAILURE_CAPTION,
+        guide_text=HEALTH_CHECK_FAILURE_GUIDE_TEXT,
+        caption=HEALTH_CHECK_FAILURE_CAPTION,
+    )
+
+
 async def process_utterance(
     session_id: str,
     payload: ProcessUtteranceRequest,
@@ -370,6 +430,19 @@ async def process_utterance(
         payload.weather,
         target_date=payload.date,
     )
+    keyword_ok, caption_ok = await asyncio.gather(
+        keyword_service.is_healthy(),
+        caption_service.is_healthy(),
+    )
+    if not (keyword_ok and caption_ok):
+        return await _build_health_check_fallback_result(
+            redis,
+            session_id,
+            payload.utterance,
+            weather_tags,
+            keyword_ok=keyword_ok,
+            caption_ok=caption_ok,
+        )
     await _persist_process_utterance_started(
         redis,
         session_id,
