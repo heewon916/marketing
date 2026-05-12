@@ -20,7 +20,7 @@ function HomePage() {
   const isActive = isTyping || isRecording
   const handleFcmRegisterClick = () => {
     console.log("FCM 권한 요청 및 토큰 등록 시도")
-    showToast('FCM 권한 요청 및 토큰 등록 시도.','info', 4000);
+    showToast('FCM 권한 요청 및 토큰 등록 시도.','info');
     void registerFcmToken()
   }
 

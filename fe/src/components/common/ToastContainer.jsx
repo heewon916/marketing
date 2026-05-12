@@ -58,7 +58,12 @@ export default function ToastContainer() {
 
       clearTimeout(timerRef.current);
 
-      setToast({ message, type, visible: true });
+      // 1. 먼저 visible: false로 마운트
+      setToast({ message, type, visible: false });
+
+      requestAnimationFrame(() => {
+        setToast({ message, type, visible: true });
+      });
 
       timerRef.current = setTimeout(() => {
         setToast((prev) => prev && { ...prev, visible: false });
@@ -92,7 +97,7 @@ export default function ToastContainer() {
           rounded-2xl border px-6 py-2
           ${style.bg} ${style.border}
           shadow-md
-          transition-opacity duration-500 ease-out
+          transition-opacity duration-300 ease-out
           ${toast.visible ? 'opacity-100' : 'opacity-0'}
         `}
       >
