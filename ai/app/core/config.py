@@ -8,11 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = ROOT_DIR.parent / ".env"
 
-DEFAULT_ORIENTATION_MODEL_NAME = "vit"
-DEFAULT_ORIENTATION_MODEL_WEIGHTS_PATH = (
-    ROOT_DIR / "weights" / "model-vit-ang-loss.h5"
-)
-
 DEFAULT_KEYWORD_MODEL_SERVER_PORT = 8001
 DEFAULT_KEYWORD_MODEL_HOST_DIR = "./.models/keyword/exaone-3.5-7.8b-instruct/q4_k_m"
 DEFAULT_KEYWORD_MODEL_PATH = (
@@ -99,9 +94,6 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str | None = None
     S3_REGION: str | None = None
     CLOUDFRONT_DOMAIN: str | None = None
-    ORIENTATION_MODEL_DOWNLOAD_URL: str = (
-        "https://drive.google.com/file/d/1sdmPmaDhivdHPfn9M9vAkTbiprbPq94e/view"
-    )
 
     KEYWORD_MODEL_HOST_DIR: str = DEFAULT_KEYWORD_MODEL_HOST_DIR
     KEYWORD_MODEL_HF_REPO_ID: str = DEFAULT_KEYWORD_MODEL_HF_REPO_ID
