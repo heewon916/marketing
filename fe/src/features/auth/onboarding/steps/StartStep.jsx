@@ -15,7 +15,7 @@ function StartStep({ onNext }) {
             <>
               맡케팅 시작 전,
               <br />
-              <span className="text-primary-100 font-extrabold">필수 준비물 3가지!</span>
+              <span className="text-primary-100 font-extrabold">준비물 3가지!</span>
             </>
           }
           subtitle={

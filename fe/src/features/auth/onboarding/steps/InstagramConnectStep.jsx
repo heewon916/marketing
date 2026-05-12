@@ -7,7 +7,7 @@ import {
   INSTAGRAM_AUTH_PURPOSE,
 } from '@/features/auth/api.js';
 
-function InstagramConnectStep() {
+function InstagramConnectStep({ onNext }) {
   const handleConnect = () => {
     authApi.loginWithInstagram(INSTAGRAM_AUTH_PURPOSE.ONBOARDING);
   };
@@ -34,9 +34,21 @@ function InstagramConnectStep() {
         />
       }
       footer={
-        <Button onClick={handleConnect} className="w-full font-bold">
-          인스타그램 연동하기
-        </Button>
+        <>
+          <Button onClick={handleConnect} className="w-full font-bold">
+            인스타그램 연동하기
+          </Button>
+
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={onNext}
+              className="mt-3 text-sm font-medium text-gray-400 underline"
+            >
+              개발용: 인스타그램 연동 건너뛰기
+            </button>
+          )}
+        </>
       }
     >
       <div className="w-full flex justify-center mt-10">

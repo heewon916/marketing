@@ -7,7 +7,7 @@ import StartStep from '@/features/auth/onboarding/steps/StartStep.jsx';
 import InstagramConnectStep from '@/features/auth/onboarding/steps/InstagramConnectStep.jsx';
 import InstagramSuccessStep from '@/features/auth/onboarding/steps/InstagramSuccessStep.jsx';
 import PosConnectStep from '@/features/auth/onboarding/steps/PosConnectStep.jsx';
-import CodeInputStep from '@/features/auth/onboarding/steps/CodeInputStep.jsx';
+import PosCodeInputStep from '@/features/auth/onboarding/steps/PosCodeInputStep.jsx';
 import QRStep from '@/features/auth/onboarding/steps/QRStep.jsx';
 import LoadingStep from '@/features/auth/onboarding/steps/LoadingStep.jsx';
 import PosSuccessStep from '@/features/auth/onboarding/steps/PosSuccessStep.jsx';
@@ -153,7 +153,7 @@ function OnboardingPage() {
 
       case 5:
         return (
-          <CodeInputStep
+          <PosCodeInputStep
             {...commonProps}
             value={authCode}
             onChange={setAuthCode}
