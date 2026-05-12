@@ -43,12 +43,21 @@ class OpenCVImage(ImageProcessor):
     @staticmethod
     def normalize_images(images: Images, target_size: ImageResolution) -> ImagesBatch:
         cv2 = _import_cv2()
-        normalized = [
-            cv2.resize(image, (target_size.width, target_size.height)) for image in images
-        ]
-        if not normalized:
-            return np.empty((0, target_size.height, target_size.width, 3), dtype=np.uint8)
-        return np.stack(normalized)
+        if not images:
+            return np.empty(
+                (0, target_size.height, target_size.width, 3),
+                dtype=np.float32,
+            )
+        normalized = []
+        for image in images:
+            resized = cv2.resize(
+                image,
+                (target_size.width, target_size.height),
+                interpolation=cv2.INTER_LANCZOS4,
+            )
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            normalized.append(rgb)
+        return np.array(normalized, dtype=np.float32) / 255.0
 
     @staticmethod
     def save_image(

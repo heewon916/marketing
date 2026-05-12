@@ -70,7 +70,7 @@ class StubDraftUploader:
 
 class StubFrameExtractor:
     def extract_best_frame(self, video_path: Path):
-        return np.zeros((8, 8, 3), dtype=np.uint8)
+        return np.zeros((8, 8, 3), dtype=np.uint8), 5.0
 
 
 class StubDraftDownloader:

@@ -30,6 +30,7 @@ from app.logging import (
 )
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
+from app.perfectframe.image_evaluators import SharpnessVarianceEvaluator
 from app.perfectframe.schemas import ExtractorConfig
 from app.services.frame_extraction import (
     FrameExtractionService,
@@ -159,11 +160,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         output_directory=temp_root,
     )
     dependencies = get_dependencies(extractor_config)
+    image_evaluator = SharpnessVarianceEvaluator()
     extractor = BestFrameExtractor(
         dependencies.config,
         dependencies.image_processor,
         dependencies.video_processor,
-        dependencies.evaluator,
+        image_evaluator,
     )
 
     app.state.frame_extractor_config = extractor_config

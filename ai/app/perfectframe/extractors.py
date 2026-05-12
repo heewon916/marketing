@@ -20,14 +20,14 @@ class BestFrameExtractor:
         config: ExtractorConfig,
         image_processor: type[ImageProcessor],
         video_processor: type[VideoProcessor],
-        image_evaluator_class: type[ImageEvaluator],
+        image_evaluator: ImageEvaluator,
     ) -> None:
         self._config = config
         self._image_processor = image_processor
         self._video_processor = video_processor
-        self._image_evaluator = image_evaluator_class(self._config)
+        self._image_evaluator = image_evaluator
 
-    def extract_best_frame(self, video_path: Path) -> Image | None:
+    def extract_best_frame(self, video_path: Path) -> tuple[Image, float] | None:
         best_frame: Image | None = None
         best_score: float | None = None
 
@@ -45,7 +45,9 @@ class BestFrameExtractor:
                 best_frame = frame
                 best_score = score
 
-        return best_frame
+        if best_frame is None or best_score is None:
+            return None
+        return best_frame, best_score
 
     def _get_best_frame(self, frames: Images) -> tuple[Image | None, float | None]:
         normalized_images = self._image_processor.normalize_images(

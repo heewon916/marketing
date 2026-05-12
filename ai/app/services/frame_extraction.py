@@ -237,8 +237,8 @@ class FrameExtractionService:
                     video_path=str(video_path),
                 ),
             )
-            frame = await asyncio.to_thread(self.extractor.extract_best_frame, video_path)
-            if frame is None:
+            extracted = await asyncio.to_thread(self.extractor.extract_best_frame, video_path)
+            if extracted is None:
                 debug_fields["debug:extractor_result"] = "none"
                 logger.warning(
                     "Frame extraction returned no frame.",
@@ -261,10 +261,12 @@ class FrameExtractionService:
                     debug_fields=debug_fields,
                 )
 
+            frame, frame_score = extracted
             debug_fields["debug:extractor_result"] = "frame_found"
             debug_fields["debug:frame_shape:source"] = "x".join(
                 str(dimension) for dimension in frame.shape
             )
+            debug_fields["debug:frame_score"] = f"{frame_score:.6f}"
             logger.info(
                 "Best-frame extraction completed.",
                 extra=build_log_extra(
@@ -275,6 +277,7 @@ class FrameExtractionService:
                     outcome="succeeded",
                     video_key=video_key,
                     frame_shape=debug_fields["debug:frame_shape:source"],
+                    frame_score=f"{frame_score:.6f}",
                     elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
                 ),
             )
