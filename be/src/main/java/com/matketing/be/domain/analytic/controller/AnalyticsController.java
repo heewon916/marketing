@@ -29,40 +29,39 @@ public class AnalyticsController {
 
         /**
          * 주간 가게 노출 수를 조회한다.
-         * week_start는 yyyy-MM-dd 형식의 주차 시작일이다.
          */
-        @Operation(summary = "주간 가게 노출 수 조회", description = "week_start 기준 주간 total_reach를 조회합니다.")
+        @Operation(summary = "주간 가게 노출 수 조회", description = "지난주 월~일 기준 가게 노출 수를 조회합니다.")
         @GetMapping("/reach")
         public ResponseEntity<ReachResponse> getReach(
-                        @AuthenticationPrincipal AuthUser authUser,
-                        @RequestParam("week_start") LocalDate weekStart) {
+                        @AuthenticationPrincipal AuthUser authUser
+        ) {
                 return ResponseEntity.ok(
-                                analyticsQueryService.getReach(authUser.getId(), weekStart));
+                                analyticsQueryService.getReach(authUser.getId()));
         }
 
         /**
          * 주간 실질 방문 의사 지수를 조회한다.
          * 저장 수와 공유 수를 도달 수로 나누어 계산한다.
          */
-        @Operation(summary = "주간 실질 방문 의사 지수 조회", description = "저장 수와 공유 수를 도달 수로 나눈 방문 의사 지수를 조회합니다.")
+        @Operation(summary = "주간 실질 방문 의사 지수 조회", description = "지난주 월~일 기준 실질 방문 의사 지수를 조회합니다.")
         @GetMapping("/visit-intent")
         public ResponseEntity<VisitIntentResponse> getVisitIntent(
-                        @AuthenticationPrincipal AuthUser authUser,
-                        @RequestParam("week_start") LocalDate weekStart) {
+                        @AuthenticationPrincipal AuthUser authUser
+        ) {
                 return ResponseEntity.ok(
-                                analyticsQueryService.getVisitIntent(authUser.getId(), weekStart));
+                                analyticsQueryService.getVisitIntent(authUser.getId()));
         }
 
         /**
          * 주간 포스팅 달성률을 조회한다.
          * 실제 발행 게시물 수와 목표 게시물 수를 기준으로 계산한다.
          */
-        @Operation(summary = "주간 포스팅 달성률 조회", description = "목표 게시물 수 대비 실제 발행 게시물 수의 달성률을 조회합니다.")
+        @Operation(summary = "주간 포스팅 달성률 조회", description = "이번 주 월~일 기준 포스팅 달성률을 조회합니다.")
         @GetMapping("/achievement")
         public ResponseEntity<AchievementResponse> getAchievement(
-                        @AuthenticationPrincipal AuthUser authUser,
-                        @RequestParam("week_start") LocalDate weekStart) {
+                        @AuthenticationPrincipal AuthUser authUser
+        ) {
                 return ResponseEntity.ok(
-                                analyticsQueryService.getAchievement(authUser.getId(), weekStart));
+                                analyticsQueryService.getAchievement(authUser.getId()));
         }
 }
