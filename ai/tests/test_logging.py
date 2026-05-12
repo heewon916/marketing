@@ -81,15 +81,6 @@ class StubDraftDownloader:
         destination.write_bytes(draft_key.encode("utf-8"))
 
 
-class StubPredictor:
-    def predict_angle(self, image_path: Path) -> float:
-        return 90.0
-
-    def correct_orientation(self, source_path: Path, destination_path: Path, predicted_angle: float):
-        destination_path.write_bytes(source_path.read_bytes())
-        return destination_path
-
-
 class StubFinalUploader:
     is_configured = True
 
@@ -206,7 +197,6 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     service = FinalEditService(
-        predictor=StubPredictor(),
         downloader=StubDraftDownloader(),
         uploader=StubFinalUploader(),
         temp_root=tmp_path,
@@ -222,10 +212,6 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     output = stream.getvalue()
     assert 'event="final_edit.download_draft.started"' in output
     assert 'event="final_edit.download_draft.completed"' in output
-    assert 'event="final_edit.predict_orientation.started"' in output
-    assert 'event="final_edit.predict_orientation.completed"' in output
-    assert 'event="final_edit.correct_orientation.started"' in output
-    assert 'event="final_edit.correct_orientation.completed"' in output
     assert 'event="final_edit.upload_final.started"' in output
     assert 'event="final_edit.upload_final.completed"' in output
     assert 'event="final_edit.cleanup_tempdir"' in output

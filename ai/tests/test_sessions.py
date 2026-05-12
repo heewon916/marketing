@@ -10,7 +10,6 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
-from app.orientation.predictor import OrientationPredictor
 from app.schemas.sessions import ExtractFramesResponse, FinalEditResponse
 from app.services.caption_generation import (
     CaptionFallbackResult,
@@ -396,15 +395,6 @@ class StubDraftDownloader:
     async def download_draft(self, draft_key: str, destination) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(draft_key.encode("utf-8"))
-
-
-class StubPredictor:
-    def predict_angle(self, image_path) -> float:
-        return 90.0
-
-    def correct_orientation(self, source_path, destination_path, predicted_angle):
-        destination_path.write_bytes(source_path.read_bytes())
-        return destination_path
 
 
 class FailingUploader:
@@ -1586,7 +1576,7 @@ def test_final_edit_returns_fail_and_clears_photo_results(
         FinalEditResult(
             status="FRAME_EXTRACTED",
             results=[],
-            failure_reason="orientation_model_load_failed",
+            failure_reason="final_edit_failed",
         )
     )
     app.state.final_edit_service = fake_service
@@ -1633,7 +1623,6 @@ def test_final_edit_response_limits_results_to_three() -> None:
 def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     uploader = FailingUploader()
     service = FinalEditService(
-        predictor=StubPredictor(),
         downloader=StubDraftDownloader(),
         uploader=uploader,
         temp_root=tmp_path,
@@ -1665,31 +1654,9 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.frame_extraction_service is not None
     assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor
     assert app.state.final_edit_service is not None
-    assert app.state.final_edit_service.predictor.weights_path is not None
     assert app.state.keyword_extraction_service is not None
     assert app.state.caption_generation_service is not None
     assert app.state.canonical_keyword_resolver_service is not None
-
-
-def test_orientation_predictor_retries_without_safetensors_on_safe_open_error() -> None:
-    predictor = OrientationPredictor()
-    calls: list[tuple[str, dict[str, object]]] = []
-
-    class FakeTFAutoModel:
-        @staticmethod
-        def from_pretrained(model_id: str, **kwargs):
-            calls.append((model_id, kwargs))
-            if len(calls) == 1:
-                raise TypeError("'builtins.safe_open' object is not iterable")
-            return "vit-model"
-
-    model = predictor._load_vit_base_model(FakeTFAutoModel)
-
-    assert model == "vit-model"
-    assert calls == [
-        ("google/vit-base-patch16-224", {}),
-        ("google/vit-base-patch16-224", {"use_safetensors": False}),
-    ]
 
 
 def test_keyword_extraction_service_normalizes_and_limits_keywords() -> None:
