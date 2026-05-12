@@ -327,7 +327,7 @@ pipeline {
 
         stage('Provision Llama Models') {
             steps {
-              withCredentials([string(credentialsId: 'HF_TOKEN', variable: 'HF_TOKEN')]) {
+              // withCredentials([string(credentialsId: 'HF_TOKEN', variable: 'HF_TOKEN')]) {
                 sh '''
                     set +x
                     set -eu
@@ -536,7 +536,7 @@ PY
                     provision_model CAPTION
                 '''
             }
-        }
+        // }
         }
         stage('Check Docker') {
             steps {
