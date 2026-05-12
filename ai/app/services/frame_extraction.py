@@ -25,6 +25,7 @@ STATUS_FAIL = STATUS_TEXT_GENERATED
 STATUS_FRAME_EXTRACTED = "FRAME_EXTRACTED"
 DRAFT_TARGET_WIDTH = 1080
 DRAFT_TARGET_HEIGHT = 1440
+DRAFT_TOP_K = 3
 logger = logging.getLogger(__name__)
 
 
@@ -226,7 +227,7 @@ class FrameExtractionService:
             debug_fields["debug:stage"] = "extract_frame"
             extract_started_at = time.perf_counter()
             logger.info(
-                "Running best-frame extraction.",
+                "Running top-k frame extraction.",
                 extra=build_log_extra(
                     "frame_extraction.extract_frame.started",
                     component="frame_extraction",
@@ -235,13 +236,18 @@ class FrameExtractionService:
                     outcome="started",
                     video_key=video_key,
                     video_path=str(video_path),
+                    top_k=DRAFT_TOP_K,
                 ),
             )
-            frame = await asyncio.to_thread(self.extractor.extract_best_frame, video_path)
-            if frame is None:
+            extracted = await asyncio.to_thread(
+                self.extractor.extract_top_k_frames,
+                video_path,
+                DRAFT_TOP_K,
+            )
+            if not extracted:
                 debug_fields["debug:extractor_result"] = "none"
                 logger.warning(
-                    "Frame extraction returned no frame.",
+                    "Top-k frame extraction returned no frames.",
                     extra=build_log_extra(
                         "frame_extraction.extract_frame.completed",
                         component="frame_extraction",
@@ -251,6 +257,7 @@ class FrameExtractionService:
                         error_type="frame_extraction_failed",
                         video_key=video_key,
                         video_path=str(video_path),
+                        top_k=DRAFT_TOP_K,
                         elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
                     ),
                 )
@@ -262,11 +269,9 @@ class FrameExtractionService:
                 )
 
             debug_fields["debug:extractor_result"] = "frame_found"
-            debug_fields["debug:frame_shape:source"] = "x".join(
-                str(dimension) for dimension in frame.shape
-            )
+            debug_fields["debug:extracted_count"] = str(len(extracted))
             logger.info(
-                "Best-frame extraction completed.",
+                "Top-k frame extraction completed.",
                 extra=build_log_extra(
                     "frame_extraction.extract_frame.completed",
                     component="frame_extraction",
@@ -274,102 +279,147 @@ class FrameExtractionService:
                     session_id=session_id,
                     outcome="succeeded",
                     video_key=video_key,
-                    frame_shape=debug_fields["debug:frame_shape:source"],
+                    extracted_count=len(extracted),
+                    top_k=DRAFT_TOP_K,
                     elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
                 ),
             )
 
-            debug_fields["debug:stage"] = "resize_frame"
-            resize_started_at = time.perf_counter()
-            logger.info(
-                "Resizing frame to draft target resolution.",
-                extra=build_log_extra(
-                    "frame_extraction.resize_frame.started",
-                    component="frame_extraction",
-                    stage="resize_frame",
-                    session_id=session_id,
-                    outcome="started",
-                    video_key=video_key,
-                    source_shape=debug_fields["debug:frame_shape:source"],
-                    target_width=DRAFT_TARGET_WIDTH,
-                    target_height=DRAFT_TARGET_HEIGHT,
-                ),
-            )
-            frame = await asyncio.to_thread(_resize_to_draft_target, frame)
-            debug_fields["debug:frame_shape:resized"] = "x".join(
-                str(dimension) for dimension in frame.shape
-            )
-            logger.info(
-                "Frame resize completed.",
-                extra=build_log_extra(
-                    "frame_extraction.resize_frame.completed",
-                    component="frame_extraction",
-                    stage="resize_frame",
-                    session_id=session_id,
-                    outcome="succeeded",
-                    video_key=video_key,
-                    resized_shape=debug_fields["debug:frame_shape:resized"],
-                    target_width=DRAFT_TARGET_WIDTH,
-                    target_height=DRAFT_TARGET_HEIGHT,
-                    elapsed_ms=int((time.perf_counter() - resize_started_at) * 1000),
-                ),
-            )
+            uploaded_paths: list[str] = []
+            for draft_index, (frame, frame_score) in enumerate(extracted, start=1):
+                source_shape = "x".join(str(dimension) for dimension in frame.shape)
+                debug_fields[f"debug:frame_shape:source:{draft_index}"] = source_shape
+                debug_fields[f"debug:frame_score:{draft_index}"] = f"{frame_score:.6f}"
+                logger.info(
+                    "Selected frame for draft.",
+                    extra=build_log_extra(
+                        "frame_extraction.select_frame",
+                        component="frame_extraction",
+                        stage="select_frame",
+                        session_id=session_id,
+                        outcome="succeeded",
+                        video_key=video_key,
+                        draft_index=draft_index,
+                        frame_shape=source_shape,
+                        frame_score=f"{frame_score:.6f}",
+                    ),
+                )
 
-            debug_fields["debug:stage"] = "upload_frame"
-            upload_started_at = time.perf_counter()
-            logger.info(
-                "Uploading extracted frame as draft.",
-                extra=build_log_extra(
-                    "frame_extraction.upload_frame.started",
-                    component="frame_extraction",
-                    stage="upload_frame",
-                    session_id=session_id,
-                    outcome="started",
-                    video_key=video_key,
-                    frame_shape=debug_fields["debug:frame_shape:resized"],
-                ),
-            )
-            uploaded_path = await self.uploader.upload_frame(session_id, frame, session_dir)
-            if uploaded_path is None:
-                debug_fields["debug:upload_result"] = "none"
-                logger.warning(
-                    "Frame upload returned no draft path.",
+                debug_fields["debug:stage"] = f"resize_frame_{draft_index}"
+                resize_started_at = time.perf_counter()
+                logger.info(
+                    "Resizing frame to draft target resolution.",
+                    extra=build_log_extra(
+                        "frame_extraction.resize_frame.started",
+                        component="frame_extraction",
+                        stage="resize_frame",
+                        session_id=session_id,
+                        outcome="started",
+                        video_key=video_key,
+                        draft_index=draft_index,
+                        source_shape=source_shape,
+                        target_width=DRAFT_TARGET_WIDTH,
+                        target_height=DRAFT_TARGET_HEIGHT,
+                    ),
+                )
+                frame = await asyncio.to_thread(_resize_to_draft_target, frame)
+                resized_shape = "x".join(str(dimension) for dimension in frame.shape)
+                debug_fields[f"debug:frame_shape:resized:{draft_index}"] = resized_shape
+                logger.info(
+                    "Frame resize completed.",
+                    extra=build_log_extra(
+                        "frame_extraction.resize_frame.completed",
+                        component="frame_extraction",
+                        stage="resize_frame",
+                        session_id=session_id,
+                        outcome="succeeded",
+                        video_key=video_key,
+                        draft_index=draft_index,
+                        resized_shape=resized_shape,
+                        target_width=DRAFT_TARGET_WIDTH,
+                        target_height=DRAFT_TARGET_HEIGHT,
+                        elapsed_ms=int((time.perf_counter() - resize_started_at) * 1000),
+                    ),
+                )
+
+                debug_fields["debug:stage"] = f"upload_frame_{draft_index}"
+                upload_started_at = time.perf_counter()
+                logger.info(
+                    "Uploading extracted frame as draft.",
+                    extra=build_log_extra(
+                        "frame_extraction.upload_frame.started",
+                        component="frame_extraction",
+                        stage="upload_frame",
+                        session_id=session_id,
+                        outcome="started",
+                        video_key=video_key,
+                        draft_index=draft_index,
+                        frame_shape=resized_shape,
+                    ),
+                )
+                uploaded_path = await self.uploader.upload_frame(
+                    session_id,
+                    frame,
+                    session_dir,
+                    draft_index=draft_index,
+                )
+                if uploaded_path is None:
+                    debug_fields[f"debug:upload_result:{draft_index}"] = "none"
+                    logger.warning(
+                        "Frame upload returned no draft path.",
+                        extra=build_log_extra(
+                            "frame_extraction.upload_frame.completed",
+                            component="frame_extraction",
+                            stage="upload_frame",
+                            session_id=session_id,
+                            outcome="failed",
+                            error_type="s3_upload_unavailable",
+                            video_key=video_key,
+                            draft_index=draft_index,
+                            elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
+                        ),
+                    )
+                    return ExtractFramesResult(
+                        status=STATUS_FAIL,
+                        drafts=[],
+                        failure_reason="s3_upload_unavailable",
+                        debug_fields=debug_fields,
+                    )
+
+                debug_fields[f"debug:upload_result:{draft_index}"] = uploaded_path
+                uploaded_paths.append(uploaded_path)
+                logger.info(
+                    "Draft frame uploaded.",
                     extra=build_log_extra(
                         "frame_extraction.upload_frame.completed",
                         component="frame_extraction",
                         stage="upload_frame",
                         session_id=session_id,
-                        outcome="failed",
-                        error_type="s3_upload_unavailable",
+                        outcome="succeeded",
                         video_key=video_key,
+                        draft_index=draft_index,
+                        draft_path=uploaded_path,
                         elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
                     ),
                 )
-                return ExtractFramesResult(
-                    status=STATUS_FAIL,
-                    drafts=[],
-                    failure_reason="s3_upload_unavailable",
-                    debug_fields=debug_fields,
-                )
 
-            debug_fields["debug:upload_result"] = uploaded_path
             debug_fields["debug:stage"] = "completed"
+            debug_fields["debug:uploaded_count"] = str(len(uploaded_paths))
             logger.info(
                 "Frame extraction completed successfully.",
                 extra=build_log_extra(
-                    "frame_extraction.upload_frame.completed",
+                    "frame_extraction.completed",
                     component="frame_extraction",
-                    stage="upload_frame",
+                    stage="completed",
                     session_id=session_id,
                     outcome="succeeded",
                     video_key=video_key,
-                    draft_path=uploaded_path,
-                    elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
+                    uploaded_count=len(uploaded_paths),
                 ),
             )
             return ExtractFramesResult(
                 status=STATUS_FRAME_EXTRACTED,
-                drafts=[uploaded_path],
+                drafts=uploaded_paths,
                 debug_fields=debug_fields,
             )
         except Exception as exc:
