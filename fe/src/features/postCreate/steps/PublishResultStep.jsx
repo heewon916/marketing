@@ -1,3 +1,5 @@
+import { useEffect } from "react"
+import confetti from "canvas-confetti"
 import CharacterLove from "@/assets/character/CharacterLove.png"
 import CharacterFail from "@/assets/character/CharacterFail.png"
 import StepProgress from "@/components/common/StepProgress"
@@ -5,6 +7,18 @@ import Button from "@/components/common/Button"
 
 export default function PublishResultStep({ type, stepNum, onGoHome, onViewInstagram, onRetry }) {
 	const isSuccess = type === "success"
+
+	useEffect(() => {
+		if (isSuccess) {
+			confetti({
+				particleCount: 100,
+				spread: 70,
+				origin: { y: 0.6 },
+				colors: ['#ff7a3d', '#facc15', '#4ade80'],
+				zIndex: 100,
+			})
+		}
+	}, [isSuccess])
 
 	return (
 		<main className="flex h-dvh flex-col items-center bg-white px-5 pt-6">

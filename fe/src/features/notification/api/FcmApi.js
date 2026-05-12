@@ -7,7 +7,7 @@ async function sendTokenToBackend(token) {
       token,
       platform: "WEB",
     })
-
+    console.log(response.data)
     return response.data
   } catch (error) {
     console.error("[FCM] 백엔드 토큰 전송 실패:", error)

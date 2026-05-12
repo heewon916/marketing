@@ -21,6 +21,7 @@ import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreat
 import { requestVideoUpload } from "@/features/postCreate/api/VideoApi"
 import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate/api/PostApi"
 import { requestPublishStart, requestPublishStatus } from "@/features/postCreate/api/PublishApi"
+import { showToast } from '@/utils/toast';
 
 const STEP_NUM = {
   [POST_CREATE_STEP.POST_QUESTION]: 1,
@@ -120,14 +121,14 @@ export default function PostCreatePage() {
             } catch (error) {
               clearInterval(intervalId)
               if (isActive) {
-                window.alert(error.message || "발행 상태 확인에 실패했습니다.")
+                showToast(error.message || "발행 상태 확인에 실패했습니다.", 'error')
                 setStep(POST_CREATE_STEP.PUBLISH_FAIL)
               }
             }
           }, 1000)
         } catch (error) {
           if (isActive) {
-            window.alert(error.message || "발행 시작에 실패했습니다.")
+            showToast(error.message || "발행 시작에 실패했습니다.", 'error')
             setStep(POST_CREATE_STEP.PUBLISH_FAIL)
           }
         }
@@ -178,7 +179,7 @@ export default function PostCreatePage() {
     try {
       await requestVideoUpload(videoFile, sessionId)
     } catch (error) {
-      window.alert(error.message || "영상 업로드에 실패했습니다.")
+      showToast(error.message || "영상 업로드에 실패했습니다.", 'error')
       setStep(POST_CREATE_STEP.CAMERA_QUESTION)
     }
   }
@@ -205,7 +206,7 @@ export default function PostCreatePage() {
 
       setStep(POST_CREATE_STEP.GENERATED_POST)
     } catch (error) {
-      window.alert(error.message || "임시 게시물을 불러오지 못했습니다.")
+      showToast(error.message || "임시 게시물을 불러오지 못했습니다.", 'error')
     }
   }
 
@@ -220,7 +221,7 @@ export default function PostCreatePage() {
           updatedAt: updated.updatedAt,
         })
       } catch (error) {
-        window.alert(error.message || "캡션 수정에 실패했습니다.")
+        showToast(error.message || "캡션 수정에 실패했습니다.", 'error')
         return
       }
     } else if (post) {
@@ -241,7 +242,7 @@ export default function PostCreatePage() {
           updatedAt: updated.updatedAt,
         })
       } catch (error) {
-        window.alert(error.message || "캡션 수정에 실패했습니다.")
+        showToast(error.message || "캡션 수정에 실패했습니다.", 'error')
         return
       }
     } else if (post) {
@@ -358,7 +359,7 @@ export default function PostCreatePage() {
             return
           }
 
-          window.alert("인스타그램 게시물 링크를 찾지 못했습니다.")
+          showToast("인스타그램 게시물 링크를 찾지 못했습니다.", 'error')
         }}
       />
     )
