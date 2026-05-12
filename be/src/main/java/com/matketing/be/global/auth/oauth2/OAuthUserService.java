@@ -68,7 +68,6 @@ public class OAuthUserService extends DefaultOAuth2UserService {
                         .profileImageUrl(profileImageUrl)
                         .accessToken(accessToken)
                         .tokenExpiresAt(tokenExpiresAt)
-                        .cameraMicGranted(false)
                         .build()); // 신규 유저면 생성
         return userRepository.save(user);
     }
