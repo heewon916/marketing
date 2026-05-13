@@ -21,8 +21,6 @@ export const authApi = {
 
     const authUrl = `${BACKEND_URL}/api/v1/oauth2/authorization/instagram`;
 
-    console.log('Instagram authUrl:', authUrl);
-
     const width = INSTAGRAM_AUTH_POPUP.WIDTH;
     const height = INSTAGRAM_AUTH_POPUP.HEIGHT;
     const left = window.screenX + (window.outerWidth - width) / 2;
