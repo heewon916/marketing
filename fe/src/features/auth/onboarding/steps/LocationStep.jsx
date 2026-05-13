@@ -15,14 +15,12 @@ function LocationStep({ onNext, onPrev }) {
   const savedLatitude = useOnboardingStore((state) => state.latitude);
   const savedLongitude = useOnboardingStore((state) => state.longitude);
 
-  const setStoreName = useOnboardingStore((state) => state.setStoreName);
   const setLocation = useOnboardingStore((state) => state.setLocation);
   const setOperatingHours = useOnboardingStore(
     (state) => state.setOperatingHours
   );
 
   const [storeLocation, setStoreLocation] = useState(() => ({
-    storeName: storeName || '',
     address: savedAddress || '',
     latitude: savedLatitude,
     longitude: savedLongitude,
@@ -48,7 +46,6 @@ function LocationStep({ onNext, onPrev }) {
         const operatingHours = data?.operatingHours ?? {};
 
         const nextStoreLocation = {
-          storeName: storeName || '',
           address: location?.address ?? '',
           latitude:
             location?.latitude !== undefined && location?.latitude !== null
@@ -91,7 +88,7 @@ function LocationStep({ onNext, onPrev }) {
   useEffect(() => {
     const keyword = searchKeyword.trim();
 
-    if (!keyword || keyword === storeLocation.storeName) {
+    if (!keyword) {
       return;
     }
 
@@ -120,26 +117,25 @@ function LocationStep({ onNext, onPrev }) {
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [searchKeyword, storeLocation.storeName]);
+  }, [searchKeyword]);
 
   const handleChangeKeyword = (e) => {
     const nextKeyword = e.target.value;
 
     setSearchKeyword(nextKeyword);
 
-    if (!nextKeyword.trim() || nextKeyword === storeLocation.storeName) {
+    if (!nextKeyword.trim()) {
       setPlaces([]);
       setIsSearching(false);
     }
   };
 
   const handleSelectPlace = (place) => {
-    const nextStoreLocation = {
-      storeName: place.place_name,
-      address: place.road_address_name || place.address_name,
-      latitude: Number(place.y),
-      longitude: Number(place.x),
-    };
+  const nextStoreLocation = {
+    address: place.road_address_name || place.address_name,
+    latitude: Number(place.y),
+    longitude: Number(place.x),
+  };
 
     setStoreLocation(nextStoreLocation);
     setSearchKeyword(place.place_name);
@@ -149,12 +145,12 @@ function LocationStep({ onNext, onPrev }) {
   };
 
   const handleSave = () => {
-    if (!storeLocation.address || !storeLocation.latitude || !storeLocation.longitude) {
+    if (
+      !storeLocation.address ||
+      !storeLocation.latitude ||
+      !storeLocation.longitude
+    ) {
       return;
-    }
-
-    if (storeLocation.storeName) {
-      setStoreName(storeLocation.storeName);
     }
 
     setLocation({

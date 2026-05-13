@@ -13,6 +13,7 @@ import LoadingStep from '@/features/auth/onboarding/steps/LoadingStep.jsx';
 import PosSuccessStep from '@/features/auth/onboarding/steps/PosSuccessStep.jsx';
 import StoreSelectStep from '@/features/auth/onboarding/steps/StoreSelectStep.jsx';
 import StoreLoadingStep from '@/features/auth/onboarding/steps/StoreLoadingStep.jsx';
+import StoreSearchFailStep from '@/features/auth/onboarding/steps/StoreSearchFailStep.jsx';
 import StoreNameStep from '@/features/auth/onboarding/steps/StoreNameStep.jsx';
 import BusinessTypeStep from '@/features/auth/onboarding/steps/BusinessTypeStep.jsx';
 import LocationStep from '@/features/auth/onboarding/steps/LocationStep.jsx';
@@ -79,8 +80,8 @@ function OnboardingPage() {
     if (currentStep <= 6) return 2;
     if (currentStep === 7) return 3;
     if (currentStep === 8) return 4;
-    if (currentStep <= 10) return 5;
-    if (currentStep <= 14) return 6;
+    if (currentStep <= 13) return 5;
+    if (currentStep <= 15) return 6;
     return 7;
   };
 
@@ -176,33 +177,57 @@ function OnboardingPage() {
         return <LoadingStep {...commonProps} />;
 
       case 8:
-        return <PosSuccessStep {...commonProps} />;
+        return (
+          <PosSuccessStep
+            {...commonProps}
+            onNext={() => moveToStep(9)}
+          />
+        );
 
       case 9:
         return (
-          <StoreSelectStep
+          <StoreLoadingStep
             {...commonProps}
-            onNext={() => moveToStep(13)}
-            onManualInput={() => moveToStep(11)}
+            onSearchSuccess={() => moveToStep(10)}
+            onSearchFail={() => moveToStep(11)}
           />
         );
 
       case 10:
-        return <StoreLoadingStep {...commonProps} />;
+        return (
+          <StoreSelectStep
+            {...commonProps}
+            onNext={() => moveToStep(14)}
+          />
+        );
 
       case 11:
-        return <StoreNameStep {...commonProps} />;
+        return (
+          <StoreSearchFailStep
+            {...commonProps}
+            onNext={() => moveToStep(12)}
+          />
+        );
 
       case 12:
-        return <BusinessTypeStep {...commonProps} />;
+        return (
+          <StoreNameStep
+            {...commonProps}
+            onSearchSuccess={() => moveToStep(10)}
+            onSearchFail={() => moveToStep(13)}
+          />
+        );
 
       case 13:
-        return <LocationStep {...commonProps} />;
+        return <BusinessTypeStep {...commonProps} />;
 
       case 14:
-        return <TimeStep {...commonProps} />;
+        return <LocationStep {...commonProps} />;
 
       case 15:
+        return <TimeStep {...commonProps} />;
+
+      case 16:
         return <CompleteStep {...commonProps} />;
 
       default:
