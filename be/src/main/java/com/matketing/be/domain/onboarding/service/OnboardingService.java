@@ -155,25 +155,22 @@ public class OnboardingService {
                 Map<String, Object> body = response.getBody();
                 if ("SUCCESS".equals(body.get(KEY_RESULT_TYPE))) {
                     Object successObj = body.get(KEY_SUCCESS);
-                    if (successObj instanceof Map<?, ?> successMap && successMap.containsKey("data")) {
-                        Object dataObj = successMap.get("data");
-                        if (dataObj instanceof List<?> itemList) {
-                            for (Object itemObj : itemList) {
-                                if (itemObj instanceof Map<?, ?> itemMap) {
-                                    String title = itemMap.get("title") instanceof String s ? s : "이름 없음";
-                                    String description = itemMap.get("description") instanceof String s ? s : null;
-                                    int priceValue = 0;
-                                    Object priceObj = itemMap.get("price");
-                                    if (priceObj instanceof Map<?, ?> priceMap) {
-                                        priceValue = priceMap.get("priceValue") instanceof Number n ? n.intValue() : 0;
-                                    }
-                                    menus.add(Menu.builder()
-                                            .store(store)
-                                            .name(title)
-                                            .description(description)
-                                            .price(priceValue)
-                                            .build());
+                    if (successObj instanceof List<?> itemList) {
+                        for (Object itemObj : itemList) {
+                            if (itemObj instanceof Map<?, ?> itemMap) {
+                                String title = itemMap.get("title") instanceof String s ? s : "이름 없음";
+                                String description = itemMap.get("description") instanceof String s ? s : null;
+                                int priceValue = 0;
+                                Object priceObj = itemMap.get("price");
+                                if (priceObj instanceof Map<?, ?> priceMap) {
+                                    priceValue = priceMap.get("priceValue") instanceof Number n ? n.intValue() : 0;
                                 }
+                                menus.add(Menu.builder()
+                                        .store(store)
+                                        .name(title)
+                                        .description(description)
+                                        .price(priceValue)
+                                        .build());
                             }
                         }
                     }
