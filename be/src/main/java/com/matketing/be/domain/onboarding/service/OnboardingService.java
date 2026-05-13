@@ -7,9 +7,7 @@ import com.matketing.be.domain.onboarding.repository.PosPinRepository;
 import com.matketing.be.domain.store.entity.CategoryEnumType;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.entity.Menu;
-import com.matketing.be.domain.store.entity.StoreHours;
 import com.matketing.be.domain.store.repository.MenuRepository;
-import com.matketing.be.domain.store.repository.StoreHoursRepository;
 import com.matketing.be.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,23 +32,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class OnboardingService {
 
-    private static final String KEY_STATUS = "status";
     private static final String KEY_SUCCESS = "success";
-    private static final String KEY_DATA = "data";
-    private static final String KEY_PLACE_ID = "place_id";
-    private static final String KEY_ADDRESS = "address";
-    private static final String KEY_BUSINESS_HOURS = "business_hours";
-    private static final String KEY_MENUS = "menus";
-    private static final String KEY_MENU_NAME = "menu_name";
-    private static final String KEY_PRICE = "price";
-    private static final String KEY_MENU_DESCRIPTION = "menu_description";
     private static final String KEY_RESULT_TYPE = "resultType";
     private static final String KEY_NAME = "name";
 
     private final PosPinRepository posPinRepository;
     private final StoreRepository storeRepository;
     private final MenuRepository menuRepository;
-    private final StoreHoursRepository storeHoursRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${TOSS_ACCESS_KEY:}")
@@ -67,7 +54,9 @@ public class OnboardingService {
         log.info("Registering PIN: {} for merchant: {}", pin, merchantId);
         try {
             java.nio.file.Files.writeString(java.nio.file.Paths.get("/app/pin_debug.log"), "REGISTER: " + pin + " for " + merchantId + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch(Exception e) {}
+        } catch(Exception e) {
+            log.warn("Failed to write pin_debug.log: {}", e.getMessage());
+        }
 
         // Redis에 난수와 merchantId 저장 (엔티티에 설정된 TTL 3분 자동 적용)
         posPinRepository.save(PosPin.builder()
@@ -80,7 +69,9 @@ public class OnboardingService {
         log.info("Verifying PIN: {}", pin);
         try {
             java.nio.file.Files.writeString(java.nio.file.Paths.get("/app/pin_debug.log"), "VERIFY: " + pin + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
-        } catch(Exception e) {}
+        } catch(Exception e) {
+            log.warn("Failed to write pin_debug.log: {}", e.getMessage());
+        }
 
         Optional<PosPin> posPinOptional = posPinRepository.findById(pin);
 
@@ -95,11 +86,6 @@ public class OnboardingService {
         } else {
             return new PinVerifyResponse(false, null, "유효하지 않거나 만료된 PIN 번호입니다.");
         }
-    }
-
-    @Transactional
-    public void invalidatePin(String pin) {
-        posPinRepository.deleteById(pin);
     }
 
     @Transactional
