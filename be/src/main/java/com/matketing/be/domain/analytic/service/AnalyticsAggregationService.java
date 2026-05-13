@@ -95,6 +95,12 @@ public class AnalyticsAggregationService {
             // TODO: Meta 수집 단계에서 store.createdAt 이전 게시물/지표는 수집하지 않도록 필터링 필요
             List<InstagramMetric> metrics = instagramMetricRepository.findByStore_IdAndWeekStart(store.getId(),
                     lastWeekStart);
+            if (metrics.isEmpty()) {
+                log.info("instagram_metrics가 비어 있어 기존 account_weekly_metrics 값을 보존하고 skip. storeId={}, weekStart={}",
+                        store.getId(), lastWeekStart);
+                skippedStores++;
+                continue;
+            }
 
             int totalReach = 0;
             int totalSaves = 0;
