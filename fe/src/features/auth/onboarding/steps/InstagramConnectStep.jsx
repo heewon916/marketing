@@ -21,7 +21,7 @@ function InstagramConnectStep({ onNext }) {
         <OnboardingHeader
           title={
             <>
-              마케팅 이용을 위해
+              맡케팅 이용을 위해
               <br />
               <span className="text-primary-100 font-extrabold">
                 인스타그램 계정 연동
