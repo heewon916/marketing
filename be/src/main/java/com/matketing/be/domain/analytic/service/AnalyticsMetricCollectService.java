@@ -48,9 +48,19 @@ public class AnalyticsMetricCollectService {
      */
     @Transactional(readOnly = true)
     public WeeklyMetricCollectResult collectLastWeek() {
-        LocalDate lastWeekStart = getLastWeekStart();
-        LocalDate weekEndExclusiveDate = lastWeekStart.plusWeeks(1);
-        OffsetDateTime weekStartAt = toStartOfDay(lastWeekStart);
+        return collect(null);
+    }
+
+    /**
+     * Instagram User Insights API로 지정 주차의 store별 계정 단위 지표를 수집하여 account_weekly_metrics에 저장한다.
+     */
+    @Transactional(readOnly = true)
+    public WeeklyMetricCollectResult collect(LocalDate requestedWeekStart) {
+        LocalDate targetWeekStart = requestedWeekStart != null
+                ? requestedWeekStart
+                : getLastWeekStart();
+        LocalDate weekEndExclusiveDate = targetWeekStart.plusWeeks(1);
+        OffsetDateTime weekStartAt = toStartOfDay(targetWeekStart);
         OffsetDateTime weekEndExclusiveAt = toStartOfDay(weekEndExclusiveDate);
 
         int collectedStores = 0;
@@ -60,7 +70,7 @@ public class AnalyticsMetricCollectService {
         List<Store> stores = storeRepository.findAll();
         for (Store store : stores) {
             try {
-                Optional<User> userOptional = findCollectableUser(store, weekEndExclusiveAt, lastWeekStart);
+                Optional<User> userOptional = findCollectableUser(store, weekEndExclusiveAt, targetWeekStart);
                 if (userOptional.isEmpty()) {
                     skippedStores++;
                     continue;
@@ -69,7 +79,7 @@ public class AnalyticsMetricCollectService {
                 OffsetDateTime effectiveStartAt = resolveEffectiveStartAt(store, weekStartAt);
                 if (!effectiveStartAt.equals(weekStartAt)) {
                     log.info("Apply partial-week collection start. storeId={}, weekStart={}, effectiveStartAt={}",
-                            store.getId(), lastWeekStart, effectiveStartAt);
+                            store.getId(), targetWeekStart, effectiveStartAt);
                 }
 
                 User user = userOptional.get();
@@ -93,19 +103,19 @@ public class AnalyticsMetricCollectService {
                 BigDecimal visitIntentScore = calculateRate(totalSaves + totalShares, totalReach);
                 BigDecimal achievementRate = calculateRate(actualPostCount, TEMP_TARGET_POST_COUNT);
 
-                upsertMetric(store.getId(), lastWeekStart, totalReach, totalSaves, totalShares,
+                upsertMetric(store.getId(), targetWeekStart, totalReach, totalSaves, totalShares,
                         actualPostCount, achievementRate, visitIntentScore);
                 collectedStores++;
             } catch (Exception exception) {
                 failedStores++;
-                log.warn("meta weekly metrics collection failed. storeId={}, weekStart={}, message={}",
-                        store.getId(), lastWeekStart, exception.getMessage(), exception);
+                log.warn("meta weekly metrics collection failed. storeId={}, weekStart={}, errorType={}",
+                        store.getId(), targetWeekStart, exception.getClass().getSimpleName());
             }
         }
 
         return new WeeklyMetricCollectResult(
-                lastWeekStart,
-                lastWeekStart.plusDays(6),
+                targetWeekStart,
+                targetWeekStart.plusDays(6),
                 collectedStores,
                 skippedStores,
                 failedStores
