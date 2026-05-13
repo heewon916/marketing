@@ -12,7 +12,7 @@ services:
       - "443:443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
-    # volumes 지시어 삭제
+    # volumes 지시어 삭제하기
     depends_on:
       - spring
       - frontend
