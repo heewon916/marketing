@@ -33,8 +33,7 @@ public class AnalyticsController {
         @Operation(summary = "주간 가게 노출 수 조회", description = "지난주 월~일 기준 가게 노출 수를 조회합니다.")
         @GetMapping("/reach")
         public ResponseEntity<ReachResponse> getReach(
-                        @AuthenticationPrincipal AuthUser authUser
-        ) {
+                        @AuthenticationPrincipal AuthUser authUser) {
                 return ResponseEntity.ok(
                                 analyticsQueryService.getReach(authUser.getId()));
         }
@@ -46,8 +45,7 @@ public class AnalyticsController {
         @Operation(summary = "주간 실질 방문 의사 지수 조회", description = "지난주 월~일 기준 실질 방문 의사 지수를 조회합니다.")
         @GetMapping("/visit-intent")
         public ResponseEntity<VisitIntentResponse> getVisitIntent(
-                        @AuthenticationPrincipal AuthUser authUser
-        ) {
+                        @AuthenticationPrincipal AuthUser authUser) {
                 return ResponseEntity.ok(
                                 analyticsQueryService.getVisitIntent(authUser.getId()));
         }
@@ -59,8 +57,7 @@ public class AnalyticsController {
         @Operation(summary = "주간 포스팅 달성률 조회", description = "이번 주 월~일 기준 포스팅 달성률을 조회합니다.")
         @GetMapping("/achievement")
         public ResponseEntity<AchievementResponse> getAchievement(
-                        @AuthenticationPrincipal AuthUser authUser
-        ) {
+                        @AuthenticationPrincipal AuthUser authUser) {
                 return ResponseEntity.ok(
                                 analyticsQueryService.getAchievement(authUser.getId()));
         }
