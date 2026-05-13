@@ -112,8 +112,7 @@ public class OnboardingService {
 
         if (store != null) {
             // [기존 행 덮어쓰기 (Upsert - Update)]
-            store.updateMerchantInfo(merchantId, storeName);
-            store.updateAllDetails(storeName, CategoryEnumType.카페, null, "", null, null, null);
+            store.updateAllDetails(merchantId, storeName, CategoryEnumType.카페, null, "", null, null, null);
 
             // 중요: 이탈 전에 임시로 저장되었던 메뉴들이 중복으로 쌓이지 않게 싹 비워줍니다.
             menuRepository.deleteAllByStoreId(store.getId());
@@ -137,7 +136,7 @@ public class OnboardingService {
 
         // 3. 메뉴 이름들을 분석하여 카테고리 자동 유추 후 Store 업데이트
         CategoryEnumType guessedCategory = com.matketing.be.domain.onboarding.util.CategoryInferenceUtil.guessCategory(tossMenus);
-        store.updateAllDetails(storeName, guessedCategory, null, "", null, null, null);
+        store.updateAllDetails(null, storeName, guessedCategory, null, "", null, null, null);
 
         log.info("Successfully synced Toss store data for merchantId: {}", merchantId);
 
@@ -194,24 +193,6 @@ public class OnboardingService {
         return menus;
     }
 
-    private CategoryEnumType guessCategory(List<Menu> menus) {
-        int cafeScore = 0, pubScore = 0, bakeryScore = 0;
-
-        for (Menu m : menus) {
-            if (m.getName() == null) continue;
-            String n = m.getName();
-
-            if (n.contains("커피") || n.contains("아메리카노") || n.contains("라떼")) cafeScore++;
-            if (n.contains("소주") || n.contains("맥주") || n.contains("하이볼") || n.contains("안주")) pubScore++;
-            if (n.contains("빵") || n.contains("케이크") || n.contains("크루아상") || n.contains("마카롱")) bakeryScore++;
-        }
-
-        if (cafeScore > pubScore && cafeScore > bakeryScore) return CategoryEnumType.카페;
-        if (pubScore > cafeScore && pubScore > bakeryScore) return CategoryEnumType.주점;
-        if (bakeryScore > cafeScore && bakeryScore > pubScore) return CategoryEnumType.제과점;
-
-        return CategoryEnumType.식당; // 기본값
-    }
 
     @Transactional
     public SyncResponse updateStoreData(UUID storeId, UUID userId, com.matketing.be.domain.onboarding.dto.StoreUpdateRequest request) {
@@ -223,6 +204,7 @@ public class OnboardingService {
         }
 
         store.updateAllDetails(
+                null,
                 request.storeName(),
                 request.category(),
                 request.ownerPersona(),
@@ -235,107 +217,10 @@ public class OnboardingService {
         return new SyncResponse(true, "Store data updated successfully", store.getId().toString(), store.getStoreName(), null, null);
     }
 
-    private Map<String, String> fetchPlaceInfo(String storeName) {
-        try {
-            Map<String, Object> searchResult = searchPlacesViaCrawler(storeName);
-            if (searchResult == null || !KEY_SUCCESS.equals(searchResult.get(KEY_STATUS))) {
-                return Map.of();
-            }
 
-            Object dataObj = searchResult.get(KEY_DATA);
-            if (!(dataObj instanceof List<?> dataList) || dataList.isEmpty()) {
-                return Map.of();
-            }
 
-            Object firstPlaceObj = dataList.getFirst();
-            if (!(firstPlaceObj instanceof Map<?, ?> firstPlace)) {
-                return Map.of();
-            }
 
-            String pId = firstPlace.get(KEY_PLACE_ID) instanceof String s ? s : null;
-            String addr = firstPlace.get(KEY_ADDRESS) instanceof String s ? s : "";
-            return Map.of(KEY_PLACE_ID, pId == null ? "" : pId, KEY_ADDRESS, addr);
-        } catch (Exception e) {
-            log.warn("Crawler search failed for keyword {}: {}", storeName, e.getMessage());
-        }
-        return Map.of();
-    }
 
-    private void fetchAndSaveStoreDetails(String placeId, Store store) {
-        try {
-            Map<String, Object> detailResult = getPlaceDetailViaCrawler(placeId);
-            if (detailResult == null || !KEY_SUCCESS.equals(detailResult.get(KEY_STATUS))) return;
-
-            Object dataObj = detailResult.get(KEY_DATA);
-            if (!(dataObj instanceof Map<?, ?> dataMap)) return;
-
-            saveStoreHours(store, dataMap.get(KEY_BUSINESS_HOURS));
-            saveMenus(store, dataMap.get(KEY_MENUS));
-
-        } catch (Exception e) {
-            log.warn("Crawler detail failed for placeId {}: {}", placeId, e.getMessage());
-        }
-    }
-
-    private void saveStoreHours(Store store, Object hoursObj) {
-        if (!(hoursObj instanceof Map<?, ?> hoursMap)) return;
-
-        StoreHours storeHours = StoreHours.builder()
-                .store(store)
-                .mondayOpen(parseTime(hoursMap.get("mon_hours"), true))
-                .mondayClose(parseTime(hoursMap.get("mon_hours"), false))
-                .tuesdayOpen(parseTime(hoursMap.get("tues_hours"), true))
-                .tuesdayClose(parseTime(hoursMap.get("tues_hours"), false))
-                .wednesdayOpen(parseTime(hoursMap.get("wed_hours"), true))
-                .wednesdayClose(parseTime(hoursMap.get("wed_hours"), false))
-                .thursdayOpen(parseTime(hoursMap.get("thur_hours"), true))
-                .thursdayClose(parseTime(hoursMap.get("thur_hours"), false))
-                .fridayOpen(parseTime(hoursMap.get("fri_hours"), true))
-                .fridayClose(parseTime(hoursMap.get("fri_hours"), false))
-                .saturdayOpen(parseTime(hoursMap.get("sat_hours"), true))
-                .saturdayClose(parseTime(hoursMap.get("sat_hours"), false))
-                .sundayOpen(parseTime(hoursMap.get("sun_hours"), true))
-                .sundayClose(parseTime(hoursMap.get("sun_hours"), false))
-                .build();
-        storeHoursRepository.save(storeHours);
-    }
-
-    private void saveMenus(Store store, Object menusObj) {
-        if (!(menusObj instanceof List<?> menusList)) return;
-
-        for (Object menuObj : menusList) {
-            if (!(menuObj instanceof Map<?, ?> menuMap)) continue;
-
-            String menuName = menuMap.get(KEY_MENU_NAME) instanceof String s ? s : "이름 없음";
-            Integer price = menuMap.get(KEY_PRICE) instanceof Number n ? n.intValue() : 0;
-            String description = menuMap.get(KEY_MENU_DESCRIPTION) instanceof String s ? s : null;
-
-            Menu menu = Menu.builder()
-                    .store(store)
-                    .name(menuName)
-                    .price(price)
-                    .description(description)
-                    .build();
-            menuRepository.save(menu);
-        }
-    }
-
-    private LocalTime parseTime(Object timeRangeObj, boolean isOpen) {
-        if (!(timeRangeObj instanceof String timeRange) || timeRange.isEmpty() || "휴무".equals(timeRange)) {
-            return null;
-        }
-        try {
-            String[] parts = timeRange.split("-");
-            if (parts.length == 2) {
-                String timeStr = isOpen ? parts[0].trim() : parts[1].trim();
-                if ("24:00".equals(timeStr)) return LocalTime.MAX;
-                return LocalTime.parse(timeStr);
-            }
-        } catch (Exception e) {
-            log.trace("Failed to parse time range: {}", timeRange);
-        }
-        return null;
-    }
 
     private String getMerchantNameFromToss(String merchantId) {
         try {

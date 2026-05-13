@@ -77,7 +77,8 @@ public class Store {
         this.operatingHours = operatingHours;
     }
 
-    public void updateAllDetails(String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+    public void updateAllDetails(String merchantId, String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+        if (merchantId != null) this.merchantId = merchantId;
         if (storeName != null) this.storeName = storeName;
         if (category != null) this.category = category;
         if (ownerPersona != null) this.ownerPersona = ownerPersona;
@@ -85,10 +86,5 @@ public class Store {
         if (latitude != null) this.latitude = latitude;
         if (longitude != null) this.longitude = longitude;
         if (operatingHours != null) this.operatingHours = operatingHours;
-    }
-
-    public void updateMerchantInfo(String merchantId, String storeName) {
-        if (merchantId != null) this.merchantId = merchantId;
-        if (storeName != null) this.storeName = storeName;
     }
 }
