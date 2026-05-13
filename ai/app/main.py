@@ -30,7 +30,12 @@ from app.logging import (
 )
 from app.perfectframe.dependencies import get_dependencies
 from app.perfectframe.extractors import BestFrameExtractor
+from app.perfectframe.image_evaluators import NIMAEvaluator, build_image_evaluator
 from app.perfectframe.schemas import ExtractorConfig
+from app.perfectframe.weights import (
+    NimaWeightsUnavailableError,
+    ensure_nima_weights_available,
+)
 from app.services.frame_extraction import (
     FrameExtractionService,
     S3DraftUploader,
@@ -159,11 +164,53 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         output_directory=temp_root,
     )
     dependencies = get_dependencies(extractor_config)
+
+    nima_weights_path: Path | None = None
+    try:
+        nima_weights_path = await ensure_nima_weights_available()
+        logger.info(
+            "NIMA weights ready.",
+            extra=build_log_extra(
+                "app.startup.nima_weights.ready",
+                component="startup",
+                stage="nima_weights_prepare",
+                outcome="succeeded",
+                weights_path=str(nima_weights_path),
+            ),
+        )
+    except NimaWeightsUnavailableError:
+        logger.warning(
+            "NIMA weights unavailable; sharpness fallback will be used.",
+            exc_info=True,
+            extra=build_log_extra(
+                "app.startup.nima_weights.unavailable",
+                component="startup",
+                stage="nima_weights_prepare",
+                outcome="failed",
+                error_type="nima_weights_unavailable",
+            ),
+        )
+
+    image_evaluator = build_image_evaluator(nima_weights_path)
+    app.state.frame_evaluator_kind = (
+        "nima" if isinstance(image_evaluator, NIMAEvaluator) else "sharpness"
+    )
+    logger.info(
+        "Frame evaluator selected.",
+        extra=build_log_extra(
+            "app.startup.frame_evaluator_selected",
+            component="startup",
+            stage="frame_evaluator_select",
+            outcome="succeeded",
+            evaluator_kind=app.state.frame_evaluator_kind,
+        ),
+    )
+
     extractor = BestFrameExtractor(
         dependencies.config,
         dependencies.image_processor,
         dependencies.video_processor,
-        dependencies.evaluator,
+        image_evaluator,
     )
 
     app.state.frame_extractor_config = extractor_config

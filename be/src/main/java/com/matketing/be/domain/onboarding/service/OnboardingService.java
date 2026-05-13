@@ -54,10 +54,10 @@ public class OnboardingService {
     private final StoreHoursRepository storeHoursRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
-    @Value("${toss.api.access-key:}")
+    @Value("${TOSS_ACCESS_KEY:}")
     private String tossAccessKey;
 
-    @Value("${toss.api.secret-key:}")
+    @Value("${TOSS_SECRET_KEY:}")
     private String tossSecretKey;
 
     @Value("${FASTAPI_BASE_URL:http://fastapi:8000}")
@@ -68,7 +68,7 @@ public class OnboardingService {
         try {
             java.nio.file.Files.writeString(java.nio.file.Paths.get("/app/pin_debug.log"), "REGISTER: " + pin + " for " + merchantId + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch(Exception e) {}
-        
+
         // Redis에 난수와 merchantId 저장 (엔티티에 설정된 TTL 3분 자동 적용)
         posPinRepository.save(PosPin.builder()
                 .pin(pin)
@@ -81,7 +81,7 @@ public class OnboardingService {
         try {
             java.nio.file.Files.writeString(java.nio.file.Paths.get("/app/pin_debug.log"), "VERIFY: " + pin + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch(Exception e) {}
-        
+
         Optional<PosPin> posPinOptional = posPinRepository.findById(pin);
 
         if (posPinOptional.isPresent()) {
@@ -107,26 +107,101 @@ public class OnboardingService {
         log.info("Starting sync for user: {}, merchant: {}", userId, merchantId);
 
         String storeName = getMerchantNameFromToss(merchantId);
-        CategoryEnumType category = CategoryEnumType.카페; // Toss API에서 category를 주지 않으므로 기본값 또는 추후 연동
 
-        Map<String, String> placeInfo = fetchPlaceInfo(storeName);
-        String placeId = placeInfo.get(KEY_PLACE_ID);
-        String address = placeInfo.getOrDefault(KEY_ADDRESS, "");
-
+        // 1. 일단 주소 없이 Store 껍데기 생성 (연관관계를 위해)
         Store store = storeRepository.save(Store.builder()
                 .userId(userId)
                 .merchantId(merchantId)
                 .storeName(storeName)
-                .category(category)
-                .address(address)
+                .category(CategoryEnumType.카페) // 임시 기본값 수정
+                .address("")
                 .build());
 
-        if (placeId != null && !placeId.isEmpty()) {
-            fetchAndSaveStoreDetails(placeId, store);
+        // 2. 토스에서 정확한 메뉴 리스트 가져오기 및 DB 즉시 저장
+        List<Menu> tossMenus = fetchMenusFromToss(merchantId, store);
+        if (!tossMenus.isEmpty()) {
+            menuRepository.saveAll(tossMenus);
         }
 
-        log.info("Successfully synced store data for merchantId: {}", merchantId);
-        return new SyncResponse(true, "가맹점 정보 동기화 및 DB 저장 완료", store.getId().toString());
+        // 3. 메뉴 이름들을 분석하여 카테고리 자동 유추 후 Store 업데이트
+        CategoryEnumType guessedCategory = com.matketing.be.domain.onboarding.util.CategoryInferenceUtil.guessCategory(tossMenus);
+        store.updateAllDetails(storeName, guessedCategory, null, "", null, null, null);
+
+        log.info("Successfully synced Toss store data for merchantId: {}", merchantId);
+        
+        // 프론트엔드로 전달할 메뉴 리스트 변환 (간소화)
+        List<Object> responseMenus = tossMenus.stream()
+            .map(m -> Map.of("name", m.getName(), "price", m.getPrice() != null ? m.getPrice() : 0))
+            .collect(java.util.stream.Collectors.toList());
+
+        return new SyncResponse(true, "가맹점 정보 동기화 및 DB 저장 완료", store.getId().toString(), storeName, guessedCategory.name(), responseMenus);
+    }
+
+    private List<Menu> fetchMenusFromToss(String merchantId, Store store) {
+        List<Menu> menus = new java.util.ArrayList<>();
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("x-access-key", tossAccessKey);
+            headers.set("x-secret-key", tossSecretKey);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            String url = "https://open-api.tossplace.com/api-public/openapi/v1/merchants/" + merchantId + "/catalog/items?page=1&size=100";
+
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url, HttpMethod.GET, entity, new ParameterizedTypeReference<>() {});
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Map<String, Object> body = response.getBody();
+                if ("SUCCESS".equals(body.get(KEY_RESULT_TYPE))) {
+                    Object successObj = body.get(KEY_SUCCESS);
+                    if (successObj instanceof Map<?, ?> successMap && successMap.containsKey("data")) {
+                        Object dataObj = successMap.get("data");
+                        if (dataObj instanceof List<?> itemList) {
+                            for (Object itemObj : itemList) {
+                                if (itemObj instanceof Map<?, ?> itemMap) {
+                                    String title = itemMap.get("title") instanceof String s ? s : "이름 없음";
+                                    String description = itemMap.get("description") instanceof String s ? s : null;
+                                    int priceValue = 0;
+                                    Object priceObj = itemMap.get("price");
+                                    if (priceObj instanceof Map<?, ?> priceMap) {
+                                        priceValue = priceMap.get("priceValue") instanceof Number n ? n.intValue() : 0;
+                                    }
+                                    menus.add(Menu.builder()
+                                            .store(store)
+                                            .name(title)
+                                            .description(description)
+                                            .price(priceValue)
+                                            .build());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch menus from Toss API for {}: {}", merchantId, e.getMessage());
+        }
+        return menus;
+    }
+
+    private CategoryEnumType guessCategory(List<Menu> menus) {
+        int cafeScore = 0, pubScore = 0, bakeryScore = 0;
+
+        for (Menu m : menus) {
+            if (m.getName() == null) continue;
+            String n = m.getName();
+
+            if (n.contains("커피") || n.contains("아메리카노") || n.contains("라떼")) cafeScore++;
+            if (n.contains("소주") || n.contains("맥주") || n.contains("하이볼") || n.contains("안주")) pubScore++;
+            if (n.contains("빵") || n.contains("케이크") || n.contains("크루아상") || n.contains("마카롱")) bakeryScore++;
+        }
+
+        if (cafeScore > pubScore && cafeScore > bakeryScore) return CategoryEnumType.카페;
+        if (pubScore > cafeScore && pubScore > bakeryScore) return CategoryEnumType.주점;
+        if (bakeryScore > cafeScore && bakeryScore > pubScore) return CategoryEnumType.제과점;
+
+        return CategoryEnumType.식당; // 기본값
     }
 
     @Transactional
@@ -148,7 +223,7 @@ public class OnboardingService {
                 request.operatingHours()
         );
 
-        return new SyncResponse(true, "Store data updated successfully", store.getId().toString());
+        return new SyncResponse(true, "Store data updated successfully", store.getId().toString(), store.getStoreName(), null, null);
     }
 
     private Map<String, String> fetchPlaceInfo(String storeName) {
@@ -256,9 +331,8 @@ public class OnboardingService {
     private String getMerchantNameFromToss(String merchantId) {
         try {
             HttpHeaders headers = new HttpHeaders();
-            // 토스 API 문서(prompt8.md)에 따르면 key pair를 사용한 인증이 필요합니다.
-            // 보통 토스 오픈 API는 Authorization: Bearer {secretKey} 방식을 주로 사용합니다.
-            headers.set("Authorization", "Bearer " + tossSecretKey);
+            headers.set("x-access-key", tossAccessKey);
+            headers.set("x-secret-key", tossSecretKey);
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -269,10 +343,12 @@ public class OnboardingService {
 
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
                 Map<String, Object> body = response.getBody();
-                // API 응답 객체 (Merchant) 자체에 name 필드가 바로 들어옵니다.
-                if (body.containsKey("name")) {
-                    Object nameObj = body.get("name");
-                    return nameObj instanceof String s ? s : "테스트 매장";
+                if ("SUCCESS".equals(body.get(KEY_RESULT_TYPE))) {
+                    Object successObj = body.get(KEY_SUCCESS);
+                    if (successObj instanceof Map<?, ?> successData && successData.containsKey(KEY_NAME)) {
+                        Object nameObj = successData.get(KEY_NAME);
+                        return nameObj instanceof String s ? s : "테스트 매장";
+                    }
                 }
             }
         } catch (Exception e) {

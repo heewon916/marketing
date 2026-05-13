@@ -1,5 +1,8 @@
 import { initializeApp } from "firebase/app"
-import { getAnalytics } from "firebase/analytics";
+import {
+  getAnalytics,
+  isSupported as isAnalyticsSupported,
+} from "firebase/analytics"
 import { getMessaging, isSupported, onMessage } from "firebase/messaging"
 
 const firebaseConfig = {
@@ -13,7 +16,12 @@ const firebaseConfig = {
 }
 
 export const firebaseApp = initializeApp(firebaseConfig)
-export const firebaseanalytics = getAnalytics(firebaseApp);
+
+isAnalyticsSupported().then((supported) => {
+  if (supported) {
+    getAnalytics(firebaseApp)
+  }
+})
 
 export const getFirebaseMessaging = async () => {
   const supported = await isSupported()
@@ -22,17 +30,37 @@ export const getFirebaseMessaging = async () => {
   return getMessaging(firebaseApp)
 }
 
-// 웹이 포그라운드(켜진 상태)일 때도 백그라운드와 동일한 OS 알림 표시
+let unsubscribeForegroundMessage = null
+
 export async function initForegroundMessage() {
+  if (unsubscribeForegroundMessage) return
+
   const messaging = await getFirebaseMessaging()
   if (!messaging) return
 
-  onMessage(messaging, async (payload) => {
+  unsubscribeForegroundMessage = onMessage(messaging, async (payload) => {
+    console.log("[FCM] foreground payload:", payload)
+
+    if (Notification.permission !== "granted") {
+      console.warn("[FCM] 알림 권한 없음:", Notification.permission)
+      return
+    }
+
+    if (!("serviceWorker" in navigator)) {
+      console.warn("[FCM] serviceWorker 미지원")
+      return
+    }
+
     const title = payload.notification?.title || payload.data?.title || "알림"
     const body = payload.notification?.body || payload.data?.body || ""
-    const url = payload.data?.url || payload.fcmOptions?.link || "/"
+    const url =
+      payload.data?.web_url ||
+      payload.data?.url ||
+      payload.fcmOptions?.link ||
+      "/"
 
     const registration = await navigator.serviceWorker.ready
+
     await registration.showNotification(title, {
       body,
       icon: "/pwa-192x192.png",
