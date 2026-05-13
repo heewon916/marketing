@@ -28,13 +28,21 @@ function InstagramConnectStep({ onNext }) {
       const isOnboarded = user?.isOnboarded;
 
       if (isOnboarded) {
-        navigate('/home', { replace: true });
+        navigate('/auth/onboarding', {
+          replace: true,
+          state: {
+            authNotice: {
+              title: '이미 가입된 계정이에요',
+              description: '홈 화면으로 이동할게요.',
+            },
+            redirectTo: '/home',
+          },
+        });
         return;
       }
 
-      navigate('/auth/onboarding?instagram=success', {
-        replace: true,
-      });
+      onNext();
+
     } catch (error) {
       alert(error?.message || '인스타그램 연동에 실패했습니다.');
     } finally {
