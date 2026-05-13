@@ -13,6 +13,8 @@ export async function requestVideoUpload(videoFile, sessionId) {
 	try {
 		const formData = new FormData()
 		formData.append("video_file", videoFile)
+		console.log("보내는 비디오파일:", videoFile)
+		console.log("보내는 formData:", formData)
 
 		const response = await api.post(`/api/v1/contents/${sessionId}/video`, formData, {
 			headers: {
@@ -20,9 +22,13 @@ export async function requestVideoUpload(videoFile, sessionId) {
 			},
 		})
 
-		return response.data ?? {}
+		const data = response.data ?? {}
+		console.log(data)
+		console.log("다음으로 넘어감")
+		return data
 	} catch (error) {
-		// const errorMessage = error.response?.data?.message
-		// throw new Error(errorMessage || "영상 업로드에 실패했습니다.", { cause: error })
+		const errorMessage = error.response?.data?.message
+		console.log(error.response.data)
+		throw new Error(errorMessage || "영상 업로드에 실패했습니다.", { cause: error })
 	}
 }

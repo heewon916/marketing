@@ -31,9 +31,9 @@ export default function QuestionStep({
 					<TitleText text={title} />
 				</section>
 
-				<section className="flex justify-center">
-					<Character src={characterSrc} type={characterType} className="max-h-[40vh]" />
-				</section>
+				   <section className="flex justify-center items-end h-[40vh] min-h-[120px]">
+					   <Character src={characterSrc} type={characterType} className="h-full max-h-[40vh] max-w-[80vw] w-auto" />
+				   </section>
 			</div>
 
 			<section className="fixed bottom-20 left-1/2 z-20 w-full max-w-md -translate-x-1/2">
