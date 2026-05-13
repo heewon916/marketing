@@ -2,7 +2,9 @@ package com.matketing.be.domain.content.service;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.InstagramPublishClient;
 import com.matketing.be.domain.content.client.S3VideoClient;
+import com.matketing.be.domain.content.config.ContentS3Properties;
 import com.matketing.be.domain.content.config.ContentProperties;
 import com.matketing.be.domain.content.dto.AiExtractFramesRequest;
 import com.matketing.be.domain.content.dto.AiExtractFramesResponse;
@@ -33,6 +35,8 @@ import com.matketing.be.domain.content.redis.ContentRedisRepository.RedisImageVa
 import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
+import com.matketing.be.domain.user.entity.User;
+import com.matketing.be.domain.user.repository.UserRepository;
 import com.matketing.be.global.auth.jwt.AuthUser;
 import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
@@ -89,6 +93,9 @@ public class ContentService {
     private final S3VideoClient s3VideoClient;
     private final ContentRedisRepository contentRedisRepository;
     private final ContentProperties contentProperties;
+    private final ContentS3Properties contentS3Properties;
+    private final InstagramPublishClient instagramPublishClient;
+    private final UserRepository userRepository;
     private final StoreRepository storeRepository;
     private final WeatherContextProvider weatherService;
 
@@ -329,10 +336,50 @@ public class ContentService {
     }
 
     public ContentPublishResponseDto publishContent(UUID sessionId) {
+        ContentRedisSession session = getRedisSessionOrThrow(sessionId);
+        if (session.contentId() != null && !session.contentId().isBlank()) {
+            return new ContentPublishResponseDto(
+                    session.contentId(),
+                    "completed",
+                    "이미 발행된 게시물입니다"
+            );
+        }
+        if (session.publishId() != null && !session.publishId().isBlank()
+                && session.instagramContainerId() != null && !session.instagramContainerId().isBlank()
+        ) {
+            return new ContentPublishResponseDto(
+                    session.publishId(),
+                    safePublishProgress(session.publishProgress()),
+                    "발행이 진행 중입니다"
+            );
+        }
+        if (session.caption() == null || session.caption().isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST);
+        }
+
+        User user = currentUser();
+        validateInstagramToken(user);
+        List<String> imageUrls = session.photos().stream()
+                .map(this::toPublicMediaUrl)
+                .toList();
+        String videoUrl = session.video() == null || session.video().isBlank()
+                ? null
+                : toPublicMediaUrl(session.video());
+        if (imageUrls.isEmpty() && (videoUrl == null || videoUrl.isBlank())) {
+            throw new BusinessException(ErrorCode.INSTAGRAM_MEDIA_REQUIRED);
+        }
+
         String publishId = UUID.randomUUID().toString();
         boolean queued = contentRedisRepository.queuePublish(sessionId.toString(), publishId);
         if (!queued) {
             throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+        }
+        try {
+            String containerId = createInstagramContainer(user, session.caption(), imageUrls, videoUrl);
+            contentRedisRepository.markPublishContainerCreated(sessionId.toString(), containerId);
+        } catch (BusinessException exception) {
+            contentRedisRepository.failPublish(sessionId.toString(), exception.getMessage());
+            throw exception;
         }
         return new ContentPublishResponseDto(publishId, "queued", "발행이 시작되었습니다");
     }
@@ -349,12 +396,47 @@ public class ContentService {
             );
         }
 
+        if (session.publishId() == null || session.publishId().isBlank()) {
+            return new ContentPublishStatusResponseDto(null, "not_started", null, null);
+        }
+
+        if ("failed".equalsIgnoreCase(session.publishProgress())) {
+            return new ContentPublishStatusResponseDto(null, "failed", null, null);
+        }
+
+        if (session.instagramContainerId() == null || session.instagramContainerId().isBlank()) {
+            return new ContentPublishStatusResponseDto(null, safePublishProgress(session.publishProgress()), null, null);
+        }
+
         if (session.storeId() == null || session.storeId().isBlank()) {
             throw new BusinessException(ErrorCode.STORE_NOT_FOUND);
         }
 
-        String instagramMediaId = "local-" + sessionId;
-        String instagramPermalink = "https://instagram.com/p/" + sessionId;
+        User user = currentUser();
+        validateInstagramToken(user);
+        String instagramMediaId;
+        String instagramPermalink;
+        try {
+            String containerStatus = instagramPublishClient.getContainerStatus(user.getAccessToken(), session.instagramContainerId());
+            if ("IN_PROGRESS".equalsIgnoreCase(containerStatus)) {
+                contentRedisRepository.markPublishInProgress(sessionId.toString());
+                return new ContentPublishStatusResponseDto(null, "in_progress", null, null);
+            }
+            if (!"FINISHED".equalsIgnoreCase(containerStatus)) {
+                contentRedisRepository.failPublish(sessionId.toString(), "Instagram container status: " + containerStatus);
+                return new ContentPublishStatusResponseDto(null, "failed", null, null);
+            }
+
+            instagramMediaId = instagramPublishClient.publishContainer(
+                    user.getInstagramUserId(),
+                    user.getAccessToken(),
+                    session.instagramContainerId()
+            );
+            instagramPermalink = instagramPublishClient.getPermalink(user.getAccessToken(), instagramMediaId);
+        } catch (BusinessException exception) {
+            contentRedisRepository.failPublish(sessionId.toString(), exception.getMessage());
+            return new ContentPublishStatusResponseDto(null, "failed", null, null);
+        }
         Content content = Content.builder()
                 .storeId(UUID.fromString(session.storeId()))
                 .sessionId(sessionId)
@@ -522,8 +604,72 @@ public class ContentService {
         return authUser;
     }
 
+    private User currentUser() {
+        return userRepository.findById(currentAuthUser().getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
     private String currentUserId() {
         return currentAuthUser().getId().toString();
+    }
+
+    private void validateInstagramToken(User user) {
+        if (user.getAccessToken() == null || user.getAccessToken().isBlank()) {
+            throw new BusinessException(ErrorCode.INSTAGRAM_TOKEN_REQUIRED);
+        }
+        if (user.getInstagramUserId() == null || user.getInstagramUserId().isBlank()) {
+            throw new BusinessException(ErrorCode.INSTAGRAM_TOKEN_REQUIRED);
+        }
+        if (user.getTokenExpiresAt() != null && user.getTokenExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new BusinessException(ErrorCode.INSTAGRAM_TOKEN_REQUIRED);
+        }
+    }
+
+    private String createInstagramContainer(User user, String caption, List<String> imageUrls, String videoUrl) {
+        if (videoUrl != null && !videoUrl.isBlank()) {
+            return instagramPublishClient.createReelsContainer(
+                    user.getInstagramUserId(),
+                    user.getAccessToken(),
+                    videoUrl,
+                    caption
+            );
+        }
+        if (imageUrls.size() == 1) {
+            return instagramPublishClient.createImageContainer(
+                    user.getInstagramUserId(),
+                    user.getAccessToken(),
+                    imageUrls.getFirst(),
+                    caption
+            );
+        }
+        return instagramPublishClient.createCarouselContainer(
+                user.getInstagramUserId(),
+                user.getAccessToken(),
+                imageUrls,
+                caption
+        );
+    }
+
+    private String toPublicMediaUrl(String mediaPath) {
+        if (mediaPath == null || mediaPath.isBlank()) {
+            throw new BusinessException(ErrorCode.INSTAGRAM_MEDIA_REQUIRED);
+        }
+        String trimmed = mediaPath.trim();
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+
+        String baseUrl = contentS3Properties.publicBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new BusinessException(ErrorCode.INSTAGRAM_MEDIA_REQUIRED);
+        }
+        String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        String normalizedPath = trimmed.startsWith("/") ? trimmed.substring(1) : trimmed;
+        return normalizedBase + "/" + normalizedPath;
+    }
+
+    private String safePublishProgress(String progress) {
+        return progress == null || progress.isBlank() ? "queued" : progress;
     }
 
     // FastAPI가 돌려준 상태 문자열을 Spring 표준 enum으로 변환한다.

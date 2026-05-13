@@ -10,7 +10,7 @@ import {
   INSTAGRAM_AUTH_PURPOSE,
 } from '@/features/auth/api.js';
 
-function InstagramConnectStep() {
+function InstagramConnectStep({ onNext }) {
   const navigate = useNavigate();
   const [isConnecting, setIsConnecting] = useState(false);
 
@@ -51,7 +51,7 @@ function InstagramConnectStep() {
         <OnboardingHeader
           title={
             <>
-              마케팅 이용을 위해
+              맡케팅 이용을 위해
               <br />
               <span className="text-primary-100 font-extrabold">
                 인스타그램 계정 연동
@@ -64,13 +64,25 @@ function InstagramConnectStep() {
         />
       }
       footer={
-        <Button
-          onClick={handleConnect}
-          disabled={isConnecting}
-          className="w-full font-bold"
-        >
-          {isConnecting ? '연동 확인 중...' : '인스타그램 연동하기'}
-        </Button>
+        <>
+          <Button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="w-full font-bold"
+          >
+            {isConnecting ? '연동 확인 중...' : '인스타그램 연동하기'}
+          </Button>
+
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={onNext}
+              className="mt-3 text-sm font-medium text-gray-400 underline"
+            >
+              개발용: 인스타그램 연동 건너뛰기
+            </button>
+          )}
+        </>
       }
     >
       <div className="w-full flex justify-center mt-10">
