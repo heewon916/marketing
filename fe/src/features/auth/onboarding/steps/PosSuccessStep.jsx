@@ -22,10 +22,21 @@ function PosSuccessStep({ onNext, onPrev }) {
         />
       }
       footer={
+        <>
         <OnboardingFooterButtons
           onPrev={onPrev}
           onNext={onNext}
         />
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={onNext}
+            className="mt-3 text-sm font-medium text-gray-400 underline"
+          >
+            개발용: 인스타그램 연동 건너뛰기
+          </button>
+        )}
+        </>
       }
     >
       <div className="w-full flex justify-center mt-10">
