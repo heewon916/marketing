@@ -18,7 +18,10 @@ public class AnalyticsInternalController {
 
     private final AnalyticsAggregationService analyticsAggregationService;
 
-    @Operation(summary = "주간 콘텐츠 분석 및 저장", description = "수집된 instagram_metrics와 contents 데이터를 기반으로 지난주 주간 통계를 집계해 account_weekly_metrics에 저장합니다. 사용자 직접 호출용 API가 아닙니다.")
+    @Operation(
+            summary = "주간 instagram_metrics 기반 집계",
+            description = "instagram_metrics와 contents 데이터를 기반으로 지난주 통계를 account_weekly_metrics에 집계합니다. 현재 운영/시연 수집 흐름은 /api/v1/internal/metrics/collect입니다. metrics/collect 이후 이 API를 호출하면 account_weekly_metrics 값이 덮일 수 있으며, 대상 주차 instagram_metrics가 비어 있는 store는 기존 값을 0으로 덮지 않고 skip합니다."
+    )
     @PostMapping("/weekly-analysis")
     public ResponseEntity<WeeklyAggregationResult> runWeeklyAnalysis() {
         WeeklyAggregationResult result = analyticsAggregationService.aggregateLastWeek();
