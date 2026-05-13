@@ -174,7 +174,7 @@ function LoadingStep({ onNext, onPrev }) {
             loop
             muted
             playsInline
-            className="w-full h-full justify-center object-contain"
+            className="w-full h-full justify-center object-contain outline-none border-none shadow-none"
           />
         )}
 
