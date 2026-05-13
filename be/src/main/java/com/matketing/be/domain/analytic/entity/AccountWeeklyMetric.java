@@ -55,4 +55,47 @@ public class AccountWeeklyMetric {
 
     @Column(name = "total_shares")
     private Integer totalShares;
+
+    public static AccountWeeklyMetric create(
+            Store store,
+            LocalDate weekStart,
+            Integer totalReach,
+            Integer totalSaves,
+            Integer totalShares,
+            Integer targetPostCount,
+            Integer actualPostCount,
+            BigDecimal achievementRate,
+            BigDecimal visitIntentScore) {
+        AccountWeeklyMetric metric = new AccountWeeklyMetric();
+        metric.store = store;
+        metric.weekStart = weekStart;
+        metric.totalReach = totalReach;
+        metric.totalSaves = totalSaves;
+        metric.totalShares = totalShares;
+        metric.targetPostCount = targetPostCount;
+        metric.actualPostCount = actualPostCount;
+        metric.achievementRate = achievementRate;
+        metric.visitIntentScore = visitIntentScore;
+        metric.createdAt = OffsetDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+        metric.isDeleted = false;
+        return metric;
+    }
+
+    public void updateMetrics(
+            Integer totalReach,
+            Integer totalSaves,
+            Integer totalShares,
+            Integer targetPostCount,
+            Integer actualPostCount,
+            BigDecimal achievementRate,
+            BigDecimal visitIntentScore) {
+        this.totalReach = totalReach;
+        this.totalSaves = totalSaves;
+        this.totalShares = totalShares;
+        this.targetPostCount = targetPostCount;
+        this.actualPostCount = actualPostCount;
+        this.achievementRate = achievementRate;
+        this.visitIntentScore = visitIntentScore;
+        this.isDeleted = false;
+    }
 }
