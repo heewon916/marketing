@@ -901,12 +901,6 @@ async def get_place_detail(place_id: str):
                 timeout_ms=timeout_ms,
             )
             await asyncio.sleep(random.uniform(0.4, 0.8))
-            menu_text, menu_cards = await fetch_menu_tab_data(
-                page,
-                f"{place_url}/{TAB_CONFIG['menu']}",
-                timeout_ms=timeout_ms,
-            )
-            await asyncio.sleep(random.uniform(0.4, 0.8))
             info_text = await fetch_tab_text(
                 page,
                 f"{place_url}/{TAB_CONFIG['information']}",
@@ -920,7 +914,6 @@ async def get_place_detail(place_id: str):
                 if has_any_business_hours_value(structured_business_hours)
                 else parse_business_hours(home_text, info_text)
             )
-            menus = build_menus_with_candidates(menu_text, menu_cards)
             
             await browser.close()
             
@@ -928,8 +921,7 @@ async def get_place_detail(place_id: str):
                 "status": "success", 
                 "data": {
                     "place_id": place_id,
-                    "business_hours": business_hours,
-                    "menus": menus
+                    "business_hours": business_hours
                 }
             }
     except Exception as e:

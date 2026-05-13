@@ -66,7 +66,7 @@ public class OnboardingController {
             @AuthenticationPrincipal AuthUser authUser) { // 인증된 사용자 정보 가져오기
 
         if (request.merchantId() == null) {
-            return ResponseEntity.badRequest().body(new SyncResponse(false, "Merchant ID is required", null));
+            return ResponseEntity.badRequest().body(new SyncResponse(false, "Merchant ID is required", null, null, null, null));
         }
 
         try {
@@ -77,9 +77,9 @@ public class OnboardingController {
             SyncResponse response = onboardingService.syncStoreData(userId, request.merchantId());
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-             return ResponseEntity.status(401).body(new SyncResponse(false, "인증 오류: " + e.getMessage(), null));
+             return ResponseEntity.status(401).body(new SyncResponse(false, "인증 오류: " + e.getMessage(), null, null, null, null));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(new SyncResponse(false, "동기화 실패: " + e.getMessage(), null));
+            return ResponseEntity.internalServerError().body(new SyncResponse(false, "동기화 실패: " + e.getMessage(), null, null, null, null));
         }
     }
 
@@ -98,9 +98,9 @@ public class OnboardingController {
             SyncResponse response = onboardingService.updateStoreData(storeId, userId, request);
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(new SyncResponse(false, "업데이트 실패: " + e.getMessage(), null));
+            return ResponseEntity.badRequest().body(new SyncResponse(false, "업데이트 실패: " + e.getMessage(), null, null, null, null));
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(new SyncResponse(false, "업데이트 서버 오류: " + e.getMessage(), null));
+            return ResponseEntity.internalServerError().body(new SyncResponse(false, "업데이트 서버 오류: " + e.getMessage(), null, null, null, null));
         }
     }
 
