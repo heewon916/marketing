@@ -12,6 +12,28 @@ firebase.initializeApp({
 })
 
 const messaging = firebase.messaging()
+let lastNotificationKey = null
+
+function buildNotificationPayload(payload) {
+  const title = payload.notification?.title || payload.data?.title || "알림"
+  const body = payload.notification?.body || payload.data?.body || ""
+  const url = payload.data?.web_url || payload.data?.url || payload.fcmOptions?.link || "/"
+  const key = `${title}::${body}::${url}`
+
+  return { title, body, url, key }
+}
+
+function shouldSkipDuplicate(key) {
+  if (!key) return false
+  if (lastNotificationKey === key) return true
+  lastNotificationKey = key
+  setTimeout(() => {
+    if (lastNotificationKey === key) {
+      lastNotificationKey = null
+    }
+  }, 2000)
+  return false
+}
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim())
@@ -24,14 +46,15 @@ self.addEventListener("message", (event) => {
 })
 
 messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title || payload.data?.title || "alarm"
-  const body = payload.notification?.body || payload.data?.body || ""
-  const url = payload.data?.web_url || payload.data?.url || payload.fcmOptions?.link || "/"
+  const { title, body, url, key } = buildNotificationPayload(payload)
+  if (shouldSkipDuplicate(key)) return
 
   return self.registration.showNotification(title, {
     body,
-    icon: "/pwa-192x192.png",
-    badge: "/pwa-192x192.png",
+      icon: "/icon_192.png",
+      badge: "/icon_192.png",
+    requireInteraction: true,
+    tag: `fcm-${Date.now()}`,
     data: {
       ...payload.data,
       url,

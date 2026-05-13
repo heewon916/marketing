@@ -24,10 +24,11 @@ export async function requestVideoUpload(videoFile, sessionId) {
 
 		const data = response.data ?? {}
 		console.log(data)
+		console.log("다음으로 넘어감")
 		return data
 	} catch (error) {
 		const errorMessage = error.response?.data?.message
 		console.log(error.response.data)
-		// throw new Error(errorMessage || "영상 업로드에 실패했습니다.", { cause: error })
+		throw new Error(errorMessage || "영상 업로드에 실패했습니다.", { cause: error })
 	}
 }
