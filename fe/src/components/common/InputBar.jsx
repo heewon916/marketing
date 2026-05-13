@@ -6,6 +6,7 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
   const textareaRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
 
   const [text, setText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
@@ -49,6 +50,7 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
         ?.getTracks()
         .forEach((track) => track.stop());
       clearTimeout(errorTimerRef.current);
+      clearTimeout(recordingTimerRef.current);
     };
   }, []);
 
@@ -93,6 +95,16 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
       mediaRecorder.start();
       setIsRecording(true);
       onRecordingChange?.(true);
+
+      // 58초 후 자동으로 녹음 중지
+      recordingTimerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+          onRecordingChange?.(false);
+          showError("음성 입력은 최대 58초까지 가능합니다.");
+        }
+      }, 58000);
     } catch {
       showError("마이크 접근 권한이 필요합니다.");
     }
@@ -102,6 +114,7 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
     onRecordingChange?.(false);
+    clearTimeout(recordingTimerRef.current);
   };
 
   const handleMicClick = () => {
