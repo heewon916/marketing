@@ -86,4 +86,9 @@ public class Store {
         if (longitude != null) this.longitude = longitude;
         if (operatingHours != null) this.operatingHours = operatingHours;
     }
+
+    public void updateMerchantInfo(String merchantId, String storeName) {
+        if (merchantId != null) this.merchantId = merchantId;
+        if (storeName != null) this.storeName = storeName;
+    }
 }

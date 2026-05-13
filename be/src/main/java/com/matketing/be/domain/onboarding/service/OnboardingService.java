@@ -108,14 +108,26 @@ public class OnboardingService {
 
         String storeName = getMerchantNameFromToss(merchantId);
 
-        // 1. 일단 주소 없이 Store 껍데기 생성 (연관관계를 위해)
-        Store store = storeRepository.save(Store.builder()
-                .userId(userId)
-                .merchantId(merchantId)
-                .storeName(storeName)
-                .category(CategoryEnumType.카페) // 임시 기본값 수정
-                .address("")
-                .build());
+        Store store = storeRepository.findFirstByUserId(userId).orElse(null);
+
+        if (store != null) {
+            // [기존 행 덮어쓰기 (Upsert - Update)]
+            store.updateMerchantInfo(merchantId, storeName);
+            store.updateAllDetails(storeName, CategoryEnumType.카페, null, "", null, null, null);
+
+            // 중요: 이탈 전에 임시로 저장되었던 메뉴들이 중복으로 쌓이지 않게 싹 비워줍니다.
+            menuRepository.deleteAllByStoreId(store.getId());
+        } else {
+            // [신규 생성 (Upsert - Insert)]
+            store = Store.builder()
+                    .userId(userId)
+                    .merchantId(merchantId)
+                    .storeName(storeName)
+                    .category(CategoryEnumType.카페) // 임시 기본값 수정
+                    .address("")
+                    .build();
+            store = storeRepository.save(store); // 신규일 때만 save
+        }
 
         // 2. 토스에서 정확한 메뉴 리스트 가져오기 및 DB 즉시 저장
         List<Menu> tossMenus = fetchMenusFromToss(merchantId, store);
