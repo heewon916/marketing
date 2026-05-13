@@ -60,7 +60,7 @@ public class OnboardingService {
     @Value("${TOSS_SECRET_KEY:}")
     private String tossSecretKey;
 
-    @Value("${CRAWLER_BASE_URL:http://crawler:8000}")
+    @Value("${CRAWLER_BASE_URL:http://crawler:8010}")
     private String crawlerBaseUrl;
 
     public void registerPin(String pin, String merchantId) {

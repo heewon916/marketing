@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Button from '@/components/common/Button.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
-import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import CharacterLove from '@/assets/character/CharacterLove.png';
 import CharacterRun from '@/assets/character/CharacterRun.png';
 import CharacterFail from '@/assets/character/CharacterFail.png';
@@ -12,7 +12,7 @@ import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingS
 const MIN_SAVING_TIME = 2000;
 
 const ONBOARDING_SAVE_ERROR_MESSAGE =
-  '온보딩 정보를 저장하는 중 오류가 발생했습니다.\n다시 시도해 주세요.';
+  '온보딩 정보를 저장하는 중 오류가 발생했습니다.';
 
 const wait = (ms) =>
   new Promise((resolve) => {
@@ -28,7 +28,7 @@ const waitRemainingTime = async (startedAt) => {
   }
 };
 
-function CompleteStep({ onPrev }) {
+function CompleteStep({ onPrev, onRestartPos }) {
   const navigate = useNavigate();
   const hasSubmittedRef = useRef(false);
 
@@ -47,7 +47,7 @@ function CompleteStep({ onPrev }) {
 
   const displayErrorMessage =
     errorMessage ||
-    (!storeId ? '가게 정보가 없습니다.\nPOS 연결부터 다시 진행해 주세요.' : '');
+    (!storeId ? '가게 정보가 없습니다.' : '');
 
   useEffect(() => {
     if (!storeId || hasSubmittedRef.current) return;
@@ -106,22 +106,25 @@ function CompleteStep({ onPrev }) {
     return () => clearInterval(timer);
   }, [status, count, navigate, resetOnboarding]);
 
-  const handleRetry = () => {
-    hasSubmittedRef.current = false;
-    setStatus('saving');
-    setErrorMessage('');
-    setCount(3);
-    setRetryCount((prev) => prev + 1);
-  };
-
   const handleGoPrev = () => {
     setErrorMessage('');
     onPrev?.();
   };
 
-  const isSaving = status === 'saving';
+  const handleRestartPos = () => {
+    hasSubmittedRef.current = false;
+    setStatus('saving');
+    setErrorMessage('');
+    setCount(3);
+    setRetryCount((prev) => prev + 1);
+
+    resetOnboarding();
+    onRestartPos?.();
+  };
+
   const isSuccess = status === 'success';
-  const isError = !!displayErrorMessage || status === 'error';
+  const isError = status === 'error' || !!displayErrorMessage;
+  const isSaving = status === 'saving' && !isError;
 
   const characterImage = isSuccess
     ? CharacterLove
@@ -166,21 +169,42 @@ function CompleteStep({ onPrev }) {
             </>
           }
           subtitle={
-            isSuccess
-              ? '잠시 후 메인 페이지로 이동합니다'
-              : isError
-                ? '다시 시도하거나 이전 단계로 돌아갈 수 있어요'
-                : '잠시만 기다려 주세요'
+            isSuccess ? (
+              '잠시 후 메인 페이지로 이동합니다'
+            ) : isError ? (
+              <>
+                POS 연결부터 다시 시도하거나
+                <br />
+                이전 단계로 돌아갈 수 있어요
+              </>
+            ) : (
+              '잠시만 기다려 주세요'
+            )
           }
         />
       }
       footer={
         isError ? (
-          <OnboardingFooterButtons
-            onPrev={handleGoPrev}
-            onNext={storeId ? handleRetry : handleGoPrev}
-            nextText={storeId ? '다시 시도' : '이전 단계로 돌아가기'}
-          />
+          <div className="flex w-full gap-3">
+            <Button
+              type="button"
+              variant="white"
+              size="sm"
+              onClick={handleGoPrev}
+              className="flex-1 font-bold whitespace-nowrap"
+            >
+              이전
+            </Button>
+
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleRestartPos}
+              className="flex-1 text-[18px] font-bold whitespace-nowrap"
+            >
+              다시하기
+            </Button>
+          </div>
         ) : null
       }
     >
@@ -200,7 +224,7 @@ function CompleteStep({ onPrev }) {
 
       {isSaving && (
         <p className="mt-8 text-base font-medium text-gray-400">
-          거의 다 끝났어요.
+          온보딩 정보를 저장하고 있어요.
         </p>
       )}
     </OnboardingLayout>

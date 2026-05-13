@@ -141,11 +141,22 @@ function LoadingStep({ onNext, onPrev }) {
       }
       footer={
         isError ? (
+          <>
           <OnboardingFooterButtons
             onPrev={onPrev}
             onNext={merchantId ? handleRetry : onPrev}
             nextText={merchantId ? '다시 시도' : '인증 다시 하기'}
           />
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={onNext}
+              className="mt-3 text-sm font-medium text-gray-400 underline"
+            >
+              개발용: 인스타그램 연동 건너뛰기
+            </button>
+          )}
+        </>
         ) : null
       }
     >
@@ -163,7 +174,7 @@ function LoadingStep({ onNext, onPrev }) {
             loop
             muted
             playsInline
-            className="w-full h-full justify-center object-contain"
+            className="w-full h-full justify-center object-contain outline-none border-none shadow-none"
           />
         )}
 

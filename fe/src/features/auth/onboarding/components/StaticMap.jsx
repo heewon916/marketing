@@ -74,7 +74,7 @@ export default function StaticMap({ storeLocation }) {
       <div ref={mapRef} className="h-full w-full" />
 
       {/* 플로팅 정보 카드 */}
-      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex items-center gap-3 rounded-2xl bg-white/90 px-4 py-3.5 shadow-md backdrop-blur-lg border border-white/30">
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex items-center gap-3 rounded-2xl bg-white/90 px-4 py-3.5 shadow-md backdrop-blur-lg border border-white/30">
 
         {/* 포인트 아이콘 */}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-100 text-primary-100">
@@ -84,7 +84,7 @@ export default function StaticMap({ storeLocation }) {
         {/* 텍스트 정보 */}
         <div className="flex flex-col">
           <p className="text-[15px] font-bold text-accent-100 leading-tight">
-            {storeLocation?.storeName || '가게 위치'}
+            {storeLocation?.placeName || '가게 위치'}
           </p>
           <p className="mt-1 text-[13px] font-medium text-gray-500 leading-tight">
             {storeLocation?.address || '주소 정보가 없습니다'}
