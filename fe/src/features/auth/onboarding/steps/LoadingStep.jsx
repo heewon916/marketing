@@ -174,7 +174,16 @@ function LoadingStep({ onNext, onPrev }) {
             loop
             muted
             playsInline
-            className="w-full h-full justify-center object-contain outline-none border-none shadow-none"
+            className="w-full h-full justify-center object-contain outline-none border-none shadow-none isolate"
+            style={{
+              transform: 'translateZ(0)',
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
+              willChange: 'auto',
+              WebkitTapHighlightColor: 'transparent',
+              WebkitTouchCallout: 'none',
+              contain: 'paint'
+            }}
           />
         )}
 
