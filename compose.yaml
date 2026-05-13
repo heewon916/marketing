@@ -76,6 +76,17 @@ services:
     networks:
       - project-network
 
+  crawler:
+    build:
+      context: ./crawler
+      dockerfile: Dockerfile
+    container_name: project-crawler
+    restart: unless-stopped
+    expose:
+      - "8010"
+    networks:
+      - project-network
+
   frontend:
     build:
       context: ./fe
@@ -93,10 +104,10 @@ services:
         VITE_FIREBASE_VAPID_KEY: ${VITE_FIREBASE_VAPID_KEY}
         VITE_API_BACKEND_URL: ${VITE_API_BACKEND_URL}
     image: marketing-frontend:latest
-    container_name: project-crawler
+    container_name: project-frontend
     restart: unless-stopped
     expose:
-      - "8010"
+      - "80"
     networks:
       - project-network
 
