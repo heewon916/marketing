@@ -71,15 +71,15 @@ public class UserService {
                 .orElseThrow(() -> new IllegalArgumentException("매장 정보가 없습니다."));
 
         if (request.category() != null) {
-            store.updateAllDetails(null, request.category(), null, null, null, null, null);
+            store.updateAllDetails(null,null, request.category(), null, null, null, null, null);
         }
         if (request.address() != null) {
-            store.updateAllDetails(null, null, null, request.address(), null, null, null);
+            store.updateAllDetails(null,null, null, null, request.address(), null, null, null);
         }
         if (request.operatingHours() != null) {
             try {
                 String hoursJson = objectMapper.writeValueAsString(request.operatingHours());
-                store.updateAllDetails(null, null, null, null, null, null, hoursJson);
+                store.updateAllDetails(null,null, null, null, null, null, null, hoursJson);
             } catch (JsonProcessingException e) {
                 throw new IllegalArgumentException("영업시간 형식이 올바르지 않습니다.");
             }

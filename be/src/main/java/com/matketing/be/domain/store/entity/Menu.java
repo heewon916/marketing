@@ -7,6 +7,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -34,9 +36,11 @@ public class Menu {
     @Column(name = "description", columnDefinition = "TEXT")
     private String description;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "weather_tags", columnDefinition = "jsonb")
     private String weatherTags;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "holiday_tags", columnDefinition = "jsonb")
     private String holidayTags;
 
