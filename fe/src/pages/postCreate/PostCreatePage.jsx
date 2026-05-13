@@ -283,7 +283,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.CAMERA_QUESTION) {
     content = (
       <QuestionStep
-        title={guideText?.trim() || "신메뉴 치즈라떼를 만드는 영상을 찍어볼까요?"}
+        title={guideText?.trim() || "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요."}
         onNext={handleCameraQuestionNext}
         onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}

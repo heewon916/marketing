@@ -7,7 +7,9 @@ export async function requestPublishStart(sessionId) {
 
 	try {
 		const response = await api.post(`/api/v1/contents/${sessionId}/publish`)
-		return response.data ?? {}
+		const data = response.data ?? {}
+		console.log(data)
+		return data
 	} catch (error) {
 		const errorMessage = error.response?.data?.message
 		throw new Error(errorMessage || "발행 시작 요청에 실패했습니다.", { cause: error })
@@ -22,6 +24,7 @@ export async function requestPublishStatus(sessionId) {
 	try {
 		const response = await api.get(`/api/v1/contents/${sessionId}/publish/status`)
 		const data = response.data ?? {}
+		console.log(data)
 
 		return {
 			contentId: data.content_id ?? "",

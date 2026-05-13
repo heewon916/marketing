@@ -8,6 +8,7 @@ export async function requestDraftPost(sessionId) {
 	try {
 		const response = await api.get(`/api/v1/contents/${sessionId}`)
 		const data = response.data ?? {}
+		console.log(data)
 		const images = Array.isArray(data.images) ? data.images : []
 
 		const sortedImages = [...images].sort((a, b) => {
@@ -45,7 +46,8 @@ export async function requestEditDraftCaption(sessionId, caption) {
 		})
 
 		const data = response.data ?? {}
-
+		console.log(data)
+		
 		return {
 			sessionId: data.session_id ?? sessionId,
 			caption: data.caption ?? caption,

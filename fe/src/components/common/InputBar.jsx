@@ -1,25 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
-import { TiMicrophone } from 'react-icons/ti';
-import { requestSpeechToText } from '@/features/home/api/HomeApi';
+import { useEffect, useRef, useState } from "react";
+import { TiMicrophone } from "react-icons/ti";
+import { requestSpeechToText } from "@/features/home/api/HomeApi";
 
 function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
   const textareaRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const recordingTimerRef = useRef(null);
 
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
-  
+
   const [isExpanded, setIsExpanded] = useState(false);
   const [hasScrollbar, setHasScrollbar] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const errorTimerRef = useRef(null);
 
   const showError = (message) => {
     setErrorMessage(message);
     clearTimeout(errorTimerRef.current);
-    errorTimerRef.current = setTimeout(() => setErrorMessage(''), 5000);
+    errorTimerRef.current = setTimeout(() => setErrorMessage(""), 5000);
   };
 
   const MAX_HEIGHT = 200;
@@ -27,7 +28,7 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
   const handleResizeHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
-      textarea.style.height = 'auto';
+      textarea.style.height = "auto";
       textarea.style.height = `${textarea.scrollHeight}px`;
 
       if (textarea.scrollHeight > MAX_HEIGHT) {
@@ -45,8 +46,11 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
 
   useEffect(() => {
     return () => {
-      mediaRecorderRef.current?.stream?.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current?.stream
+        ?.getTracks()
+        .forEach((track) => track.stop());
       clearTimeout(errorTimerRef.current);
+      clearTimeout(recordingTimerRef.current);
     };
   }, []);
 
@@ -64,8 +68,10 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
       mediaRecorder.onstop = () => {
         const processSpeech = async () => {
           try {
-            const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-            const audioFile = new File([blob], 'recording.webm', { type: 'audio/webm' });
+            const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+            const audioFile = new File([blob], "recording.webm", {
+              type: "audio/webm",
+            });
             const recognizedText = await requestSpeechToText(audioFile);
 
             if (recognizedText?.trim()) {
@@ -75,7 +81,9 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
               });
             }
           } catch (error) {
-            showError(error.message || '음성 인식에 실패했어요. 다시 녹음해 주세요.');
+            showError(
+              error.message || "음성 인식에 실패했어요. 다시 녹음해 주세요.",
+            );
           } finally {
             stream.getTracks().forEach((track) => track.stop());
           }
@@ -87,8 +95,18 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
       mediaRecorder.start();
       setIsRecording(true);
       onRecordingChange?.(true);
+
+      // 58초 후 자동으로 녹음 중지
+      recordingTimerRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+          onRecordingChange?.(false);
+          showError("음성 입력은 최대 58초까지 가능합니다.");
+        }
+      }, 58000);
     } catch {
-      showError('마이크 접근 권한이 필요합니다.');
+      showError("마이크 접근 권한이 필요합니다.");
     }
   };
 
@@ -96,6 +114,7 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
     onRecordingChange?.(false);
+    clearTimeout(recordingTimerRef.current);
   };
 
   const handleMicClick = () => {
@@ -124,21 +143,21 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
     try {
       setIsSubmitting(true);
       await onSubmit(utterance);
-      setText('');
+      setText("");
       setHasScrollbar(false);
       setIsExpanded(false);
       requestAnimationFrame(() => {
         handleResizeHeight();
       });
     } catch (error) {
-      showError(error.message || '요청 처리 중 문제가 발생했습니다.');
+      showError(error.message || "요청 처리 중 문제가 발생했습니다.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void handleSubmit();
     }
@@ -157,28 +176,27 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
       <div
         className={`relative w-full min-h-16 border rounded-4xl flex items-end p-2 transition-all duration-200 ${
           disabled
-            ? 'bg-gray-200 border-gray-300 opacity-70'
-            : 'bg-gray-100 border-gray-200'
+            ? "bg-gray-200 border-gray-300 opacity-70"
+            : "bg-gray-100 border-gray-200"
         }`}
       >
-
         {/* 마이크 버튼 */}
         <button
           type="button"
           onClick={handleMicClick}
-          aria-label={isRecording ? '녹음 중지' : '녹음 시작'}
+          aria-label={isRecording ? "녹음 중지" : "녹음 시작"}
           disabled={disabled || isSubmitting}
           className={`relative shrink-0 w-10 h-10 mb-1 ml-1 rounded-full flex items-center justify-center transition-colors duration-200 ${
             isRecording
-              ? 'bg-surface-100 shadow-[0_0_10px_rgba(255,122,61,0.4)]'
-              : 'bg-white border border-gray-200'
+              ? "bg-surface-100 shadow-[0_0_10px_rgba(255,122,61,0.4)]"
+              : "bg-white border border-gray-200"
           }`}
         >
           {isRecording && (
             <span className="absolute inset-0 rounded-full animate-ping bg-primary-100 opacity-20" />
           )}
           <TiMicrophone
-            className={isRecording ? 'text-primary-100' : 'text-gray-400'}
+            className={isRecording ? "text-primary-100" : "text-gray-400"}
             size={20}
           />
         </button>
@@ -190,11 +208,17 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
           rows={1}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={isRecording ? '음성 입력 중입니다...' : isSubmitting ? '메시지 전송 중입니다...' : '메시지를 입력하세요...'}
+          placeholder={
+            isRecording
+              ? "음성 입력 중입니다..."
+              : isSubmitting
+                ? "메시지 전송 중입니다..."
+                : "메시지를 입력하세요..."
+          }
           disabled={isInputDisabled}
           className="w-full bg-transparent outline-none pl-2 pr-16 py-3 text-gray-700 placeholder:text-gray-400 resize-none overflow-y-auto min-h-12 disabled:cursor-not-allowed disabled:text-gray-500"
-          style={{ 
-            maxHeight: !disabled && isExpanded ? 'none' : `${MAX_HEIGHT}px`, 
+          style={{
+            maxHeight: !disabled && isExpanded ? "none" : `${MAX_HEIGHT}px`,
           }}
         />
 
@@ -208,12 +232,12 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
               className="w-8 h-8 rounded-full flex items-center justify-center disabled:cursor-not-allowed"
             >
               <span className="material-icons text-gray-400 text-sm">
-                {isExpanded ? 'close_fullscreen' : 'open_in_full'}
+                {isExpanded ? "close_fullscreen" : "open_in_full"}
               </span>
             </button>
-            
+
             <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded bg-gray-800 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-              {isExpanded ? '원래대로 축소' : '전체 화면으로 펼치기'}
+              {isExpanded ? "원래대로 축소" : "전체 화면으로 펼치기"}
             </div>
           </div>
         )}
@@ -227,11 +251,17 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
           }}
           className="absolute right-2 bottom-2 w-12 h-12 rounded-full bg-accent-100 flex items-center justify-center shadow-md hover:opacity-90 transition-opacity shrink-0 z-10 disabled:cursor-not-allowed disabled:bg-gray-400 disabled:shadow-none disabled:hover:opacity-100"
         >
-          <span className="material-icons text-white text-xl">
-            arrow_forward
-          </span>
+          {isSubmitting ? (
+            <div className="relative h-6 w-6">
+              <div className="absolute inset-0 rounded-full border-2 border-white/25" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+            </div>
+          ) : (
+            <span className="material-icons text-white text-xl">
+              arrow_forward
+            </span>
+          )}
         </button>
-
       </div>
     </div>
   );

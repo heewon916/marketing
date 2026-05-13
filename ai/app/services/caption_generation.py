@@ -320,10 +320,10 @@ class CaptionPipeline:
         weather_context = _build_weather_context(request.weather_tags)
         if weather_context != "날씨와 관련한 표현 없음":
             return (
-                f"{weather_context} 분위기와 {request.owner_persona} 무드로 "
-                f"{subject_phrase}를 자연스럽게 소개해보세요."
+                f"오늘, {weather_context} 분위기에 "
+                f"{subject_phrase} 어떤가요?"
             )
-        return f"{request.owner_persona} 무드로 {subject_phrase}를 자연스럽게 소개해보세요."
+        return f"오늘, {subject_phrase} 어떤가요?"
 
     def _build_fallback_guide_text(
         self,
@@ -335,8 +335,7 @@ class CaptionPipeline:
             selected_menu_name,
         )
         return (
-            f"사장님, {subject_phrase}가 잘 보이도록 구도와 초점을 먼저 맞춰보세요. "
-            "촬영 전에 주제가 선명하게 드러나는지 한 번 더 확인해주세요."
+            f"사장님, {subject_phrase}가 잘 보이도록 영상을 찍어주세요."
         )
 
     @staticmethod
