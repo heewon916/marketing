@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.InstagramPublishClient;
 import com.matketing.be.domain.content.client.S3VideoClient;
+import com.matketing.be.domain.content.config.ContentS3Properties;
 import com.matketing.be.domain.content.config.ContentProperties;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
 import com.matketing.be.domain.content.dto.AiWeatherRequest;
@@ -30,6 +32,7 @@ import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.store.entity.OwnerPersonaEnumType;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
+import com.matketing.be.domain.user.repository.UserRepository;
 import com.matketing.be.global.auth.jwt.AuthUser;
 import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
@@ -70,12 +73,19 @@ class ContentServiceTest {
     private ContentRedisRepository contentRedisRepository;
 
     @Mock
+    private InstagramPublishClient instagramPublishClient;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private StoreRepository storeRepository;
 
     @Mock
     private WeatherContextProvider weatherService;
 
     private final ContentProperties contentProperties = new ContentProperties(600);
+    private final ContentS3Properties contentS3Properties = new ContentS3Properties("bucket", "ap-northeast-2", "https://cdn.example.com");
 
     private ContentService contentService;
 
@@ -92,6 +102,9 @@ class ContentServiceTest {
                 s3VideoClient,
                 contentRedisRepository,
                 contentProperties,
+                contentS3Properties,
+                instagramPublishClient,
+                userRepository,
                 storeRepository,
                 weatherService
         );

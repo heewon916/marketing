@@ -14,6 +14,9 @@ public enum ErrorCode {
 
     CONTENT_NOT_FOUND(HttpStatus.NOT_FOUND, "게시물을 찾을 수 없습니다."),
     CONTENT_IMAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 게시물에 속한 이미지를 찾을 수 없습니다."),
+    INSTAGRAM_TOKEN_REQUIRED(HttpStatus.BAD_REQUEST, "인스타그램 연동 토큰이 필요합니다."),
+    INSTAGRAM_MEDIA_REQUIRED(HttpStatus.BAD_REQUEST, "인스타그램에 발행할 이미지 또는 영상이 필요합니다."),
+    INSTAGRAM_PUBLISH_FAILED(HttpStatus.BAD_GATEWAY, "인스타그램 발행에 실패했습니다."),
 
     STT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "음성 인식에 실패했습니다. 다시 녹음해 주세요."),
     STT_PARSING_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "텍스트 파싱에 실패했습니다."),
