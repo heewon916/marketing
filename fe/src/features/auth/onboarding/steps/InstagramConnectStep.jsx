@@ -1,3 +1,6 @@
+// fe/src/features/auth/onboarding/steps/InstagramConnectStep.jsx
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
@@ -8,8 +11,35 @@ import {
 } from '@/features/auth/api.js';
 
 function InstagramConnectStep({ onNext }) {
-  const handleConnect = () => {
-    authApi.loginWithInstagram(INSTAGRAM_AUTH_PURPOSE.ONBOARDING);
+  const navigate = useNavigate();
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const handleConnect = async () => {
+    if (isConnecting) return;
+
+    setIsConnecting(true);
+
+    try {
+      const response = await authApi.loginWithInstagram(
+        INSTAGRAM_AUTH_PURPOSE.ONBOARDING
+      );
+
+      const user = response.data?.data ?? response.data;
+      const isOnboarded = user?.isOnboarded;
+
+      if (isOnboarded) {
+        navigate('/home', { replace: true });
+        return;
+      }
+
+      navigate('/auth/onboarding?instagram=success', {
+        replace: true,
+      });
+    } catch (error) {
+      alert(error?.message || '인스타그램 연동에 실패했습니다.');
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   return (
@@ -35,8 +65,12 @@ function InstagramConnectStep({ onNext }) {
       }
       footer={
         <>
-          <Button onClick={handleConnect} className="w-full font-bold">
-            인스타그램 연동하기
+          <Button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="w-full font-bold"
+          >
+            {isConnecting ? '연동 확인 중...' : '인스타그램 연동하기'}
           </Button>
 
           {import.meta.env.DEV && (
