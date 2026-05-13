@@ -228,7 +228,12 @@ function OnboardingPage() {
         return <TimeStep {...commonProps} />;
 
       case 16:
-        return <CompleteStep {...commonProps} />;
+        return (
+          <CompleteStep
+            {...commonProps}
+            onRestartPos={() => moveToStep(4)}
+          />
+        );
 
       default:
         return <div>잘못된 접근입니다</div>;
