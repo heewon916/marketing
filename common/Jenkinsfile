@@ -65,14 +65,14 @@ pipeline {
 
                     SERVICES=""
 
-                    # Compose/Jenkins 변경은 서비스 의존 관계나 배포 방식 자체가 바뀔 수 있어 전체 이미지를 다시 빌드한다.
                     if printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^(compose\\.yaml|common/Jenkinsfile)$'; then
-                      SERVICES="spring frontend nginx fastapi"
+                      SERVICES="spring frontend nginx fastapi crawler"
                     else
                       printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^be/' && SERVICES="$(append_service "$SERVICES" spring)"
                       printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^fe/' && SERVICES="$(append_service "$SERVICES" frontend)"
                       printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^nginx/' && SERVICES="$(append_service "$SERVICES" nginx)"
                       printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^ai/' && SERVICES="$(append_service "$SERVICES" fastapi)"
+                      printf '%s\\n' "$CHANGED_FILES" | grep -Eq '^crawler/' && SERVICES="$(append_service "$SERVICES" crawler)"
                     fi
 
                     echo "$SERVICES" | xargs > "$BUILD_SERVICES_FILE"
@@ -316,6 +316,7 @@ pipeline {
                     test -f "${DEPLOY_DIR}/be/Dockerfile"
                     test -f "${DEPLOY_DIR}/fe/Dockerfile"
                     test -f "${DEPLOY_DIR}/ai/Dockerfile"
+                    test -f "${DEPLOY_DIR}/crawler/Dockerfile"
                     test -f "${DEPLOY_DIR}/secrets/firebase-service-account.json"
                     test -s "${DEPLOY_DIR}/secrets/firebase-service-account.json"
                     test ! -d "${DEPLOY_DIR}/secrets/firebase-service-account.json"
