@@ -16,4 +16,20 @@ public interface ContentRepository extends JpaRepository<Content, Long> {
 
     @EntityGraph(attributePaths = {"images", "videoRecordings"})
     Optional<Content> findWithImagesAndVideoRecordingsBySessionId(UUID sessionId);
+
+    @org.springframework.data.jpa.repository.Query("""
+        select count(c)
+        from Content c
+        where c.storeId = :storeId
+          and c.publishedAt is not null
+          and c.publishedAt >= :startAt
+          and c.publishedAt < :endAt
+          and c.instagramMediaId is not null
+          and (c.isDeleted = false or c.isDeleted is null)
+    """)
+    long countPublishedContentsByStoreAndPeriod(
+        @org.springframework.data.repository.query.Param("storeId") UUID storeId,
+        @org.springframework.data.repository.query.Param("startAt") java.time.OffsetDateTime startAt,
+        @org.springframework.data.repository.query.Param("endAt") java.time.OffsetDateTime endAt
+    );
 }

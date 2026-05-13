@@ -6,6 +6,7 @@ import java.time.LocalDate;
 
 public record VisitIntentResponse(
         @JsonProperty("week_start") LocalDate weekStart,
+        @JsonProperty("week_end") LocalDate weekEnd,
         @JsonProperty("visit_intent_score") BigDecimal visitIntentScore,
         Breakdown breakdown) {
     public record Breakdown(
