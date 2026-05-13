@@ -93,10 +93,10 @@ services:
         VITE_FIREBASE_VAPID_KEY: ${VITE_FIREBASE_VAPID_KEY}
         VITE_API_BACKEND_URL: ${VITE_API_BACKEND_URL}
     image: marketing-frontend:latest
-    container_name: project-frontend
+    container_name: project-crawler
     restart: unless-stopped
     expose:
-      - "80"
+      - "8010"
     networks:
       - project-network
 
