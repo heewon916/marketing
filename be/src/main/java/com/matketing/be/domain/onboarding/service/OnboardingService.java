@@ -60,8 +60,8 @@ public class OnboardingService {
     @Value("${TOSS_SECRET_KEY:}")
     private String tossSecretKey;
 
-    @Value("${FASTAPI_BASE_URL:http://fastapi:8000}")
-    private String fastapiBaseUrl;
+    @Value("${CRAWLER_BASE_URL:http://crawler:8000}")
+    private String crawlerBaseUrl;
 
     public void registerPin(String pin, String merchantId) {
         log.info("Registering PIN: {} for merchant: {}", pin, merchantId);
@@ -128,7 +128,7 @@ public class OnboardingService {
         store.updateAllDetails(storeName, guessedCategory, null, "", null, null, null);
 
         log.info("Successfully synced Toss store data for merchantId: {}", merchantId);
-        
+
         // 프론트엔드로 전달할 메뉴 리스트 변환 (간소화)
         List<Object> responseMenus = tossMenus.stream()
             .map(m -> Map.of("name", m.getName(), "price", m.getPrice() != null ? m.getPrice() : 0))
@@ -358,14 +358,14 @@ public class OnboardingService {
     }
 
     public Map<String, Object> searchPlacesViaCrawler(String keyword) {
-        String url = fastapiBaseUrl + "/api/search?keyword=" + keyword;
+        String url = crawlerBaseUrl + "/api/search?keyword=" + keyword;
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
         return response.getBody();
     }
 
     public Map<String, Object> getPlaceDetailViaCrawler(String placeId) {
-        String url = fastapiBaseUrl + "/api/place/" + placeId;
+        String url = crawlerBaseUrl + "/api/place/" + placeId;
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
         return response.getBody();
