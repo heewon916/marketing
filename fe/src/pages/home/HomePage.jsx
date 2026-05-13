@@ -58,10 +58,10 @@ function HomePage() {
         </section>
 
         {/* 캐릭터 영역 */}
-        <section className="flex justify-center">
+        <section className="flex justify-center items-end h-[45vh] min-h-[120px]">
           <Character
             type={isActive ? "listen" : "ddabong"}
-            className="max-h-[40vh]"
+            className="h-full max-h-[40vh] max-w-[80vw] w-auto"
             onClick={() => navigate("/post-create")}
           />
         </section>
