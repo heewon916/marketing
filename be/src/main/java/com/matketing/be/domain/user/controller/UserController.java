@@ -85,7 +85,7 @@ public class UserController {
         return ResponseEntity.ok(userService.getMe(user));
     }
 
-    @PatchMapping("/me/store")
+    @PatchMapping("/me")
     public ResponseEntity<SimpleApiResponse> patchStore(
             HttpServletRequest request,
             @RequestBody StoreUpdatePatchRequest patchRequest) {
