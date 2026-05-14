@@ -22,7 +22,7 @@ public class InstagramApiClient {
     }
 
     /**
-     * 단기 토큰을 장기 토큰으로 교환합니다.
+     * 장기 토큰을 장기 토큰으로 교환합니다.
      * @param shortLivedToken 단기 토큰
      * @return 장기 토큰 정보가 담긴 Map (성공 시), 실패 시 null
      */
@@ -44,5 +44,36 @@ public class InstagramApiClient {
             log.error("Failed to exchange Instagram token for long-lived token: {}", e.getMessage());
         }
         return null; // 교환 실패 시 null 반환
+    }
+
+    /**
+     * Instagram Graph API를 호출하여 유저 프로필 정보를 가져옵니다.
+     */
+    public Map<String, Object> getUserProfile(String accessToken) {
+        try {
+            String url = String.format(
+                    "https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=%s",
+                    accessToken
+            );
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return (Map<String, Object>) response.getBody();
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch Instagram profile: {}", e.getMessage());
+            try {
+                String url = String.format(
+                        "https://graph.instagram.com/me?fields=id,username&access_token=%s",
+                        accessToken
+                );
+                ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+                if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                    return (Map<String, Object>) response.getBody();
+                }
+            } catch (Exception ex) {
+                log.error("Failed to fetch Instagram profile (fallback): {}", ex.getMessage());
+            }
+        }
+        return null;
     }
 }
