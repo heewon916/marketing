@@ -20,7 +20,12 @@ import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate
 import { requestPublishStart, requestPublishStatus } from "@/features/postCreate/api/PublishApi"
 import { showToast } from '@/utils/toast';
 import { speak, stopTTS } from '@/utils/tts'
-import homeGreetingAudio from "@/assets/TTS/homePage_TTS.mp3"
+import { 
+  questionStepTTS, 
+  publishResultSuccessTTS, 
+  publishResultFailTTS, 
+  homeTTS 
+} from "@/assets/TTS"
 
 const POST_QUESTION_TITLE = "이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
 const CAMERA_QUESTION_FALLBACK_TITLE = "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요."
@@ -187,13 +192,31 @@ export default function PostCreatePage() {
       return
     }
 
+    // 로딩 단계에서는 TTS를 비활성화
+    if (
+      step === POST_CREATE_STEP.POST_LOADING ||
+      step === POST_CREATE_STEP.EXTRACT_LOADING ||
+      step === POST_CREATE_STEP.PUBLISH_LOADING
+    ) {
+      stopTTS();
+      return;
+    }
+
     if (FIXED_AUDIO_STEPS.has(step)) {
+      let audioSrc = homeTTS;
+      if (step === POST_CREATE_STEP.POST_QUESTION) {
+        audioSrc = questionStepTTS;
+      } else if (step === POST_CREATE_STEP.PUBLISH_SUCCESS) {
+        audioSrc = publishResultSuccessTTS;
+      } else if (step === POST_CREATE_STEP.PUBLISH_FAIL) {
+        audioSrc = publishResultFailTTS;
+      }
       void speak(getFixedAudioFallbackText(step), {
         source: "file",
-        audioSrc: homeGreetingAudio,
+        audioSrc,
         fallbackToTTS: true,
-      })
-      return
+      });
+      return;
     }
 
     stopTTS()

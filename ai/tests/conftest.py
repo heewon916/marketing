@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Iterator
 
 import fakeredis
@@ -19,23 +20,14 @@ from app.services.caption_generation import (
     DEFAULT_FALLBACK_GUIDE_TEXT,
 )
 from app.services.keyword_extraction import KeywordExtractionResult
+from app.services.menu_promotion_context import MenuPromotionContext
 from app.services.reference_caption_retriever import (
     ReferenceCaptionRetrievalResult,
 )
-from app.services.menu_promotion_context import MenuPromotionContext
-from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
+from tests.utils.session_support import _weather_context_for_tests
 
-
-def _weather_context_for_tests(weather_tags: list[str]) -> str:
-    if PRECIP_HEAVY_RAIN in weather_tags:
-        return "폭우가 오는 날"
-    if PRECIP_RAIN in weather_tags:
-        return "비 오는 날"
-    if PRECIP_CLEAR in weather_tags:
-        return "맑은 날"
-    if PRECIP_CLOUDY in weather_tags:
-        return "흐린 날"
-    return ""
+if hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 class DefaultKeywordExtractionService:
@@ -44,7 +36,7 @@ class DefaultKeywordExtractionService:
 
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         return KeywordExtractionResult(
-            purpose="메뉴 홍보",
+            purpose="\uba54\ub274 \ud64d\ubcf4",
             draft_keywords=["signature menu", "cozy table"],
             final_keywords=[],
         )
@@ -92,10 +84,10 @@ class DefaultCaptionGenerationService:
     ) -> CaptionGenerationResult:
         weather_context = _weather_context_for_tests(request.weather_tags)
         return CaptionGenerationResult(
-            guide_text="사장님의 예쁜 가게를 한 번 자랑해볼까요?",
+            guide_text="\uc0ac\uc7a5\ub2d8\uc758 \uacf5\uac04 \uac00\uce58\ub97c \ub354 \ubd80\uac01\uc2dc\ud0a4\ub294 \uc601\uc0c1 \ubb38\uad6c\ub97c \ub9cc\ub4e4\uc5b4\ubcf4\uc138\uc694.",
             draft_caption=(
-                f"{weather_context or '오늘의 분위기'}와 {request.owner_persona} 무드로 "
-                f"{', '.join(request.keywords) if request.keywords else '오늘의 매장'}를 소개해보세요."
+                f"{weather_context or '\uc624\ub298\uc758 \ubd84\uc704\uae30'}\uc5d0 {request.owner_persona} \ubb34\ub4dc\ub85c "
+                f"{', '.join(request.keywords) if request.keywords else '\uc624\ub298\uc758 \ub9e4\uc7a5'}\ub97c \uc18c\uac1c\ud574\ubcf4\uc138\uc694."
             ),
         )
 
@@ -105,17 +97,17 @@ class DefaultCaptionGenerationService:
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
         keyword_phrase = (
-            ", ".join(request.keywords) if request.keywords else "오늘의 매장"
+            ", ".join(request.keywords) if request.keywords else "\uc624\ub298\uc758 \ub9e4\uc7a5"
         )
         weather_context = _weather_context_for_tests(request.weather_tags)
         caption = (
-            f"{weather_context or request.owner_persona} 분위기와 {request.owner_persona} 무드로 "
-            f"{keyword_phrase}를 소개해보세요."
+            f"{weather_context or request.owner_persona} \ubd84\uc704\uae30\uc5d0 {request.owner_persona} \ubb34\ub4dc\ub85c "
+            f"{keyword_phrase}\ub97c \uc18c\uac1c\ud574\ubcf4\uc138\uc694."
         )
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
             if not request.keywords
-            else f"사장님, {', '.join(request.keywords)}이(가) 잘 보이도록 영상을 촬영해보세요."
+            else f"\uc0ac\uc7a5\ub2d8, {', '.join(request.keywords)}\uc774 \ub354 \ubcf4\uc774\ub3c4\ub85d \uc601\uc0c1\uc744 \ucd2c\uc601\ud574\ubcf4\uc138\uc694."
         )
         effective_fallback_source = fallback_source
         if not request.keywords and effective_fallback_source is None:

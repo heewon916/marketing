@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-import cv2
 import numpy as np
+
+from app.services.final_edit_runtime import import_cv2
 
 ToolName = Literal[
     "upscale",
@@ -99,6 +100,7 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
 
 
 def _tool_upscale(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    cv2 = import_cv2()
     scale = cast(int, params["scale"])
     height, width = image.shape[:2]
     return cv2.resize(
@@ -109,12 +111,14 @@ def _tool_upscale(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
 
 
 def _tool_denoise(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    cv2 = import_cv2()
     strength = cast(float, params["strength"])
     h_value = int(3 + strength * 12)
     return cv2.fastNlMeansDenoisingColored(image, None, h_value, h_value, 7, 21)
 
 
 def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    cv2 = import_cv2()
     temperature = cast(str, params["temperature"])
     saturation = cast(float, params["saturation"])
     brightness = cast(float, params["brightness"])
@@ -146,12 +150,14 @@ def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray
 
 
 def _tool_sharpen(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    cv2 = import_cv2()
     strength = cast(float, params["strength"])
     blurred = cv2.GaussianBlur(image, (0, 0), sigmaX=3)
     return cv2.addWeighted(image, 1.0 + strength, blurred, -strength, 0)
 
 
 def _tool_background_blur(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
+    cv2 = import_cv2()
     blur_radius = cast(int, params["blur_radius"])
     kernel = blur_radius * 2 + 1
     blurred = cv2.GaussianBlur(image, (kernel, kernel), 0)
