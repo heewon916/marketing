@@ -32,27 +32,16 @@ function OnboardingPage() {
   const isInstagramSuccess =
     new URLSearchParams(window.location.search).get('instagram') === 'success';
 
-  const [authNotice, setAuthNotice] = useState(
-    () => location.state?.authNotice ?? null
-  );
+  const authNotice = location.state?.authNotice ?? null;
+  const authRedirectTo = location.state?.redirectTo ?? null;
+  const hasAuthNotice = !!authNotice;
 
-  const [authRedirectTo, setAuthRedirectTo] = useState(
-    () => location.state?.redirectTo ?? null
+  const [step, setStep] = useState(() =>
+    isInstagramSuccess && !hasAuthNotice ? 3 : 1
   );
-
-  const [step, setStep] = useState(() => (isInstagramSuccess ? 3 : 1));
   const [stepHistory, setStepHistory] = useState([]);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [authCode, setAuthCode] = useState('');
-
-  useEffect(() => {
-    if (!location.state?.authNotice) return;
-
-    navigate(location.pathname, {
-      replace: true,
-      state: null,
-    });
-  }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
     if (isInstagramSuccess) {
@@ -118,14 +107,15 @@ function OnboardingPage() {
   };
 
   const handleCloseAuthNoticeModal = () => {
-    setAuthNotice(null);
-
     if (authRedirectTo) {
-      const nextPath = authRedirectTo;
-
-      setAuthRedirectTo(null);
-      navigate(nextPath, { replace: true });
+      navigate(authRedirectTo, { replace: true });
+      return;
     }
+
+    navigate(location.pathname, {
+      replace: true,
+      state: null,
+    });
   };
 
   const handleVerified = (merchantId) => {
@@ -255,7 +245,7 @@ function OnboardingPage() {
       />
 
       <Modal
-        isOpen={!!authNotice}
+        isOpen={hasAuthNotice}
         onClose={handleCloseAuthNoticeModal}
         showClose={false}
         closeOnBackdrop={false}
