@@ -225,12 +225,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root,
     )
 
+    app.state.final_edit_planner_client = build_final_edit_planner_client()
     app.state.final_edit_service = FinalEditService(
         downloader=S3DraftImageDownloader(),
         uploader=S3FinalImageUploader(),
         temp_root=temp_root / "final-edit",
+        planner_client=app.state.final_edit_planner_client,
     )
-    app.state.final_edit_planner_client = build_final_edit_planner_client()
     app.state.keyword_extraction_service = build_keyword_extraction_service()
     app.state.caption_generation_service = build_caption_generation_service()
     app.state.canonical_keyword_resolver_service = (

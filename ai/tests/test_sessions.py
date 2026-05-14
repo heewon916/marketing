@@ -137,6 +137,7 @@ class FakeFinalEditService:
         self,
         session_id: str,
         drafts: list[str],
+        context=None,
     ) -> FinalEditResult:
         self.calls.append((session_id, drafts))
         return self.result

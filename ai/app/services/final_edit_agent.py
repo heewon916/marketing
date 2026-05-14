@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import cv2
 from langgraph.graph import END, START, StateGraph
@@ -17,20 +17,28 @@ class FinalEditImageState:
     image_path: Path
     working_dir: Path
     plan: ImageEditPlan
+    session_id: str = ""
+    final_index: int = 0
     current_tool_index: int = 0
     current_image: np.ndarray | None = None
     output_path: Path | None = None
     fallback_to_original: bool = False
     failure_reason: str | None = None
     normalized_params: dict[str, dict[str, Any]] = field(default_factory=dict)
+    executed_tools: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class FinalEditAgent:
     """LangGraph agent that applies an image edit plan to a single image."""
 
-    def __init__(self, tool_registry: FinalEditToolRegistry) -> None:
+    def __init__(
+        self,
+        tool_registry: FinalEditToolRegistry,
+        tool_event_sink: Callable[[str, FinalEditImageState, str], None] | None = None,
+    ) -> None:
         self.tool_registry = tool_registry
+        self.tool_event_sink = tool_event_sink
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -94,6 +102,8 @@ class FinalEditAgent:
 
         tool_name = state.plan.tools[state.current_tool_index]
         params = state.normalized_params.get(tool_name, {})
+        if self.tool_event_sink is not None:
+            self.tool_event_sink("started", state, tool_name)
         try:
             state.current_image = self.tool_registry.execute(
                 tool_name,
@@ -104,10 +114,15 @@ class FinalEditAgent:
             state.fallback_to_original = True
             state.failure_reason = f"tool_failed:{tool_name}:{exc.__class__.__name__}"
             state.output_path = state.image_path
+            if self.tool_event_sink is not None:
+                self.tool_event_sink("failed", state, tool_name)
             return state
 
+        state.executed_tools.append(tool_name)
         state.metadata[f"tool:{state.current_tool_index}"] = tool_name
         state.current_tool_index += 1
+        if self.tool_event_sink is not None:
+            self.tool_event_sink("completed", state, tool_name)
         return state
 
     def _should_continue(

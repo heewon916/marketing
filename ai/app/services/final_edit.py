@@ -15,6 +15,14 @@ from redis.asyncio import Redis
 from app.core.config import settings
 from app.logging import build_log_extra
 from app.schemas.sessions import FinalEditRequest
+from app.services.final_edit_agent import FinalEditAgent, FinalEditImageState
+from app.services.final_edit_planner import (
+    FinalEditPlannerClient,
+    FinalEditSessionContext,
+    build_final_edit_planner_client,
+    load_final_edit_session_context,
+)
+from app.services.final_edit_tools import FinalEditToolRegistry
 from app.services.sessions import session_key, upsert_content_session
 
 STATUS_FAIL = "FRAME_EXTRACTED"
@@ -136,23 +144,38 @@ class FinalEditService:
         downloader: S3DraftImageDownloader,
         uploader: S3FinalImageUploader,
         temp_root: Path,
+        planner_client: FinalEditPlannerClient | None = None,
+        agent: FinalEditAgent | None = None,
     ) -> None:
         self.downloader = downloader
         self.uploader = uploader
         self.temp_root = temp_root
+        self.planner_client = planner_client or build_final_edit_planner_client()
+        self.agent = agent or FinalEditAgent(
+            FinalEditToolRegistry(),
+            tool_event_sink=self._log_tool_event,
+        )
 
     async def edit_and_upload(
         self,
         session_id: str,
         drafts: list[str],
+        context: FinalEditSessionContext | None = None,
     ) -> FinalEditResult:
         session_dir = self.temp_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         uploaded_results: list[str] = []
+        downloaded_drafts: list[Path] = []
         debug_fields = {
             "debug:draft_count": str(len(drafts)),
             "debug:session_dir": str(session_dir),
         }
+        context = context or FinalEditSessionContext(caption="", keywords=[])
+        debug_fields["debug:caption_present"] = str(bool(context.caption)).lower()
+        debug_fields["debug:keyword_count"] = str(len(context.keywords))
+        debug_fields["debug:planner_mode"] = "json_batch"
+        planner_fallback = not bool(context.caption or context.keywords)
+        plans_by_index = {}
 
         try:
             if not self.downloader.is_configured or not self.uploader.is_configured:
@@ -200,6 +223,7 @@ class FinalEditService:
                     ),
                 )
                 await self.downloader.download_draft(draft_key, draft_path)
+                downloaded_drafts.append(draft_path)
                 logger.info(
                     "Downloaded draft image for final edit.",
                     extra=build_log_extra(
@@ -214,6 +238,110 @@ class FinalEditService:
                     ),
                 )
 
+            logger.info(
+                "Loading final edit session context.",
+                extra=build_log_extra(
+                    "final_edit.load_context.completed",
+                    component="final_edit",
+                    stage="load_context",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    caption_present=bool(context.caption),
+                    keyword_count=len(context.keywords),
+                ),
+            )
+
+            if not planner_fallback:
+                plan_started_at = time.perf_counter()
+                logger.info(
+                    "Planning final edit sequence.",
+                    extra=build_log_extra(
+                        "final_edit.plan.started",
+                        component="final_edit",
+                        stage="plan",
+                        session_id=session_id,
+                        outcome="started",
+                        draft_count=len(downloaded_drafts),
+                        keyword_count=len(context.keywords),
+                    ),
+                )
+                try:
+                    plans = await self.planner_client.build_plans(
+                        [str(path) for path in downloaded_drafts],
+                        context,
+                    )
+                except Exception as exc:
+                    planner_fallback = True
+                    debug_fields["debug:planner_failure_type"] = exc.__class__.__name__
+                    logger.warning(
+                        "Final edit planner failed. Falling back to original drafts.",
+                        extra=build_log_extra(
+                            "final_edit.planner_fallback",
+                            component="final_edit",
+                            stage="plan",
+                            session_id=session_id,
+                            outcome="fallback",
+                            error_type=exc.__class__.__name__,
+                        ),
+                    )
+                else:
+                    plans_by_index = {plan.image_index: plan for plan in plans}
+                    logger.info(
+                        "Planned final edit sequence.",
+                        extra=build_log_extra(
+                            "final_edit.plan.completed",
+                            component="final_edit",
+                            stage="plan",
+                            session_id=session_id,
+                            outcome="succeeded",
+                            planned_image_count=len(plans),
+                            elapsed_ms=int((time.perf_counter() - plan_started_at) * 1000),
+                        ),
+                    )
+            else:
+                logger.info(
+                    "Skipping final edit planner because no text context is available.",
+                    extra=build_log_extra(
+                        "final_edit.planner_fallback",
+                        component="final_edit",
+                        stage="plan",
+                        session_id=session_id,
+                        outcome="fallback",
+                        error_type="missing_context",
+                    ),
+                )
+
+            debug_fields["debug:planner_fallback"] = str(planner_fallback).lower()
+            debug_fields["debug:planned_image_count"] = str(len(plans_by_index))
+
+            edited_paths: list[Path] = []
+            for image_index, draft_path in enumerate(downloaded_drafts):
+                plan = plans_by_index.get(image_index)
+                if plan is None:
+                    edited_paths.append(draft_path)
+                    continue
+
+                debug_fields[f"debug:tool_count:{image_index + 1}"] = str(len(plan.tools))
+                debug_fields[f"debug:tools:{image_index + 1}"] = ",".join(plan.tools)
+                image_state = await self.agent.run(
+                    FinalEditImageState(
+                        image_path=draft_path,
+                        working_dir=session_dir / "edited",
+                        plan=plan,
+                        session_id=session_id,
+                        final_index=image_index + 1,
+                    )
+                )
+                if image_state.fallback_to_original:
+                    debug_fields[f"debug:image_fallback:{image_index + 1}"] = "true"
+                    if image_state.failure_reason:
+                        debug_fields[f"debug:image_failure:{image_index + 1}"] = (
+                            image_state.failure_reason
+                        )
+                edited_paths.append(image_state.output_path or draft_path)
+
+            for final_index, draft_key in enumerate(drafts, start=1):
+                output_path = edited_paths[final_index - 1]
                 debug_fields["debug:stage"] = f"upload_final_{final_index}"
                 upload_started_at = time.perf_counter()
                 logger.info(
@@ -230,7 +358,7 @@ class FinalEditService:
                 )
                 uploaded_path = await self.uploader.upload_final(
                     session_id,
-                    draft_path,
+                    output_path,
                     final_index,
                 )
                 uploaded_results.append(uploaded_path)
@@ -292,6 +420,27 @@ class FinalEditService:
             )
             shutil.rmtree(session_dir, ignore_errors=True)
 
+    def _log_tool_event(
+        self,
+        phase: str,
+        state: FinalEditImageState,
+        tool_name: str,
+    ) -> None:
+        event_name = f"final_edit.tool.{phase}"
+        logger_method = logger.info if phase != "failed" else logger.warning
+        logger_method(
+            "Final edit tool event.",
+            extra=build_log_extra(
+                event_name,
+                component="final_edit",
+                stage="tool",
+                session_id=state.session_id,
+                final_index=state.final_index,
+                tool_name=tool_name,
+                outcome="failed" if phase == "failed" else phase,
+            ),
+        )
+
     async def _rollback_uploaded(self, uploaded_results: list[str]) -> None:
         if not uploaded_results:
             return
@@ -347,9 +496,21 @@ async def process_final_edit(
     redis: Redis,
     final_edit_service: FinalEditService,
 ) -> FinalEditResult:
+    logger.info(
+        "Loading final edit session context.",
+        extra=build_log_extra(
+            "final_edit.load_context.started",
+            component="final_edit",
+            stage="load_context",
+            session_id=session_id,
+            outcome="started",
+        ),
+    )
+    context = await load_final_edit_session_context(redis, session_id)
     result = await final_edit_service.edit_and_upload(
         session_id=session_id,
         drafts=payload.drafts,
+        context=context,
     )
 
     redis_payload = {
