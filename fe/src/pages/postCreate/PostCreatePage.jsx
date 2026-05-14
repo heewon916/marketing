@@ -14,9 +14,6 @@ import PublishResultStep from "@/features/postCreate/steps/PublishResultStep"
 import { useBlocker, useNavigate } from "react-router-dom"
 import CharacterListen from "@/assets/character/CharacterListen.png"
 import CharacterCamera from "@/assets/character/CharacterCamera.png"
-import coffeeTest1 from "@/assets/test/coffee_test1.jpg"
-import coffeeTest2 from "@/assets/test/coffee_test2.jpg"
-import coffeeTest3 from "@/assets/test/coffee_test3.jpg"
 import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreateLeaveHomeModal"
 import { requestVideoUpload } from "@/features/postCreate/api/VideoApi"
 import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate/api/PostApi"
@@ -113,17 +110,6 @@ export default function PostCreatePage() {
   useEffect(() => {
     if (step === POST_CREATE_STEP.POST_LOADING) {
       const timer = setTimeout(() => setStep(POST_CREATE_STEP.CAMERA_QUESTION), 1500)
-      return () => clearTimeout(timer)
-    }
-    if (step === POST_CREATE_STEP.EXTRACT_LOADING) {
-      const timer = setTimeout(() => {
-        setPhotos([
-          { id: 1, url: coffeeTest1 },
-          { id: 2, url: coffeeTest2 },
-          { id: 3, url: coffeeTest3 },
-        ])
-        setStep(POST_CREATE_STEP.PHOTO_CONFIRM)
-      }, 9000)
       return () => clearTimeout(timer)
     }
     if (step === POST_CREATE_STEP.PUBLISH_LOADING) {
@@ -251,7 +237,23 @@ export default function PostCreatePage() {
     setStep(POST_CREATE_STEP.EXTRACT_LOADING)
 
     try {
-      await requestVideoUpload(videoFile, sessionId)
+      const uploaded = await requestVideoUpload(videoFile, sessionId)
+
+      const extractedFrames = Array.isArray(uploaded?.extracted_frames)
+        ? uploaded.extracted_frames
+        : []
+
+      if (extractedFrames.length > 0) {
+        setPhotos(
+          extractedFrames.map((frame, index) => ({
+            id: frame.image_id ?? `image-${index}`,
+            url: frame.original_key ?? "",
+            imageKey: frame.image_id ?? "",
+          }))
+        )
+      }
+
+      setStep(POST_CREATE_STEP.PHOTO_CONFIRM)
     } catch (error) {
       showToast(error.message || "영상 업로드에 실패했습니다.", 'error')
       setStep(POST_CREATE_STEP.CAMERA_QUESTION)
