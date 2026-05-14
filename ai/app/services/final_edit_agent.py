@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
-import cv2
 from langgraph.graph import END, START, StateGraph
 import numpy as np
 
 from app.services.final_edit_planner import ImageEditPlan
-from app.services.final_edit_tools import FinalEditToolRegistry, normalize_tool_params
+from app.services.final_edit_runtime import import_cv2
+from app.services.final_edit_tools import normalize_tool_params
+
+if TYPE_CHECKING:
+    from app.services.final_edit_tools import FinalEditToolRegistry
 
 
 @dataclass
@@ -69,6 +72,7 @@ class FinalEditAgent:
         return graph.compile()
 
     def _initialize(self, state: FinalEditImageState) -> FinalEditImageState:
+        cv2 = import_cv2()
         image = cv2.imread(str(state.image_path))
         if image is None:
             state.fallback_to_original = True
@@ -154,6 +158,7 @@ class FinalEditAgent:
             state.metadata["output_source"] = "original_fallback"
             return state
 
+        cv2 = import_cv2()
         state.working_dir.mkdir(parents=True, exist_ok=True)
         output_path = state.working_dir / f"edited-{state.plan.image_index:03d}.jpg"
         cv2.imwrite(str(output_path), state.current_image, [cv2.IMWRITE_JPEG_QUALITY, 95])

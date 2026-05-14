@@ -146,7 +146,13 @@ def test_frame_extraction_singletons_initialized_on_app_state(
     assert app.state.best_frame_extractor is not None
     assert app.state.frame_extraction_service is not None
     assert app.state.frame_extraction_service.extractor is app.state.best_frame_extractor
-    assert app.state.final_edit_service is not None
+    assert hasattr(app.state, "final_edit_available")
+    if app.state.final_edit_available:
+        assert app.state.final_edit_service is not None
+        assert app.state.final_edit_unavailable_reason is None
+    else:
+        assert app.state.final_edit_service is None
+        assert app.state.final_edit_unavailable_reason is not None
     assert app.state.keyword_extraction_service is not None
     assert app.state.caption_generation_service is not None
     assert app.state.canonical_keyword_resolver_service is not None

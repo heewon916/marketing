@@ -8,29 +8,44 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 import time
+from typing import TYPE_CHECKING
 
-import cv2
 from fastapi import Request
 from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
 from app.schemas.sessions import FinalEditRequest
-from app.services.final_edit_agent import FinalEditAgent, FinalEditImageState
 from app.services.final_edit_planner import (
     FinalEditPlannerClient,
     FinalEditSessionContext,
     build_final_edit_planner_client,
     load_final_edit_session_context,
 )
+from app.services.final_edit_runtime import (
+    FinalEditUnavailableError,
+    import_cv2,
+)
 from app.services.s3_support import build_s3_client, normalize_s3_key
-from app.services.final_edit_tools import FinalEditToolRegistry
 from app.services.sessions import session_key, upsert_content_session
+
+if TYPE_CHECKING:
+    from app.services.final_edit_agent import FinalEditAgent, FinalEditImageState
 
 STATUS_FAIL = "FRAME_EXTRACTED"
 STATUS_PHOTO_EDITED = "PHOTO_EDITED"
 logger = logging.getLogger(__name__)
 _PREVIEW_MAX_LENGTH = 120
+
+
+def _build_default_agent(tool_event_sink):
+    from app.services.final_edit_agent import FinalEditAgent
+    from app.services.final_edit_tools import FinalEditToolRegistry
+
+    return FinalEditAgent(
+        FinalEditToolRegistry(),
+        tool_event_sink=tool_event_sink,
+    )
 
 
 @dataclass
@@ -65,6 +80,7 @@ def _determine_output_source(output_path: Path, draft_path: Path) -> str:
 
 
 def _read_image_dimensions(image_path: Path) -> tuple[int | None, int | None]:
+    cv2 = import_cv2()
     image = cv2.imread(str(image_path))
     if image is None:
         return None, None
@@ -160,10 +176,7 @@ class FinalEditService:
         self.uploader = uploader
         self.temp_root = temp_root
         self.planner_client = planner_client or build_final_edit_planner_client()
-        self.agent = agent or FinalEditAgent(
-            FinalEditToolRegistry(),
-            tool_event_sink=self._log_tool_event,
-        )
+        self.agent = agent or _build_default_agent(self._log_tool_event)
 
     @staticmethod
     def _build_debug_fields(
@@ -383,6 +396,8 @@ class FinalEditService:
         planner_fallback: bool,
         debug_fields: dict[str, str],
     ) -> list[Path]:
+        from app.services.final_edit_agent import FinalEditImageState
+
         edited_paths: list[Path] = []
         for image_index, draft_path in enumerate(downloaded_drafts):
             plan = plans_by_index.get(image_index)
@@ -688,7 +703,10 @@ class FinalEditService:
 def get_final_edit_service(request: Request) -> FinalEditService:
     service = getattr(request.app.state, "final_edit_service", None)
     if service is None:
-        raise RuntimeError("Final edit service is not initialized.")
+        reason = getattr(request.app.state, "final_edit_unavailable_reason", None)
+        if reason:
+            raise FinalEditUnavailableError(reason)
+        raise FinalEditUnavailableError("Final edit service is not initialized.")
     return service
 
 

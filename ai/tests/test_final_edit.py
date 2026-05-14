@@ -4,12 +4,15 @@ from uuid import uuid4
 
 import fakeredis
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
 from app.schemas.sessions import FinalEditResponse
+from app.bootstrap import _initialize_final_edit_service
 from app.services.final_edit import FinalEditResult, FinalEditService
+from app.services.final_edit_runtime import FinalEditUnavailableError
 from app.services.final_edit_planner import FinalEditSessionContext, ImageEditPlan
 from app.services.sessions import session_key
 from tests.utils.session_support import (
@@ -147,6 +150,54 @@ def test_final_edit_rejects_mismatched_session_id(client: TestClient) -> None:
     response = client.post("/ai/sessions/edit-session-3/final-edit", json=payload)
 
     assert response.status_code == 422
+
+
+def test_final_edit_returns_503_when_service_is_unavailable(
+    client: TestClient,
+) -> None:
+    original_service = getattr(app.state, "final_edit_service", None)
+    original_available = getattr(app.state, "final_edit_available", True)
+    original_reason = getattr(app.state, "final_edit_unavailable_reason", None)
+    session_id = str(uuid4())
+    payload = {
+        "session_id": session_id,
+        "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+    }
+    app.state.final_edit_service = None
+    app.state.final_edit_available = False
+    app.state.final_edit_unavailable_reason = "FinalEditUnavailableError: OpenCV is unavailable"
+
+    try:
+        response = client.post(f"/ai/sessions/{session_id}/final-edit", json=payload)
+    finally:
+        app.state.final_edit_service = original_service
+        app.state.final_edit_available = original_available
+        app.state.final_edit_unavailable_reason = original_reason
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Final edit is unavailable."
+
+
+def test_initialize_final_edit_service_marks_unavailable_on_opencv_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    startup_app = FastAPI()
+
+    def fail_import_cv2():
+        raise FinalEditUnavailableError("OpenCV is unavailable for final edit.")
+
+    monkeypatch.setattr("app.bootstrap.import_cv2", fail_import_cv2)
+
+    _initialize_final_edit_service(startup_app, tmp_path)
+
+    assert startup_app.state.final_edit_service is None
+    assert startup_app.state.final_edit_planner_client is None
+    assert startup_app.state.final_edit_available is False
+    assert (
+        startup_app.state.final_edit_unavailable_reason
+        == "FinalEditUnavailableError: OpenCV is unavailable for final edit."
+    )
 
 
 def test_final_edit_response_limits_results_to_three() -> None:

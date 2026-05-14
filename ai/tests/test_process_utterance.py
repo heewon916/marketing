@@ -62,6 +62,32 @@ def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> N
     assert isinstance(body["caption"], str) and body["caption"]
 
 
+def test_process_utterance_and_health_survive_when_final_edit_is_unavailable(
+    client: TestClient,
+) -> None:
+    original_service = getattr(app.state, "final_edit_service", None)
+    original_available = getattr(app.state, "final_edit_available", True)
+    original_reason = getattr(app.state, "final_edit_unavailable_reason", None)
+    app.state.final_edit_service = None
+    app.state.final_edit_available = False
+    app.state.final_edit_unavailable_reason = "FinalEditUnavailableError: OpenCV is unavailable"
+
+    try:
+        health_response = client.get("/ai/health")
+        process_response = client.post(
+            "/ai/sessions/sess-final-edit-unavailable/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.final_edit_service = original_service
+        app.state.final_edit_available = original_available
+        app.state.final_edit_unavailable_reason = original_reason
+
+    assert health_response.status_code == 200
+    assert health_response.json() == {"status": "ok"}
+    assert process_response.status_code == 200
+
+
 def test_keywords_not_exposed_in_response(client: TestClient, debug_mode: None) -> None:
     response = client.post(
         "/ai/sessions/sess-1/process-utterance",
