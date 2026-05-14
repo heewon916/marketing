@@ -103,6 +103,7 @@ services:
         VITE_FIREBASE_MEASUREMENT_ID: ${VITE_FIREBASE_MEASUREMENT_ID}
         VITE_FIREBASE_VAPID_KEY: ${VITE_FIREBASE_VAPID_KEY}
         VITE_API_BACKEND_URL: ${VITE_API_BACKEND_URL}
+        VITE_CLOUDFRONT_DOMAIN : https://d1ldl7eahr774.cloudfront.net
     image: marketing-frontend:latest
     container_name: project-frontend
     restart: unless-stopped
