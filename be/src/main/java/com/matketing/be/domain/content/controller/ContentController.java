@@ -16,9 +16,11 @@ import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/contents")
@@ -279,8 +281,11 @@ public class ContentController {
     @PostMapping("/{sessionId}/video")
     public ContentVideoResponseDto processVideo(
             @PathVariable UUID sessionId,
+            @RequestParam(value = "store_id", required = false) String storeId,
             @RequestPart("video_file") MultipartFile videoFile
     ) {
-        return contentService.processVideo(sessionId, videoFile);
+        log.info("[VideoUpload] request received. sessionId={}, storeId={}, fileName={}, fileSize={}, contentType={}",
+                sessionId, storeId, videoFile.getOriginalFilename(), videoFile.getSize(), videoFile.getContentType());
+        return contentService.processVideo(sessionId, storeId, videoFile);
     }
 }

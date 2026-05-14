@@ -50,12 +50,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ContentService {
@@ -460,34 +462,69 @@ public class ContentService {
         );
     }
 
-    public ContentVideoResponseDto processVideo(UUID sessionId, MultipartFile videoFile) {
-        validateVideoFile(videoFile);
-        String videoKey = "/inputs/" + sessionId + "/draft.mp4";
-        s3VideoClient.uploadVideo(videoKey, videoFile);
-        boolean videoSaved = contentRedisRepository.putVideo(sessionId.toString(), videoKey);
-        if (!videoSaved) {
-            throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+    public ContentVideoResponseDto processVideo(UUID sessionId, String storeId, MultipartFile videoFile) {
+        try {
+            validateVideoFile(videoFile);
+            String videoKey = "/inputs/" + sessionId + "/draft.mp4";
+            
+            log.info("[VideoUpload] uploading original video to S3. key={}", videoKey);
+            s3VideoClient.uploadVideo(videoKey, videoFile);
+            log.info("[VideoUpload] S3 upload completed. key={}", videoKey);
+            
+            boolean videoSaved = contentRedisRepository.putVideo(sessionId.toString(), videoKey);
+            if (!videoSaved) {
+                log.error("[VideoUpload] failed at step=Redis putVideo, sessionId={}, storeId={}, reason=Redis save failed", sessionId, storeId);
+                throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
+            }
+
+            log.info("[VideoUpload] calling AI extract-frames. sessionId={}, videoKey={}", sessionId, videoKey);
+            AiExtractFramesResponse extracted = null;
+            try {
+                extracted = aiContentClient.extractFrames(
+                        new AiExtractFramesRequest(sessionId.toString(), videoKey)
+                );
+            } catch (Exception e) {
+                log.error("[VideoUpload] failed at step=AI extractFrames, sessionId={}, storeId={}, reason={}", sessionId, storeId, e.getMessage());
+                throw new BusinessException(ErrorCode.AI_SERVER_FAILED);
+            }
+
+            List<String> drafts = extracted != null && extracted.drafts() != null
+                    ? extracted.drafts().stream()
+                    .filter(draft -> draft != null && !draft.isBlank())
+                    .toList()
+                    : List.of();
+                    
+            log.info("[VideoUpload] AI extract-frames response received. status={}, draftsCount={}", 
+                    extracted != null ? extracted.status() : "null", drafts.size());
+
+            log.info("[VideoUpload] calling AI final-edit. sessionId={}", sessionId);
+            AiFinalEditResponse edited = null;
+            try {
+                edited = aiContentClient.finalEdit(
+                        new AiFinalEditRequest(sessionId.toString(), drafts)
+                );
+            } catch (Exception e) {
+                log.error("[VideoUpload] failed at step=AI finalEdit, sessionId={}, storeId={}, reason={}", sessionId, storeId, e.getMessage());
+                throw new BusinessException(ErrorCode.AI_SERVER_FAILED);
+            }
+            
+            List<String> results = edited != null && edited.results() != null ? edited.results() : List.of();
+            String status = edited != null && edited.status() != null ? edited.status() : ContentStatus.PHOTO_EDITED.name();
+            
+            log.info("[VideoUpload] AI final-edit response received. status={}, resultsCount={}", status, results.size());
+            
+            contentRedisRepository.putAiVideoResults(sessionId.toString(), videoKey, status, drafts, results);
+
+            List<ContentVideoResponseDto.ExtractedFrame> frames = results.stream()
+                    .map(result -> new ContentVideoResponseDto.ExtractedFrame(UUID.randomUUID().toString(), result))
+                    .toList();
+            return new ContentVideoResponseDto(videoKey, frames);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[VideoUpload] failed at step=Unknown, sessionId={}, storeId={}, reason={}", sessionId, storeId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
         }
-
-        AiExtractFramesResponse extracted = aiContentClient.extractFrames(
-                new AiExtractFramesRequest(sessionId.toString(), videoKey)
-        );
-        List<String> drafts = extracted != null && extracted.drafts() != null
-                ? extracted.drafts().stream()
-                .filter(draft -> draft != null && !draft.isBlank())
-                .toList()
-                : List.of();
-        AiFinalEditResponse edited = aiContentClient.finalEdit(
-                new AiFinalEditRequest(sessionId.toString(), drafts)
-        );
-        List<String> results = edited != null && edited.results() != null ? edited.results() : List.of();
-        String status = edited != null && edited.status() != null ? edited.status() : ContentStatus.PHOTO_EDITED.name();
-        contentRedisRepository.putAiVideoResults(sessionId.toString(), videoKey, status, drafts, results);
-
-        List<ContentVideoResponseDto.ExtractedFrame> frames = results.stream()
-                .map(result -> new ContentVideoResponseDto.ExtractedFrame(UUID.randomUUID().toString(), result))
-                .toList();
-        return new ContentVideoResponseDto(videoKey, frames);
     }
 
     //============================================
