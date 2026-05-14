@@ -7,7 +7,10 @@ public enum ContentStatus {
     COMPLETED,
     TEXT_GENERATED,
     FRAME_EXTRACTED,
-    PHOTO_EDITED;
+    PHOTO_EDITED,
+    PUBLISHING,
+    PUBLISHED,
+    PUBLISH_FAILED;
 
     // Redis/API 표준 상태는 대문자 스네이크 케이스지만, 외부 시스템에서 소문자나 하이픈 표기가 들어올 수 있다.
     // 이 메서드는 외부 상태 문자열을 내부 표준 enum으로 맞추는 단일 진입점이다.

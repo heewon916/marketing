@@ -369,16 +369,29 @@ public class ContentService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST);
         }
 
-        User user = currentUser();
-        validateInstagramToken(user);
         List<String> imageUrls = session.photos().stream()
                 .map(this::toPublicMediaUrl)
                 .toList();
-        String videoUrl = session.video() == null || session.video().isBlank()
-                ? null
-                : toPublicMediaUrl(session.video());
-        if (imageUrls.isEmpty() && (videoUrl == null || videoUrl.isBlank())) {
+
+        if (imageUrls.isEmpty()) {
+            if (session.video() != null && !session.video().isBlank()) {
+                throw new BusinessException(ErrorCode.INVALID_REQUEST, "현재는 이미지 기반 Instagram 발행만 지원합니다.");
+            }
             throw new BusinessException(ErrorCode.INSTAGRAM_MEDIA_REQUIRED);
+        }
+
+        if (imageUrls.size() > 10) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "최대 10장의 이미지만 발행할 수 있습니다.");
+        }
+
+        User user = currentUser();
+        validateInstagramToken(user);
+        
+        log.info("[Publish] Starting publish process. sessionId={}, userId={}, igUserId={}, photoCount={}, hasVideo={}", 
+                sessionId, user.getId(), user.getInstagramUserId(), imageUrls.size(), session.video() != null && !session.video().isBlank());
+                
+        if (session.video() != null && !session.video().isBlank()) {
+            log.info("[Publish] Video exists in session but is ignored for Instagram publishing. sessionId={}", sessionId);
         }
 
         String publishId = UUID.randomUUID().toString();
@@ -387,7 +400,7 @@ public class ContentService {
             throw new BusinessException(ErrorCode.CONTENT_NOT_FOUND);
         }
         try {
-            String containerId = createInstagramContainer(user, session.caption(), imageUrls, videoUrl);
+            String containerId = createInstagramContainer(user, session.caption(), imageUrls);
             contentRedisRepository.markPublishContainerCreated(sessionId.toString(), containerId);
         } catch (BusinessException exception) {
             contentRedisRepository.failPublish(sessionId.toString(), exception.getMessage());
@@ -396,6 +409,11 @@ public class ContentService {
         return new ContentPublishResponseDto(publishId, "queued", "발행이 시작되었습니다");
     }
 
+    /**
+     * 게시물 발행 상태 조회 API.
+     * Side Effect Warning: 이 메서드는 단순 상태 조회뿐만 아니라, 컨테이너 상태가 FINISHED일 때 media_publish와 DB 저장을 수행합니다.
+     * 따라서 멱등성(Idempotency)을 보장하기 위해 Redis Lock과 상태(status/instagram_media_id) 체크가 포함되어 있습니다.
+     */
     @Transactional
     public ContentPublishStatusResponseDto getPublishStatus(UUID sessionId) {
         ContentRedisSession session = getRedisSessionOrThrow(sessionId);
@@ -407,12 +425,17 @@ public class ContentService {
                     session.instagramPermalink()
             );
         }
+        
+        // media_publish는 성공했으나 이전 호출에서 DB 저장이 실패했던 경우 복구를 시도
+        if (session.instagramMediaId() != null && !session.instagramMediaId().isBlank()) {
+            return completePublishAndSave(sessionId, session, currentUser(), session.instagramMediaId());
+        }
 
         if (session.publishId() == null || session.publishId().isBlank()) {
             return new ContentPublishStatusResponseDto(null, "not_started", null, null);
         }
 
-        if ("failed".equalsIgnoreCase(session.publishProgress())) {
+        if (ContentStatus.PUBLISH_FAILED.name().equals(session.status()) || "failed".equalsIgnoreCase(session.publishProgress())) {
             return new ContentPublishStatusResponseDto(null, "failed", null, null);
         }
 
@@ -426,50 +449,71 @@ public class ContentService {
 
         User user = currentUser();
         validateInstagramToken(user);
-        String instagramMediaId;
-        String instagramPermalink;
+        
         try {
             String containerStatus = instagramPublishClient.getContainerStatus(user.getAccessToken(), session.instagramContainerId());
             if ("IN_PROGRESS".equalsIgnoreCase(containerStatus)) {
                 contentRedisRepository.markPublishInProgress(sessionId.toString());
-                return new ContentPublishStatusResponseDto(null, "in_progress", null, null);
+                return new ContentPublishStatusResponseDto(null, "uploading", null, null);
             }
             if (!"FINISHED".equalsIgnoreCase(containerStatus)) {
                 contentRedisRepository.failPublish(sessionId.toString(), "Instagram container status: " + containerStatus);
                 return new ContentPublishStatusResponseDto(null, "failed", null, null);
             }
 
-            instagramMediaId = instagramPublishClient.publishContainer(
+            if (!contentRedisRepository.acquirePublishLock(sessionId.toString())) {
+                log.info("[Publish] Concurrent polling detected. Locked by another request. sessionId={}", sessionId);
+                return new ContentPublishStatusResponseDto(null, "uploading", null, null);
+            }
+
+            String instagramMediaId = instagramPublishClient.publishContainer(
                     user.getInstagramUserId(),
                     user.getAccessToken(),
                     session.instagramContainerId()
             );
-            instagramPermalink = instagramPublishClient.getPermalink(user.getAccessToken(), instagramMediaId);
+            
+            // media_publish 성공 직후 Redis에 id를 저장하여 동시성 및 재시도 상황 대비
+            contentRedisRepository.saveInstagramMediaId(sessionId.toString(), instagramMediaId);
+            
+            return completePublishAndSave(sessionId, session, user, instagramMediaId);
+            
         } catch (BusinessException exception) {
             contentRedisRepository.failPublish(sessionId.toString(), exception.getMessage());
             return new ContentPublishStatusResponseDto(null, "failed", null, null);
         }
-        Content content = Content.builder()
-                .storeId(UUID.fromString(session.storeId()))
-                .sessionId(sessionId)
-                .caption(session.caption())
-                .instagramMediaId(instagramMediaId)
-                .instagramPermalink(instagramPermalink)
-                .publishedAt(OffsetDateTime.now())
-                .isDeleted(false)
-                .createdAt(OffsetDateTime.now())
-                .build();
-        content.replaceImages(session.photos());
-        content.replaceVideoRecordings(session.video() == null || session.video().isBlank() ? List.of() : List.of(session.video()));
-        Content saved = contentRepository.save(content);
-        contentRedisRepository.completePublish(sessionId.toString(), saved.getId(), instagramMediaId, instagramPermalink);
+    }
 
-        return new ContentPublishStatusResponseDto(
-                String.valueOf(saved.getId()),
-                "completed",
-                instagramMediaId,
-                instagramPermalink
-        );
+    private ContentPublishStatusResponseDto completePublishAndSave(UUID sessionId, ContentRedisSession session, User user, String instagramMediaId) {
+        String instagramPermalink;
+        try {
+            instagramPermalink = instagramPublishClient.getPermalink(user.getAccessToken(), instagramMediaId);
+            
+            Content content = Content.builder()
+                    .storeId(UUID.fromString(session.storeId()))
+                    .sessionId(sessionId)
+                    .caption(session.caption())
+                    .instagramMediaId(instagramMediaId)
+                    .instagramPermalink(instagramPermalink)
+                    .publishedAt(OffsetDateTime.now())
+                    .isDeleted(false)
+                    .createdAt(OffsetDateTime.now())
+                    .build();
+            content.replaceImages(session.photos());
+            content.replaceVideoRecordings(session.video() == null || session.video().isBlank() ? List.of() : List.of(session.video()));
+            Content saved = contentRepository.save(content);
+            contentRedisRepository.completePublish(sessionId.toString(), saved.getId(), instagramMediaId, instagramPermalink);
+
+            return new ContentPublishStatusResponseDto(
+                    String.valueOf(saved.getId()),
+                    "completed",
+                    instagramMediaId,
+                    instagramPermalink
+            );
+        } catch (Exception exception) {
+            log.error("[Publish] Instagram publish succeeded but DB save failed. sessionId={}, mediaId={}", sessionId, instagramMediaId, exception);
+            contentRedisRepository.failPublish(sessionId.toString(), "Instagram 게시는 성공했지만 서버 저장 실패");
+            return new ContentPublishStatusResponseDto(null, "failed", null, null);
+        }
     }
 
     public ContentVideoResponseDto processVideo(UUID sessionId, String storeId, MultipartFile videoFile) {
@@ -672,15 +716,7 @@ public class ContentService {
         }
     }
 
-    private String createInstagramContainer(User user, String caption, List<String> imageUrls, String videoUrl) {
-        if (videoUrl != null && !videoUrl.isBlank()) {
-            return instagramPublishClient.createReelsContainer(
-                    user.getInstagramUserId(),
-                    user.getAccessToken(),
-                    videoUrl,
-                    caption
-            );
-        }
+    private String createInstagramContainer(User user, String caption, List<String> imageUrls) {
         if (imageUrls.size() == 1) {
             return instagramPublishClient.createImageContainer(
                     user.getInstagramUserId(),
