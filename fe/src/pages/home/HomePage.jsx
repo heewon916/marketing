@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import BottomTab from "@/components/common/BottomTab"
 import InputBar from "@/components/common/InputBar"
@@ -8,7 +8,8 @@ import { registerFcmToken } from "@/features/notification/api/FcmApi"
 import { requestCaptionGeneration } from "@/features/home/api/HomeApi"
 import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
 import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep"
-import { showToast } from '@/utils/toast';
+import { showToast } from '@/utils/toast'
+import { speak, stopTTS } from '@/utils/tts'
 
 function HomePage() {
   const [isTyping, setIsTyping] = useState(false)
@@ -16,6 +17,16 @@ function HomePage() {
   const navigate = useNavigate()
   const setStep = usePostCreateStore((state) => state.setStep)
   const setGenerationContext = usePostCreateStore((state) => state.setGenerationContext)
+
+  // 홈페이지 진입 시 TTS 재생
+  useEffect(() => {
+    speak("오늘 새로 공유해주실 이야기가 있나요?")
+
+    // 언마운트 시 TTS 중단
+    return () => {
+      stopTTS()
+    }
+  }, [])
 
   const isActive = isTyping || isRecording
   const handleFcmRegisterClick = () => {
