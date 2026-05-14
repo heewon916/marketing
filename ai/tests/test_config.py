@@ -259,7 +259,7 @@ def test_model_defaults_resolve_without_env(env_setup: None) -> None:
     assert DEFAULT_CAPTION_MODEL_HF_REPO_ID == "LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
     assert DEFAULT_CAPTION_MODEL_HF_FILENAME == "EXAONE-4.0-32B-Q4_K_M.gguf"
     assert DEFAULT_CAPTION_MODEL_SERVER_PORT == 8002
-    assert DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS == 120.0
+    assert DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS == 600.0
     assert DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT == "/health"
 
     assert (
@@ -306,7 +306,7 @@ def test_model_client_defaults_apply_when_env_is_missing(
         settings.caption_model_client.timeout_seconds
         == DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
     )
-    assert settings.caption_model_client.max_tokens == 1024
+    assert settings.caption_model_client.max_tokens == 512
 
 
 def test_reference_caption_rag_defaults_apply_when_env_is_missing(
