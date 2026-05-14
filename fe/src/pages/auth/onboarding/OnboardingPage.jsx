@@ -198,6 +198,8 @@ function OnboardingPage() {
           <StoreSelectStep
             {...commonProps}
             onNext={() => moveToStep(14)}
+            onManualInput={() => moveToStep(12)}
+            onSearchFail={() => moveToStep(11)}
           />
         );
 

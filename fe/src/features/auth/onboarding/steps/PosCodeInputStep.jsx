@@ -158,7 +158,7 @@ function PosCodeInputStep({
               onChange={(e) => handleChange(e, idx)}
               onKeyDown={(e) => handleKeyDown(e, idx)}
               disabled={isLoading}
-              className="w-12 h-14 border border-gray-300 rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-primary-100 focus:ring-4 focus:ring-primary-100/20 transition-all disabled:bg-gray-50"
+              className="w-11 h-13 border border-gray-300 rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-primary-100 focus:ring-4 focus:ring-primary-100/20 transition-all disabled:bg-gray-50"
             />
           ))}
         </div>
