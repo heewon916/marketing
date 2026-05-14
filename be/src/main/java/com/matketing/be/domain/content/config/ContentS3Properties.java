@@ -6,6 +6,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record ContentS3Properties(
         String bucketName,
         String region,
-        String publicBaseUrl
+        String publicBaseUrl,
+        String accessKey,
+        String secretKey
 ) {
 }
