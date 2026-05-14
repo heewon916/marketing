@@ -57,6 +57,7 @@ public class UserService {
         UserMeResponse.StoreDto storeDto = new UserMeResponse.StoreDto(
                 store.getId().toString(),
                 store.getMerchantId(),
+                store.getStoreName(),
                 store.getCategory() != null ? store.getCategory().name() : null,
                 store.getAddress(),
                 operatingHoursObj

@@ -6,5 +6,5 @@ public record UserMeResponse(
     boolean isOnboarded
 ) {
     public record UserDto(String id, String instagramUserId, String instagramUsername, String profileImageUrl) {}
-    public record StoreDto(String id, String merchantId, String category, String address, Object operatingHours) {}
+    public record StoreDto(String id, String merchantId, String storeName, String category, String address, Object operatingHours) {}
 }
