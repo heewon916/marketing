@@ -1,10 +1,13 @@
 from collections.abc import Awaitable
 import asyncio
 import logging
+from pathlib import Path
 from uuid import uuid4
 
+import cv2
 import fakeredis
 import httpx
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -19,7 +22,9 @@ from app.services.caption_generation import (
     CaptionGenerationUnavailableError,
     DEFAULT_FALLBACK_GUIDE_TEXT,
 )
+from app.services.final_edit_agent import FinalEditImageState
 from app.services.final_edit import FinalEditResult, FinalEditService
+from app.services.final_edit_planner import FinalEditSessionContext, ImageEditPlan
 from app.services.frame_extraction import ExtractFramesResult
 from app.services.canonical_keyword_resolver import (
     CanonicalKeywordMatch,
@@ -97,6 +102,15 @@ VALID_EXTRACT_PAYLOAD = {
     "session_id": str(uuid4()),
     "video": "/inputs/test-session/test-video.mp4",
 }
+
+
+def _write_test_jpeg(destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    image = np.full((16, 16, 3), 120, dtype=np.uint8)
+    image[:, :8, 2] = 220
+    cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+
 def _run_immediate(awaitable: Awaitable[object]) -> object:
     iterator = awaitable.__await__()
     try:
@@ -137,6 +151,7 @@ class FakeFinalEditService:
         self,
         session_id: str,
         drafts: list[str],
+        context=None,
     ) -> FinalEditResult:
         self.calls.append((session_id, drafts))
         return self.result
@@ -393,8 +408,52 @@ class StubDraftDownloader:
     is_configured = True
 
     async def download_draft(self, draft_key: str, destination) -> None:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(draft_key.encode("utf-8"))
+        _write_test_jpeg(destination)
+
+
+class CapturingFinalUploader:
+    is_configured = True
+
+    def __init__(self) -> None:
+        self.uploaded_paths: list[str] = []
+        self.source_paths: list[str] = []
+
+    async def upload_final(self, session_id: str, image_path, final_index: int) -> str:
+        self.source_paths.append(str(image_path))
+        uploaded_path = f"/ai-finals/{session_id}/final-{final_index:03d}.jpg"
+        self.uploaded_paths.append(uploaded_path)
+        return uploaded_path
+
+    async def delete_final(self, uploaded_path: str) -> None:
+        return None
+
+
+class FailingPlannerClient:
+    last_raw_output = ""
+
+    async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
+        raise RuntimeError("planner_failed")
+
+
+class FallbackAgent:
+    async def run(self, state: FinalEditImageState) -> FinalEditImageState:
+        state.fallback_to_original = True
+        state.failure_reason = "tool_failed:denoise:RuntimeError"
+        state.output_path = state.image_path
+        state.executed_tools = []
+        return state
+
+
+class FakePlannerClient:
+    def __init__(self, plans: list[ImageEditPlan]) -> None:
+        self.plans = plans
+        self.last_raw_output = (
+            '[{"image_index":0,"content":"cake","strategy":"denoise",'
+            '"tools":["denoise"],"params":{"denoise":{"strength":0.4}}}]'
+        )
+
+    async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
+        return self.plans
 
 
 class FailingUploader:
@@ -1644,6 +1703,125 @@ def test_final_edit_service_rolls_back_uploaded_results(tmp_path) -> None:
     assert uploader.uploaded == ["/ai-finals/session-rollback-1/final-001.jpg"]
     assert uploader.deleted == ["/ai-finals/session-rollback-1/final-001.jpg"]
     assert not (tmp_path / session_id).exists()
+
+
+def test_final_edit_service_marks_planner_fallback_on_planner_error(tmp_path) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FailingPlannerClient(),
+    )
+
+    result = asyncio.run(
+        service.edit_and_upload(
+            session_id="session-planner-fallback-1",
+            drafts=["/ai-drafts/session-planner-fallback-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                caption="연말 케이크 소개",
+                keywords=["케이크"],
+            ),
+        )
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.results == ["/ai-finals/session-planner-fallback-1/final-001.jpg"]
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:planner_fallback"] == "true"
+    assert result.debug_fields["debug:planner_failure_type"] == "RuntimeError"
+    assert result.debug_fields["debug:planner_response_received"] == "false"
+    assert result.debug_fields["debug:planned_indexes"] == ""
+    assert result.debug_fields["debug:executed_tools:1"] == ""
+    assert result.debug_fields["debug:upload_source_kind:1"] == "original_fallback"
+    assert result.debug_fields["debug:output_path:1"].endswith("draft-001.jpg")
+    assert uploader.source_paths[0].endswith("draft-001.jpg")
+
+
+def test_final_edit_service_marks_image_fallback_when_agent_falls_back(tmp_path) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="케이크",
+                    strategy="디노이즈",
+                    tools=["denoise"],
+                    params={"denoise": {"strength": 0.4}},
+                )
+            ]
+        ),
+        agent=FallbackAgent(),
+    )
+
+    result = asyncio.run(
+        service.edit_and_upload(
+            session_id="session-image-fallback-1",
+            drafts=["/ai-drafts/session-image-fallback-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                caption="연말 케이크 소개",
+                keywords=["케이크"],
+            ),
+        )
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:planner_response_received"] == "true"
+    assert result.debug_fields["debug:planned_indexes"] == "0"
+    assert result.debug_fields["debug:image_fallback:1"] == "true"
+    assert result.debug_fields["debug:image_failure:1"] == "tool_failed:denoise:RuntimeError"
+    assert result.debug_fields["debug:executed_tools:1"] == ""
+    assert result.debug_fields["debug:upload_source_kind:1"] == "original_fallback"
+    assert result.debug_fields["debug:output_path:1"].endswith("draft-001.jpg")
+    assert uploader.source_paths[0].endswith("draft-001.jpg")
+
+
+def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(tmp_path) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="케이크",
+                    strategy="노이즈를 줄이고 선명도를 높인다",
+                    tools=["denoise", "sharpen"],
+                    params={
+                        "denoise": {"strength": 0.4},
+                        "sharpen": {"strength": 0.3},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = asyncio.run(
+        service.edit_and_upload(
+            session_id="session-edited-upload-1",
+            drafts=["/ai-drafts/session-edited-upload-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                caption="포근한 케이크 소개",
+                keywords=["케이크"],
+            ),
+        )
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:planner_response_received"] == "true"
+    assert result.debug_fields["debug:planned_indexes"] == "0"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen"
+    assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
+    assert "edited-000.jpg" in result.debug_fields["debug:output_path:1"]
+    assert "edited-000.jpg" in uploader.source_paths[0]
 
 
 def test_frame_extraction_singletons_initialized_on_app_state(

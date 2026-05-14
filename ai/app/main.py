@@ -46,6 +46,7 @@ from app.services.final_edit import (
     S3DraftImageDownloader,
     S3FinalImageUploader,
 )
+from app.services.final_edit_planner import build_final_edit_planner_client
 from app.services.caption_generation import (
     CaptionGenerationUnavailableError,
     build_caption_generation_service,
@@ -224,10 +225,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         temp_root=temp_root,
     )
 
+    app.state.final_edit_planner_client = build_final_edit_planner_client()
     app.state.final_edit_service = FinalEditService(
         downloader=S3DraftImageDownloader(),
         uploader=S3FinalImageUploader(),
         temp_root=temp_root / "final-edit",
+        planner_client=app.state.final_edit_planner_client,
     )
     app.state.keyword_extraction_service = build_keyword_extraction_service()
     app.state.caption_generation_service = build_caption_generation_service()
@@ -264,6 +267,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             caption_chat_endpoint=caption_client.chat_endpoint,
             caption_health_endpoint=caption_client.health_endpoint,
             caption_timeout_seconds=caption_client.timeout_seconds,
+        ),
+    )
+    logger.info(
+        "Final edit planner configured.",
+        extra=build_log_extra(
+            "app.startup.final_edit_planner_configured",
+            component="startup",
+            final_edit_model_base_url=app.state.final_edit_planner_client.model_settings.base_url,
+            final_edit_chat_endpoint=app.state.final_edit_planner_client.model_settings.chat_endpoint,
+            final_edit_health_endpoint=app.state.final_edit_planner_client.model_settings.health_endpoint,
+            final_edit_timeout_seconds=app.state.final_edit_planner_client.model_settings.timeout_seconds,
+            final_edit_model_name=settings.FINAL_EDIT_MODEL_NAME,
         ),
     )
     logger.info(

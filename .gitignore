@@ -64,3 +64,10 @@ be/src/main/resources/firebase/firebase-service-account.json
 secrets/
 **/firebase-service-account.json
 ngrok
+
+
+downloads/
+ai/outputs/
+ai/models/
+ai/mock_agent.py
+ai/analysis
