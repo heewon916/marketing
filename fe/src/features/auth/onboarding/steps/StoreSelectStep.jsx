@@ -9,11 +9,33 @@ import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function StoreSelectStep({ onNext, onPrev }) {
+function LoadingText() {
+  return (
+    <div className="flex items-end justify-center gap-2 pt-2" style={{ height: '36px' }}>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="block h-3 w-3 rounded-full bg-primary-100"
+          style={{
+            animation: 'dotBounce 0.8s ease-in-out infinite',
+            animationDelay: `${i * 0.15}s`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes dotBounce {
+          0%, 100% { transform: translateY(0); opacity: 1; }
+          45%       { transform: translateY(-20px); opacity: 0.5; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
   const listRef = useRef(null);
 
   const storeName = useOnboardingStore((state) => state.storeName);
-  const setStoreName = useOnboardingStore((state) => state.setStoreName);
   const setSelectedPlaceId = useOnboardingStore(
     (state) => state.setSelectedPlaceId
   );
@@ -21,19 +43,21 @@ function StoreSelectStep({ onNext, onPrev }) {
   const [stores, setStores] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [isLoading, setIsLoading] = useState(() => !!storeName?.trim());
-  const [errorMessage, setErrorMessage] = useState('');
 
   const keyword = storeName?.trim() ?? '';
-  const displayErrorMessage =
-    !keyword ? '상호명 정보가 없어 가게 목록을 불러올 수 없어요.' : errorMessage;
 
   useEffect(() => {
-    if (!keyword) return;
+    if (!keyword) {
+      onSearchFail?.();
+      return;
+    }
 
     let isMounted = true;
 
     const searchStores = async () => {
       try {
+        setIsLoading(true);
+
         const response = await onboardingApi.searchStores(keyword);
         const result = response.data?.data ?? [];
 
@@ -46,17 +70,17 @@ function StoreSelectStep({ onNext, onPrev }) {
           address: store.address,
         }));
 
+        if (normalizedStores.length === 0) {
+          onSearchFail?.();
+          return;
+        }
+
         setStores(normalizedStores);
         setSelectedId('');
-        setErrorMessage(
-          normalizedStores.length === 0 ? '가게 목록을 찾을 수 없어요.' : ''
-        );
       } catch {
         if (!isMounted) return;
 
-        setStores([]);
-        setSelectedId('');
-        setErrorMessage('가게 목록을 불러오지 못했어요.');
+        onSearchFail?.();
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -69,7 +93,7 @@ function StoreSelectStep({ onNext, onPrev }) {
     return () => {
       isMounted = false;
     };
-  }, [keyword]);
+  }, [keyword, onSearchFail]);
 
   const handleSelectStore = (id) => {
     setSelectedId(id);
@@ -81,9 +105,13 @@ function StoreSelectStep({ onNext, onPrev }) {
     if (!selectedStore) return;
 
     setSelectedPlaceId(selectedStore.placeId);
-    setStoreName(selectedStore.name);
 
     onNext?.();
+  };
+
+  const handleManualInput = () => {
+    setSelectedPlaceId('');
+    onManualInput?.();
   };
 
   return (
@@ -106,41 +134,51 @@ function StoreSelectStep({ onNext, onPrev }) {
         />
       }
       footer={
-        <OnboardingFooterButtons
-          onPrev={onPrev}
-          onNext={handleNext}
-          nextDisabled={!selectedId}
-          nextText="다음"
-        />
+        <div className="w-full">
+          {!isLoading && stores.length > 0 && (
+            <div className="mb-8 text-center">
+              <p className="text-sm font-medium text-gray-500">
+                원하는 가게가 목록에 없나요?
+              </p>
+
+              <button
+                type="button"
+                onClick={handleManualInput}
+                className="mt-1 text-sm font-semibold text-primary-100 underline underline-offset-4"
+              >
+                직접 입력할게요
+              </button>
+            </div>
+          )}
+
+          <OnboardingFooterButtons
+            onPrev={onPrev}
+            onNext={handleNext}
+            nextDisabled={!selectedId}
+            nextText="다음"
+          />
+        </div>
       }
     >
       <div className="relative mt-2 w-full flex-1">
         <div className="absolute inset-0">
-          {isLoading && (
-            <p className="px-1 pt-2 text-sm font-medium text-gray-400">
-              가게 목록을 불러오고 있어요.
-            </p>
-          )}
+          {isLoading && <LoadingText />}
 
-          {!isLoading && displayErrorMessage && (
-            <p className="px-1 pt-2 text-sm font-medium text-red-500">
-              {displayErrorMessage}
-            </p>
-          )}
-
-          {!isLoading && !displayErrorMessage && stores.length > 0 && (
-            <div
-              ref={listRef}
-              className="flex h-full w-full flex-col gap-3 overflow-y-auto px-1 pb-24 pt-2 [&::-webkit-scrollbar]:hidden"
-            >
-              {stores.map((store) => (
-                <StoreCard
-                  key={store.id}
-                  store={store}
-                  isSelected={selectedId === store.id}
-                  onSelect={handleSelectStore}
-                />
-              ))}
+          {!isLoading && stores.length > 0 && (
+            <div className="flex h-full w-full flex-col">
+              <div
+                ref={listRef}
+                className="flex h-full w-full flex-col gap-3 overflow-y-auto px-1 pb-24 pt-2 [&::-webkit-scrollbar]:hidden"
+              >
+                {stores.map((store) => (
+                  <StoreCard
+                    key={store.id}
+                    store={store}
+                    isSelected={selectedId === store.id}
+                    onSelect={handleSelectStore}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
