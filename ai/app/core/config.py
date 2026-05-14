@@ -27,6 +27,7 @@ DEFAULT_CAPTION_MODEL_HF_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
 DEFAULT_CAPTION_MODEL_HF_FILENAME = "EXAONE-4.0-32B-Q4_K_M.gguf"
 DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS = 600.0
 DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT = "/health"
+DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT = 49155
 DEFAULT_FINAL_EDIT_MODEL_TIMEOUT_SECONDS = 180.0
 DEFAULT_FINAL_EDIT_MODEL_HEALTH_ENDPOINT = "/health"
 
@@ -139,8 +140,7 @@ class Settings(BaseSettings):
     CAPTION_MODEL_TOP_P: float = 0.9
     CAPTION_MODEL_ENABLED: bool = True
     CAPTION_MODEL_TIMEOUT_SECONDS: float = DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
-    
-    DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT : int = 49155
+
     FINAL_EDIT_MODEL_SERVER_PORT: int = DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT
     FINAL_EDIT_MODEL_BASE_URL: str = (
         f"http://vlm-server:{DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT}"
@@ -246,11 +246,8 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def final_edit_model_client(self) -> LlamaModelClientSettings:
-        base_url = (
-            self.FINAL_EDIT_MODEL_BASE_URL
-        ).rstrip("/")
         return LlamaModelClientSettings(
-            base_url=base_url,
+            base_url=self.FINAL_EDIT_MODEL_BASE_URL.rstrip("/"),
             chat_endpoint=self.FINAL_EDIT_MODEL_CHAT_ENDPOINT,
             health_endpoint=self.FINAL_EDIT_MODEL_HEALTH_ENDPOINT,
             api_key=self.FINAL_EDIT_MODEL_API_KEY,

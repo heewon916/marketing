@@ -8,12 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Request
-import httpx
-from openai import AsyncOpenAI
 from redis.asyncio import Redis
 
 from app.core.config import LlamaModelClientSettings, settings
-from app.services.final_edit_tools import SUPPORTED_TOOL_SPECS, ToolName, supported_tool_names
+from app.services.final_edit_tools import (
+    SUPPORTED_TOOL_SPECS,
+    ToolName,
+    supported_tool_names,
+)
+from app.services.remote_model_client import RemoteModelClient
 from app.services.sessions import session_key
 
 _JSON_ARRAY_PATTERN = re.compile(r"\[[\s\S]*\]")
@@ -91,7 +94,7 @@ async def load_final_edit_session_context(
 
 
 def _tool_catalog_text() -> str:
-    lines = ["사용 가능한 편집 도구 목록:"]
+    lines = ["[supported tools]"]
     for index, spec in enumerate(SUPPORTED_TOOL_SPECS, start=1):
         lines.append(f"{index}. {spec.name} - {spec.description}")
         params_text = ", ".join(
@@ -103,12 +106,12 @@ def _tool_catalog_text() -> str:
 
 def _few_shot_example() -> str:
     return """
-출력 예시:
+Example output:
 [
   {
     "image_index": 0,
-    "content": "어두운 실내 테이블과 디저트가 함께 보인다.",
-    "strategy": "노이즈를 줄이고 따뜻한 톤으로 정리한 뒤 디테일을 살린다.",
+    "content": "A signature cake placed on a warm-toned cafe table.",
+    "strategy": "Reduce noise, add warmth, and recover texture detail for a cozy food shot.",
     "tools": ["denoise", "color_grading", "sharpen"],
     "params": {
       "denoise": {"strength": 0.5},
@@ -118,23 +121,6 @@ def _few_shot_example() -> str:
   }
 ]
 """.strip()
-
-
-def build_final_edit_prompt(context: FinalEditSessionContext) -> str:
-    keywords_text = ", ".join(context.keywords) if context.keywords else "(없음)"
-    caption_text = context.caption or "(없음)"
-    return (
-        "너는 음식점 홍보 이미지를 다듬는 사진 편집 전략가다.\n\n"
-        f"{_tool_catalog_text()}\n\n"
-        f"[캡션] {caption_text}\n"
-        f"[키워드] {keywords_text}\n\n"
-        "[지침]\n"
-        "1. 각 이미지의 내용과 캡션 분위기를 함께 고려한다.\n"
-        "2. 지원된 도구만 사용한다.\n"
-        "3. 각 도구의 params에는 구체적인 값을 넣는다.\n"
-        "4. 결과는 이미지별 JSON 배열만 출력한다.\n\n"
-        f"{_few_shot_example()}"
-    )
 
 
 def build_final_edit_prompt(
@@ -265,6 +251,13 @@ class FinalEditPlannerClient:
     ) -> None:
         self.model_settings = model_settings
         self.model_name = model_name
+        self._remote_client = RemoteModelClient(
+            base_url=self.model_settings.base_url,
+            chat_endpoint=self.model_settings.chat_endpoint,
+            health_endpoint=self.model_settings.health_endpoint,
+            api_key=self.model_settings.api_key,
+            timeout_seconds=self.model_settings.timeout_seconds,
+        )
         self._health_checked = False
         self.last_raw_output: str | None = None
 
@@ -296,11 +289,6 @@ class FinalEditPlannerClient:
         image_paths: list[str],
         context: FinalEditSessionContext,
     ) -> str:
-        client = AsyncOpenAI(
-            base_url=self.model_settings.base_url,
-            api_key=self.model_settings.api_key or "dummy",
-            timeout=self.model_settings.timeout_seconds,
-        )
         content = [
             {"type": "image_url", "image_url": {"url": image_path_to_data_uri(path)}}
             for path in image_paths
@@ -311,16 +299,16 @@ class FinalEditPlannerClient:
                 "text": build_final_edit_prompt(context, len(image_paths)),
             }
         )
-
-        response = await client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": content}],
-            temperature=self.model_settings.temperature,
-            top_p=self.model_settings.top_p,
-            max_tokens=self.model_settings.max_tokens,
-        )
-        message = response.choices[0].message
-        raw_output = message.content or ""
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": self.model_settings.temperature,
+            "top_p": self.model_settings.top_p,
+            "max_tokens": self.model_settings.max_tokens,
+        }
+        response = await self._remote_client.post_chat_completion(payload)
+        response.raise_for_status()
+        raw_output = self._remote_client.extract_message_content(response)
         if not isinstance(raw_output, str) or not raw_output.strip():
             raise FinalEditPlanningError("Planner returned an empty response.")
         return raw_output
@@ -328,11 +316,7 @@ class FinalEditPlannerClient:
     async def _check_server_connection(self) -> None:
         if not self.model_settings.base_url:
             raise FinalEditPlanningError("Final-edit planner base URL is not configured.")
-        async with httpx.AsyncClient(timeout=self.model_settings.timeout_seconds) as client:
-            response = await client.get(
-                f"{self.model_settings.base_url}{self.model_settings.health_endpoint}"
-            )
-            response.raise_for_status()
+        await self._remote_client.check_health()
         self._health_checked = True
 
 

@@ -1,4 +1,5 @@
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
@@ -16,7 +17,6 @@ from app.services.frame_extraction import (
     get_frame_extraction_service,
     process_extract_frames,
 )
-from app.services.final_edit import get_final_edit_service, process_final_edit
 from app.services.keyword_extraction import (
     KeywordExtractionUnavailableError,
     get_keyword_extraction_service,
@@ -33,8 +33,21 @@ from app.services.menu_promotion_context import (
 )
 from app.services.sessions import process_utterance
 
+if TYPE_CHECKING:
+    from app.services.final_edit import FinalEditUnavailableError
+
 router = APIRouter(prefix="/sessions", tags=["ai-sessions"])
 logger = logging.getLogger(__name__)
+
+
+def _final_edit_handlers():
+    from app.services.final_edit import (
+        FinalEditUnavailableError,
+        get_final_edit_service,
+        process_final_edit,
+    )
+
+    return FinalEditUnavailableError, get_final_edit_service, process_final_edit
 
 
 @router.post(
@@ -149,8 +162,27 @@ async def final_edit_endpoint(
             detail="Path session_id and body session_id must match.",
         )
 
-    final_edit_service = get_final_edit_service(request)
-    result = await process_final_edit(session_id, payload, redis, final_edit_service)
+    (
+        FinalEditUnavailableError,
+        get_final_edit_service,
+        process_final_edit,
+    ) = _final_edit_handlers()
+    try:
+        final_edit_service = get_final_edit_service(request)
+        result = await process_final_edit(session_id, payload, redis, final_edit_service)
+    except FinalEditUnavailableError as exc:
+        logger.warning(
+            "Final edit is unavailable.",
+            extra={
+                "session_id": session_id,
+                "final_edit_unavailable_reason": str(exc),
+            },
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Final edit is unavailable.",
+        ) from exc
     return FinalEditResponse(
         session_id=session_id,
         status=result.status,
