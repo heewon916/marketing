@@ -137,6 +137,28 @@ def build_final_edit_prompt(context: FinalEditSessionContext) -> str:
     )
 
 
+def build_final_edit_prompt(
+    context: FinalEditSessionContext,
+    image_count: int,
+) -> str:
+    keywords_text = ", ".join(context.keywords) if context.keywords else "(none)"
+    caption_text = context.caption or "(none)"
+    return (
+        "You are a photo editing planner for draft images.\n\n"
+        f"{_tool_catalog_text()}\n\n"
+        f"[caption] {caption_text}\n"
+        f"[keywords] {keywords_text}\n\n"
+        "[instructions]\n"
+        f"1. You must create an edit plan for all {image_count} input images.\n"
+        f"2. The JSON array must include every image_index from 0 to {image_count - 1} exactly once.\n"
+        "3. Consider each image's content together with the caption and keywords.\n"
+        "4. Use only supported tools.\n"
+        "5. Fill params with specific values for every selected tool.\n"
+        "6. Output only a JSON array.\n\n"
+        f"{_few_shot_example()}"
+    )
+
+
 def image_path_to_data_uri(image_path: str) -> str:
     data = Path(image_path).read_bytes()
     encoded = base64.b64encode(data).decode("utf-8")
@@ -244,6 +266,7 @@ class FinalEditPlannerClient:
         self.model_settings = model_settings
         self.model_name = model_name
         self._health_checked = False
+        self.last_raw_output: str | None = None
 
     async def preload(self) -> None:
         await self._check_server_connection()
@@ -259,6 +282,7 @@ class FinalEditPlannerClient:
             raise FinalEditPlanningError("No image paths were provided to the planner.")
 
         raw_output = await self._request_plan(image_paths, context)
+        self.last_raw_output = raw_output
         plans = parse_image_edit_plans(raw_output)
         if len(plans) > len(image_paths):
             raise FinalEditPlanningError("Planner returned too many image plans.")
@@ -281,7 +305,12 @@ class FinalEditPlannerClient:
             {"type": "image_url", "image_url": {"url": image_path_to_data_uri(path)}}
             for path in image_paths
         ]
-        content.append({"type": "text", "text": build_final_edit_prompt(context)})
+        content.append(
+            {
+                "type": "text",
+                "text": build_final_edit_prompt(context, len(image_paths)),
+            }
+        )
 
         response = await client.chat.completions.create(
             model=self.model_name,

@@ -74,8 +74,10 @@ class FinalEditAgent:
             state.fallback_to_original = True
             state.failure_reason = "image_load_failed"
             state.output_path = state.image_path
+            state.metadata["output_source"] = "original_fallback"
             return state
         state.current_image = image
+        state.metadata["input_shape"] = self._shape_to_string(image)
         return state
 
     def _validate_plan(self, state: FinalEditImageState) -> FinalEditImageState:
@@ -91,6 +93,7 @@ class FinalEditAgent:
             state.fallback_to_original = True
             state.failure_reason = f"plan_validation_failed:{exc.__class__.__name__}"
             state.output_path = state.image_path
+            state.metadata["output_source"] = "original_fallback"
         return state
 
     def _run_tool(self, state: FinalEditImageState) -> FinalEditImageState:
@@ -98,10 +101,16 @@ class FinalEditAgent:
             state.fallback_to_original = True
             state.failure_reason = state.failure_reason or "image_not_initialized"
             state.output_path = state.image_path
+            state.metadata["output_source"] = "original_fallback"
             return state
 
         tool_name = state.plan.tools[state.current_tool_index]
         params = state.normalized_params.get(tool_name, {})
+        state.metadata["current_tool_order"] = state.current_tool_index + 1
+        state.metadata["current_tool_params"] = params
+        state.metadata["current_tool_input_shape"] = self._shape_to_string(
+            state.current_image
+        )
         if self.tool_event_sink is not None:
             self.tool_event_sink("started", state, tool_name)
         try:
@@ -114,12 +123,16 @@ class FinalEditAgent:
             state.fallback_to_original = True
             state.failure_reason = f"tool_failed:{tool_name}:{exc.__class__.__name__}"
             state.output_path = state.image_path
+            state.metadata["output_source"] = "original_fallback"
             if self.tool_event_sink is not None:
                 self.tool_event_sink("failed", state, tool_name)
             return state
 
         state.executed_tools.append(tool_name)
         state.metadata[f"tool:{state.current_tool_index}"] = tool_name
+        state.metadata["current_tool_output_shape"] = self._shape_to_string(
+            state.current_image
+        )
         state.current_tool_index += 1
         if self.tool_event_sink is not None:
             self.tool_event_sink("completed", state, tool_name)
@@ -138,13 +151,22 @@ class FinalEditAgent:
     def _finalize(self, state: FinalEditImageState) -> FinalEditImageState:
         if state.fallback_to_original or state.current_image is None:
             state.output_path = state.image_path
+            state.metadata["output_source"] = "original_fallback"
             return state
 
         state.working_dir.mkdir(parents=True, exist_ok=True)
         output_path = state.working_dir / f"edited-{state.plan.image_index:03d}.jpg"
         cv2.imwrite(str(output_path), state.current_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
         state.output_path = output_path
+        state.metadata["output_source"] = "edited"
+        state.metadata["final_output_shape"] = self._shape_to_string(state.current_image)
         return state
+
+    @staticmethod
+    def _shape_to_string(image: np.ndarray) -> str:
+        height, width = image.shape[:2]
+        channels = image.shape[2] if image.ndim == 3 else 1
+        return f"{width}x{height}x{channels}"
 
     async def run(self, state: FinalEditImageState) -> FinalEditImageState:
         result = await self.graph.ainvoke(state)

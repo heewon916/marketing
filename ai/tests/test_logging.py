@@ -101,6 +101,11 @@ class StubFinalUploader:
 class StubPlannerClient:
     def __init__(self, plans: list[ImageEditPlan]) -> None:
         self.plans = plans
+        self.last_raw_output = (
+            '[{"image_index":0,"content":"cake","strategy":"denoise then sharpen",'
+            '"tools":["denoise","sharpen"],"params":{"denoise":{"strength":0.4},'
+            '"sharpen":{"strength":0.3}}}]'
+        )
 
     async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
         return self.plans
@@ -253,10 +258,22 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     assert 'event="final_edit.load_context.completed"' in output
     assert 'event="final_edit.plan.started"' in output
     assert 'event="final_edit.plan.completed"' in output
+    assert 'planned_indexes=[0]' in output
+    assert 'planned_tools_by_image=' in output
+    assert 'planned_strategy_preview_by_image=' in output
+    assert 'planner_response_preview=' in output
     assert 'event="final_edit.download_draft.started"' in output
     assert 'event="final_edit.download_draft.completed"' in output
     assert 'event="final_edit.tool.started"' in output
+    assert 'tool_order=1' in output
+    assert 'tool_params=' in output
+    assert 'input_shape="16x16x3"' in output
     assert 'event="final_edit.tool.completed"' in output
+    assert 'output_shape="16x16x3"' in output
+    assert 'event="final_edit.image.completed"' in output
+    assert 'output_source="edited"' in output
     assert 'event="final_edit.upload_final.started"' in output
+    assert 'upload_source_kind="edited"' in output
+    assert 'upload_source_path=' in output
     assert 'event="final_edit.upload_final.completed"' in output
     assert 'event="final_edit.cleanup_tempdir"' in output

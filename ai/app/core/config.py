@@ -139,7 +139,12 @@ class Settings(BaseSettings):
     CAPTION_MODEL_TOP_P: float = 0.9
     CAPTION_MODEL_ENABLED: bool = True
     CAPTION_MODEL_TIMEOUT_SECONDS: float = DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
-    FINAL_EDIT_MODEL_BASE_URL: str | None = None
+    
+    DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT : int = 49155
+    FINAL_EDIT_MODEL_SERVER_PORT: int = DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT
+    FINAL_EDIT_MODEL_BASE_URL: str = (
+        f"http://vlm-server:{DEFAULT_FINAL_EDIT_MODEL_SERVER_PORT}"
+    )
     FINAL_EDIT_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
     FINAL_EDIT_MODEL_HEALTH_ENDPOINT: str = DEFAULT_FINAL_EDIT_MODEL_HEALTH_ENDPOINT
     FINAL_EDIT_MODEL_API_KEY: str | None = None
@@ -242,7 +247,7 @@ class Settings(BaseSettings):
     @property
     def final_edit_model_client(self) -> LlamaModelClientSettings:
         base_url = (
-            self.FINAL_EDIT_MODEL_BASE_URL or self.CAPTION_MODEL_BASE_URL
+            self.FINAL_EDIT_MODEL_BASE_URL
         ).rstrip("/")
         return LlamaModelClientSettings(
             base_url=base_url,

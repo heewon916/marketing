@@ -39,17 +39,17 @@ async def test_load_final_edit_session_context_uses_draft_keywords(
     await fake_redis_async.hset(
         session_key("sess-1"),
         mapping={
-            "caption": "따뜻한 디저트 소개",
-            "draft_keyword:2": "연말 무드",
-            "draft_keyword:1": "딸기 케이크",
+            "caption": "포근한 디저트 소개",
+            "draft_keyword:2": "따뜻한 분위기",
+            "draft_keyword:1": "시그니처 케이크",
             "final_keyword:1": "1001:케이크",
         },
     )
 
     context = await load_final_edit_session_context(fake_redis_async, "sess-1")
 
-    assert context.caption == "따뜻한 디저트 소개"
-    assert context.keywords == ["딸기 케이크", "연말 무드"]
+    assert context.caption == "포근한 디저트 소개"
+    assert context.keywords == ["시그니처 케이크", "따뜻한 분위기"]
 
 
 @pytest.mark.asyncio
@@ -59,7 +59,7 @@ async def test_load_final_edit_session_context_falls_back_to_final_keywords(
     await fake_redis_async.hset(
         session_key("sess-2"),
         mapping={
-            "caption": "매장 전경 소개",
+            "caption": "매장 분위기 소개",
             "final_keyword:2": "2002:테이블",
             "final_keyword:1": "1001:케이크",
         },
@@ -73,14 +73,17 @@ async def test_load_final_edit_session_context_falls_back_to_final_keywords(
 def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     prompt = build_final_edit_prompt(
         FinalEditSessionContext(
-            caption="연말 디저트 소개",
-            keywords=["딸기 케이크", "크리스마스"],
-        )
+            caption="포근한 케이크 소개",
+            keywords=["시그니처 케이크", "크림 디저트"],
+        ),
+        3,
     )
 
-    assert "[캡션] 연말 디저트 소개" in prompt
-    assert "[키워드] 딸기 케이크, 크리스마스" in prompt
+    assert "[caption] 포근한 케이크 소개" in prompt
+    assert "[keywords] 시그니처 케이크, 크림 디저트" in prompt
     assert "color_grading" in prompt
+    assert "all 3 input images" in prompt
+    assert "image_index from 0 to 2" in prompt
 
 
 def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:
@@ -106,13 +109,13 @@ async def test_final_edit_planner_client_builds_validated_plans() -> None:
 
     async def fake_request_plan(image_paths, context):
         assert image_paths == ["a.jpg", "b.jpg"]
-        assert context.caption == "연말 디저트 소개"
+        assert context.caption == "포근한 디저트 소개"
         return """
         [
           {
             "image_index": 0,
-            "content": "딸기 케이크가 보인다.",
-            "strategy": "노이즈를 줄이고 밝기를 살린다.",
+            "content": "시그니처 케이크가 보인다.",
+            "strategy": "노이즈를 줄이고 밝기를 높인다.",
             "tools": ["denoise", "color_grading"],
             "params": {
               "denoise": {"strength": 0.4},
@@ -126,7 +129,7 @@ async def test_final_edit_planner_client_builds_validated_plans() -> None:
 
     plans = await client.build_plans(
         ["a.jpg", "b.jpg"],
-        FinalEditSessionContext(caption="연말 디저트 소개", keywords=["케이크"]),
+        FinalEditSessionContext(caption="포근한 디저트 소개", keywords=["케이크"]),
     )
 
     assert len(plans) == 1
@@ -143,8 +146,8 @@ async def test_final_edit_planner_client_rejects_out_of_range_index() -> None:
         [
           {
             "image_index": 2,
-            "content": "매장 전경",
-            "strategy": "밝기를 살린다.",
+            "content": "매장 배경",
+            "strategy": "밝기를 높인다.",
             "tools": ["color_grading"],
             "params": {
               "color_grading": {"temperature": "warm", "saturation": 0.1, "brightness": 0.1}
@@ -158,5 +161,5 @@ async def test_final_edit_planner_client_rejects_out_of_range_index() -> None:
     with pytest.raises(FinalEditPlanningError, match="out-of-range"):
         await client.build_plans(
             ["a.jpg", "b.jpg"],
-            FinalEditSessionContext(caption="전경 소개", keywords=["매장"]),
+            FinalEditSessionContext(caption="배경 소개", keywords=["매장"]),
         )
