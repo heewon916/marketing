@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Iterator
 
 import fakeredis
@@ -24,6 +25,9 @@ from app.services.reference_caption_retriever import (
 )
 from app.services.menu_promotion_context import MenuPromotionContext
 from app.services.weather_tags import PRECIP_CLEAR, PRECIP_CLOUDY, PRECIP_HEAVY_RAIN, PRECIP_RAIN
+
+if hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 def _weather_context_for_tests(weather_tags: list[str]) -> str:

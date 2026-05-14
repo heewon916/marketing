@@ -9,10 +9,10 @@ from typing import Any
 
 from fastapi import Request
 import httpx
-from openai import AsyncOpenAI
 from redis.asyncio import Redis
 
 from app.core.config import LlamaModelClientSettings, settings
+from app.services.remote_model_client import RemoteModelClient
 from app.services.final_edit_tools import SUPPORTED_TOOL_SPECS, ToolName, supported_tool_names
 from app.services.sessions import session_key
 
@@ -265,6 +265,13 @@ class FinalEditPlannerClient:
     ) -> None:
         self.model_settings = model_settings
         self.model_name = model_name
+        self._remote_client = RemoteModelClient(
+            base_url=self.model_settings.base_url,
+            chat_endpoint=self.model_settings.chat_endpoint,
+            health_endpoint=self.model_settings.health_endpoint,
+            api_key=self.model_settings.api_key,
+            timeout_seconds=self.model_settings.timeout_seconds,
+        )
         self._health_checked = False
         self.last_raw_output: str | None = None
 
@@ -296,11 +303,6 @@ class FinalEditPlannerClient:
         image_paths: list[str],
         context: FinalEditSessionContext,
     ) -> str:
-        client = AsyncOpenAI(
-            base_url=self.model_settings.base_url,
-            api_key=self.model_settings.api_key or "dummy",
-            timeout=self.model_settings.timeout_seconds,
-        )
         content = [
             {"type": "image_url", "image_url": {"url": image_path_to_data_uri(path)}}
             for path in image_paths
@@ -311,16 +313,16 @@ class FinalEditPlannerClient:
                 "text": build_final_edit_prompt(context, len(image_paths)),
             }
         )
-
-        response = await client.chat.completions.create(
-            model=self.model_name,
-            messages=[{"role": "user", "content": content}],
-            temperature=self.model_settings.temperature,
-            top_p=self.model_settings.top_p,
-            max_tokens=self.model_settings.max_tokens,
-        )
-        message = response.choices[0].message
-        raw_output = message.content or ""
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": self.model_settings.temperature,
+            "top_p": self.model_settings.top_p,
+            "max_tokens": self.model_settings.max_tokens,
+        }
+        response = await self._remote_client.post_chat_completion(payload)
+        response.raise_for_status()
+        raw_output = self._remote_client.extract_message_content(response)
         if not isinstance(raw_output, str) or not raw_output.strip():
             raise FinalEditPlanningError("Planner returned an empty response.")
         return raw_output
@@ -328,11 +330,7 @@ class FinalEditPlannerClient:
     async def _check_server_connection(self) -> None:
         if not self.model_settings.base_url:
             raise FinalEditPlanningError("Final-edit planner base URL is not configured.")
-        async with httpx.AsyncClient(timeout=self.model_settings.timeout_seconds) as client:
-            response = await client.get(
-                f"{self.model_settings.base_url}{self.model_settings.health_endpoint}"
-            )
-            response.raise_for_status()
+        await self._remote_client.check_health()
         self._health_checked = True
 
 
