@@ -6,9 +6,8 @@ import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 const expiredPinErrorMessage = [
-  '입력 시간이 지났어요',
-  'POS에서 [재발급] 버튼을 눌러',
-  '새 인증 번호를 발급받아 주세요'
+  '인증 번호가 일치하지 않아요.',
+  'POS 화면을 확인해 주세요.',
 ];
 
 const isExpiredPinMessage = (message) =>
