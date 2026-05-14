@@ -4,12 +4,17 @@ import BottomTab from "@/components/common/BottomTab"
 import InputBar from "@/components/common/InputBar"
 import Character from "@/components/common/Character"
 import TitleText from "@/components/common/TitleText"
+import TTSMuteButton from "@/components/common/TTSMuteButton"
 import { registerFcmToken } from "@/features/notification/api/FcmApi"
 import { requestCaptionGeneration } from "@/features/home/api/HomeApi"
 import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
 import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep"
 import { showToast } from '@/utils/toast'
 import { speak, stopTTS } from '@/utils/tts'
+import homeGreetingAudio from "@/assets/TTS/homePage_TTS.mp3"
+
+const HOME_GREETING_TEXT = "오늘 새로 공유해주실 이야기가 있나요?"
+const HOME_GREETING_AUDIO_SRC = homeGreetingAudio
 
 function HomePage() {
   const [isTyping, setIsTyping] = useState(false)
@@ -20,9 +25,12 @@ function HomePage() {
 
   // 홈페이지 진입 시 TTS 재생
   useEffect(() => {
-    speak("오늘 새로 공유해주실 이야기가 있나요?")
+    speak(HOME_GREETING_TEXT, {
+      source: "file",
+      audioSrc: HOME_GREETING_AUDIO_SRC,
+      fallbackToTTS: true,
+    })
 
-    // 언마운트 시 TTS 중단
     return () => {
       stopTTS()
     }
@@ -51,7 +59,11 @@ function HomePage() {
 
   return (
     <main className="relative flex h-dvh justify-center bg-surface-50">
-      <div className="h-full w-full max-w-md px-5 py-6 pb-60">
+      <div className="relative h-full w-full max-w-md px-5 py-6 pb-60">
+        <section className="absolute right-5 top-6 z-20">
+          <TTSMuteButton className="backdrop-blur-[2px]" />
+        </section>
+
         {/* 상단 여백 */}
         <section className="flex justify-center pt-2">
           <button
@@ -65,7 +77,7 @@ function HomePage() {
 
         {/* 상단 글 영역 */}
         <section className="flex h-40 items-center justify-center">
-          <TitleText text="오늘 새로 공유해주실 이야기가 있나요?" />
+          <TitleText text={HOME_GREETING_TEXT} />
         </section>
 
         {/* 캐릭터 영역 */}

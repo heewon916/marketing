@@ -15,7 +15,7 @@ export async function requestContentImages(sessionId) {
 			images: imageList.map((image, index) => ({
 				id: image.image_key ?? `image-${index}`,
 				imageKey: image.image_key ?? "",
-				url: image.image_url ?? "",
+				url: image.image_url ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${image.image_url}` : "",
 			})),
 		}
 	} catch (error) {

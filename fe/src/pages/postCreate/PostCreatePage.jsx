@@ -22,6 +22,53 @@ import { requestVideoUpload } from "@/features/postCreate/api/VideoApi"
 import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate/api/PostApi"
 import { requestPublishStart, requestPublishStatus } from "@/features/postCreate/api/PublishApi"
 import { showToast } from '@/utils/toast';
+import { speak, stopTTS } from '@/utils/tts'
+import homeGreetingAudio from "@/assets/TTS/homePage_TTS.mp3"
+
+const POST_QUESTION_TITLE = "이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
+const CAMERA_QUESTION_FALLBACK_TITLE = "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요."
+const POST_LOADING_TITLE = "멋진 게시물을 만드는 중..."
+const EXTRACT_LOADING_FALLBACK_TITLE = "영상에서 가게의 멋진 사진을 가져오는 중..."
+const PUBLISH_LOADING_TITLE = "인스타그램에 발행하고 있어요"
+const PUBLISH_SUCCESS_TITLE = "발행 성공! 고생하셨습니다."
+const PUBLISH_FAIL_TITLE = "발행 실패!"
+
+const FIXED_AUDIO_STEPS = new Set([
+  POST_CREATE_STEP.POST_QUESTION,
+  POST_CREATE_STEP.POST_LOADING,
+  POST_CREATE_STEP.EXTRACT_LOADING,
+  POST_CREATE_STEP.PUBLISH_LOADING,
+  POST_CREATE_STEP.PUBLISH_SUCCESS,
+  POST_CREATE_STEP.PUBLISH_FAIL,
+])
+
+function getFixedAudioFallbackText(step) {
+  if (step === POST_CREATE_STEP.POST_QUESTION) {
+    return POST_QUESTION_TITLE
+  }
+
+  if (step === POST_CREATE_STEP.POST_LOADING) {
+    return POST_LOADING_TITLE
+  }
+
+  if (step === POST_CREATE_STEP.EXTRACT_LOADING) {
+    return EXTRACT_LOADING_FALLBACK_TITLE
+  }
+
+  if (step === POST_CREATE_STEP.PUBLISH_LOADING) {
+    return PUBLISH_LOADING_TITLE
+  }
+
+  if (step === POST_CREATE_STEP.PUBLISH_SUCCESS) {
+    return PUBLISH_SUCCESS_TITLE
+  }
+
+  if (step === POST_CREATE_STEP.PUBLISH_FAIL) {
+    return PUBLISH_FAIL_TITLE
+  }
+
+  return POST_QUESTION_TITLE
+}
 
 const STEP_NUM = {
   [POST_CREATE_STEP.POST_QUESTION]: 1,
@@ -145,6 +192,33 @@ export default function PostCreatePage() {
     }
   }, [sessionId, setGeneratedPost, setPhotos, setStep, step])
 
+  useEffect(() => {
+    if (step === POST_CREATE_STEP.CAMERA_QUESTION) {
+      const cameraQuestionText = guideText?.trim() || CAMERA_QUESTION_FALLBACK_TITLE
+      void speak(cameraQuestionText, {
+        source: "tts",
+      })
+      return
+    }
+
+    if (FIXED_AUDIO_STEPS.has(step)) {
+      void speak(getFixedAudioFallbackText(step), {
+        source: "file",
+        audioSrc: homeGreetingAudio,
+        fallbackToTTS: true,
+      })
+      return
+    }
+
+    stopTTS()
+  }, [guideText, step])
+
+  useEffect(() => {
+    return () => {
+      stopTTS()
+    }
+  }, [])
+
   const handleCancelLeave = () => {
     if (blocker.state === "blocked") {
       blocker.reset()
@@ -261,7 +335,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.POST_QUESTION) {
     content = (
       <QuestionStep
-        title="이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
+        title={POST_QUESTION_TITLE}
         onNext={handlePostQuestionNext}
         onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
@@ -274,7 +348,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.POST_LOADING) {
     content = (
       <LoadingStep
-        title="멋진 게시물을 만드는 중..."
+        title={POST_LOADING_TITLE}
         stepNum={stepNum}
       />
     )
@@ -283,7 +357,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.CAMERA_QUESTION) {
     content = (
       <QuestionStep
-        title={guideText?.trim() || "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요."}
+        title={guideText?.trim() || CAMERA_QUESTION_FALLBACK_TITLE}
         onNext={handleCameraQuestionNext}
         onLeaveHomeConfirm={handleLeaveToHome}
         stepNum={stepNum}
@@ -340,7 +414,7 @@ export default function PostCreatePage() {
   if (step === POST_CREATE_STEP.PUBLISH_LOADING) {
     content = (
       <LoadingStep
-        title="인스타그램에 발행하고 있어요"
+        title={PUBLISH_LOADING_TITLE}
         stepNum={stepNum}
       />
     )
