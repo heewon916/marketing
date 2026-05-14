@@ -28,8 +28,9 @@ function LocationStep({ onNext, onPrev }) {
   }));
 
   const [searchKeyword, setSearchKeyword] = useState(() => storeName || '');
+  const [inputValue, setInputValue] = useState(() => storeName || '');
   const [places, setPlaces] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
+  // const [isSearching, setIsSearching] = useState(false);
   const [isDetailLoading, setIsDetailLoading] = useState(
     () => !!selectedPlaceId
   );
@@ -58,7 +59,13 @@ function LocationStep({ onNext, onPrev }) {
               : null,
         };
 
-        setStoreLocation(nextStoreLocation);
+        setStoreLocation((prev) => ({
+          ...prev,
+          placeName: prev.placeName || storeName || '',
+          address: nextStoreLocation.address,
+          latitude: nextStoreLocation.latitude,
+          longitude: nextStoreLocation.longitude,
+        }));
         setSearchKeyword(storeName || nextStoreLocation.address || '');
         setLocation({
           address: nextStoreLocation.address,
@@ -98,10 +105,10 @@ function LocationStep({ onNext, onPrev }) {
         const kakao = await loadKakaoMap();
         const placesService = new kakao.maps.services.Places();
 
-        setIsSearching(true);
+        // setIsSearching(true);
 
         placesService.keywordSearch(keyword, (data, status) => {
-          setIsSearching(false);
+          // setIsSearching(false);
 
           if (status === kakao.maps.services.Status.OK) {
             const nextPlaces = data.slice(0, 5);
@@ -124,7 +131,7 @@ function LocationStep({ onNext, onPrev }) {
           setPlaces([]);
         });
       } catch (error) {
-        setIsSearching(false);
+        // setIsSearching(false);
         setPlaces([]);
         console.error('카카오맵 검색 로드 실패:', error);
       }
@@ -136,11 +143,12 @@ function LocationStep({ onNext, onPrev }) {
   const handleChangeKeyword = (e) => {
     const nextKeyword = e.target.value;
 
+    setInputValue(nextKeyword);
     setSearchKeyword(nextKeyword);
 
     if (!nextKeyword.trim()) {
       setPlaces([]);
-      setIsSearching(false);
+      // setIsSearching(false);
     }
   };
 
@@ -152,11 +160,11 @@ function LocationStep({ onNext, onPrev }) {
       longitude: Number(place.x),
     };
 
-      setStoreLocation(nextStoreLocation);
-      setSearchKeyword(place.place_name);
-      setPlaces([]);
-      setIsSearching(false);
-      setErrorMessage('');
+    setStoreLocation(nextStoreLocation);
+    setInputValue(place.place_name);
+    setPlaces([]);
+    // setIsSearching(false);
+    setErrorMessage('');
   };
 
   const handleSave = () => {
@@ -214,13 +222,13 @@ function LocationStep({ onNext, onPrev }) {
     >
       <div className="relative mt-2 w-full">
         <RoundedInput
-          value={searchKeyword}
+          value={inputValue}
           onChange={handleChangeKeyword}
           placeholder="가게명을 입력해 주세요"
           icon="search"
         />
 
-        {isDetailLoading && (
+        {/* {isDetailLoading && (
           <p className="mt-2 text-sm text-gray-400">
             가게 상세 정보를 불러오고 있어요.
           </p>
@@ -230,7 +238,7 @@ function LocationStep({ onNext, onPrev }) {
           <p className="mt-2 text-sm text-gray-400">
             검색 중입니다.
           </p>
-        )}
+        )} */}
 
         {errorMessage && (
           <p className="mt-2 text-sm font-medium text-red-500">

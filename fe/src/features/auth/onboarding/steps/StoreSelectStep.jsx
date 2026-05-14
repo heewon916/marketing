@@ -36,7 +36,6 @@ function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
   const listRef = useRef(null);
 
   const storeName = useOnboardingStore((state) => state.storeName);
-  const setStoreName = useOnboardingStore((state) => state.setStoreName);
   const setSelectedPlaceId = useOnboardingStore(
     (state) => state.setSelectedPlaceId
   );
@@ -106,7 +105,6 @@ function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
     if (!selectedStore) return;
 
     setSelectedPlaceId(selectedStore.placeId);
-    setStoreName(selectedStore.name);
 
     onNext?.();
   };
