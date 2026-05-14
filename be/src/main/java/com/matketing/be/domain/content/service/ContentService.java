@@ -2,6 +2,7 @@ package com.matketing.be.domain.content.service;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.ClovaTtsClient;
 import com.matketing.be.domain.content.client.InstagramPublishClient;
 import com.matketing.be.domain.content.client.S3VideoClient;
 import com.matketing.be.domain.content.config.ContentS3Properties;
@@ -31,7 +32,6 @@ import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.domain.content.enums.ContentStatus;
 import com.matketing.be.domain.content.redis.ContentRedisRepository;
 import com.matketing.be.domain.content.redis.ContentRedisRepository.ContentRedisSession;
-import com.matketing.be.domain.content.redis.ContentRedisRepository.RedisImageValue;
 import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
@@ -100,6 +100,7 @@ public class ContentService {
     private final UserRepository userRepository;
     private final StoreRepository storeRepository;
     private final WeatherContextProvider weatherService;
+    private final ClovaTtsClient clovaTtsClient;
 
 
     /**
@@ -115,6 +116,15 @@ public class ContentService {
 
         String utterance = clovaSttClient.recognize(audioFile);
         return new SttResponse(utterance, TEXT_RECOGNIZED);
+    }
+
+    /**
+     * [Clova TTS Mock]
+     * 가짜 데이터를 생성하여 네이버 Clova API에 오디오 생성을 요청한다.
+     */
+    public byte[] generateMockAudio() {
+        String mockText = "이것은 테스트용 마케팅 문구입니다. 오늘도 좋은 하루 보내세요!";
+        return clovaTtsClient.synthesize(mockText);
     }
 
 
@@ -466,11 +476,11 @@ public class ContentService {
         try {
             validateVideoFile(videoFile);
             String videoKey = "/inputs/" + sessionId + "/draft.mp4";
-            
+
             log.info("[VideoUpload] uploading original video to S3. key={}", videoKey);
             s3VideoClient.uploadVideo(videoKey, videoFile);
             log.info("[VideoUpload] S3 upload completed. key={}", videoKey);
-            
+
             boolean videoSaved = contentRedisRepository.putVideo(sessionId.toString(), videoKey);
             if (!videoSaved) {
                 log.error("[VideoUpload] failed at step=Redis putVideo, sessionId={}, storeId={}, reason=Redis save failed", sessionId, storeId);
@@ -493,8 +503,8 @@ public class ContentService {
                     .filter(draft -> draft != null && !draft.isBlank())
                     .toList()
                     : List.of();
-                    
-            log.info("[VideoUpload] AI extract-frames response received. status={}, draftsCount={}", 
+
+            log.info("[VideoUpload] AI extract-frames response received. status={}, draftsCount={}",
                     extracted != null ? extracted.status() : "null", drafts.size());
 
             log.info("[VideoUpload] calling AI final-edit. sessionId={}", sessionId);
@@ -507,12 +517,12 @@ public class ContentService {
                 log.error("[VideoUpload] failed at step=AI finalEdit, sessionId={}, storeId={}, reason={}", sessionId, storeId, e.getMessage());
                 throw new BusinessException(ErrorCode.AI_SERVER_FAILED);
             }
-            
+
             List<String> results = edited != null && edited.results() != null ? edited.results() : List.of();
             String status = edited != null && edited.status() != null ? edited.status() : ContentStatus.PHOTO_EDITED.name();
-            
+
             log.info("[VideoUpload] AI final-edit response received. status={}, resultsCount={}", status, results.size());
-            
+
             contentRedisRepository.putAiVideoResults(sessionId.toString(), videoKey, status, drafts, results);
 
             List<ContentVideoResponseDto.ExtractedFrame> frames = results.stream()
