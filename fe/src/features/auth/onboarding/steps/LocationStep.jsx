@@ -1,24 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import RoundedInput from '../components/RoundedInput.jsx';
 import StaticMap from '../components/StaticMap.jsx';
 import { loadKakaoMap } from '@/utils/loadKakaoMap.js';
-import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
 function LocationStep({ onNext, onPrev }) {
   const storeName = useOnboardingStore((state) => state.storeName);
-  const selectedPlaceId = useOnboardingStore((state) => state.selectedPlaceId);
   const savedAddress = useOnboardingStore((state) => state.address);
   const savedLatitude = useOnboardingStore((state) => state.latitude);
   const savedLongitude = useOnboardingStore((state) => state.longitude);
 
   const setLocation = useOnboardingStore((state) => state.setLocation);
-  const setOperatingHours = useOnboardingStore(
-    (state) => state.setOperatingHours
-  );
 
   const [storeLocation, setStoreLocation] = useState(() => ({
     placeName: storeName || '',
@@ -30,71 +25,14 @@ function LocationStep({ onNext, onPrev }) {
   const [searchKeyword, setSearchKeyword] = useState(() => storeName || '');
   const [inputValue, setInputValue] = useState(() => storeName || '');
   const [places, setPlaces] = useState([]);
-  // const [isSearching, setIsSearching] = useState(false);
-  const [isDetailLoading, setIsDetailLoading] = useState(
-    () => !!selectedPlaceId
-  );
   const [errorMessage, setErrorMessage] = useState('');
 
-  useEffect(() => {
-    if (!selectedPlaceId) return;
-
-    const fetchStoreDetail = async () => {
-      try {
-        const response = await onboardingApi.getStoreDetail(selectedPlaceId);
-        const data = response.data?.data ?? response.data;
-
-        const location = data?.location ?? data;
-        const operatingHours = data?.operatingHours ?? {};
-
-        const nextStoreLocation = {
-          address: location?.address ?? '',
-          latitude:
-            location?.latitude !== undefined && location?.latitude !== null
-              ? Number(location.latitude)
-              : null,
-          longitude:
-            location?.longitude !== undefined && location?.longitude !== null
-              ? Number(location.longitude)
-              : null,
-        };
-
-        setStoreLocation((prev) => ({
-          ...prev,
-          placeName: prev.placeName || storeName || '',
-          address: nextStoreLocation.address,
-          latitude: nextStoreLocation.latitude,
-          longitude: nextStoreLocation.longitude,
-        }));
-        setSearchKeyword(storeName || nextStoreLocation.address || '');
-        setLocation({
-          address: nextStoreLocation.address,
-          latitude: nextStoreLocation.latitude,
-          longitude: nextStoreLocation.longitude,
-        });
-        setOperatingHours(operatingHours);
-        setErrorMessage('');
-      } catch (error) {
-        const message =
-          error.response?.data?.message ||
-          '가게 상세 정보를 불러오지 못했습니다. 직접 검색해 주세요.';
-
-        setErrorMessage(message);
-      } finally {
-        setIsDetailLoading(false);
-      }
-    };
-
-    void fetchStoreDetail();
-  }, [
-    selectedPlaceId,
-    storeName,
-    setLocation,
-    setOperatingHours,
-  ]);
+  const latestSearchKeywordRef = useRef('');
 
   useEffect(() => {
     const keyword = searchKeyword.trim();
+
+    latestSearchKeywordRef.current = keyword;
 
     if (!keyword) {
       return;
@@ -105,35 +43,43 @@ function LocationStep({ onNext, onPrev }) {
         const kakao = await loadKakaoMap();
         const placesService = new kakao.maps.services.Places();
 
-        // setIsSearching(true);
-
         placesService.keywordSearch(keyword, (data, status) => {
-          // setIsSearching(false);
+          if (latestSearchKeywordRef.current !== keyword) {
+            return;
+          }
 
           if (status === kakao.maps.services.Status.OK) {
             const nextPlaces = data.slice(0, 5);
-            const firstPlace = nextPlaces[0];
 
             setPlaces(nextPlaces);
+            setErrorMessage('');
 
-            if (firstPlace) {
+            if (nextPlaces.length === 1) {
+              const firstPlace = nextPlaces[0];
+
               setStoreLocation({
                 placeName: firstPlace.place_name,
                 address: firstPlace.road_address_name || firstPlace.address_name,
                 latitude: Number(firstPlace.y),
                 longitude: Number(firstPlace.x),
               });
+
+              setPlaces([]);
             }
 
             return;
           }
 
           setPlaces([]);
+          setErrorMessage('검색 결과를 찾을 수 없습니다. 가게명을 다시 입력해 주세요.');
         });
-      } catch (error) {
-        // setIsSearching(false);
+      } catch {
+        if (latestSearchKeywordRef.current !== keyword) {
+          return;
+        }
+
         setPlaces([]);
-        console.error('카카오맵 검색 로드 실패:', error);
+        setErrorMessage('지도를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
     }, 400);
 
@@ -145,10 +91,16 @@ function LocationStep({ onNext, onPrev }) {
 
     setInputValue(nextKeyword);
     setSearchKeyword(nextKeyword);
+    setStoreLocation({
+      placeName: nextKeyword,
+      address: '',
+      latitude: null,
+      longitude: null,
+    });
 
     if (!nextKeyword.trim()) {
       setPlaces([]);
-      // setIsSearching(false);
+      setErrorMessage('');
     }
   };
 
@@ -163,15 +115,14 @@ function LocationStep({ onNext, onPrev }) {
     setStoreLocation(nextStoreLocation);
     setInputValue(place.place_name);
     setPlaces([]);
-    // setIsSearching(false);
     setErrorMessage('');
   };
 
   const handleSave = () => {
     if (
       !storeLocation.address ||
-      !storeLocation.latitude ||
-      !storeLocation.longitude
+      storeLocation.latitude == null ||
+      storeLocation.longitude == null
     ) {
       return;
     }
@@ -186,10 +137,9 @@ function LocationStep({ onNext, onPrev }) {
   };
 
   const isNextDisabled =
-    isDetailLoading ||
     !storeLocation.address ||
-    !storeLocation.latitude ||
-    !storeLocation.longitude;
+    storeLocation.latitude == null ||
+    storeLocation.longitude == null;
 
   return (
     <OnboardingLayout
@@ -227,18 +177,6 @@ function LocationStep({ onNext, onPrev }) {
           placeholder="가게명을 입력해 주세요"
           icon="search"
         />
-
-        {/* {isDetailLoading && (
-          <p className="mt-2 text-sm text-gray-400">
-            가게 상세 정보를 불러오고 있어요.
-          </p>
-        )}
-
-        {isSearching && (
-          <p className="mt-2 text-sm text-gray-400">
-            검색 중입니다.
-          </p>
-        )} */}
 
         {errorMessage && (
           <p className="mt-2 text-sm font-medium text-red-500">

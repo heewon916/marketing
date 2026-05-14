@@ -15,6 +15,7 @@ function StoreNameStep({
 }) {
   const storeName = useOnboardingStore((state) => state.storeName);
   const setStoreName = useOnboardingStore((state) => state.setStoreName);
+  const setLocation = useOnboardingStore((state) => state.setLocation);
 
   const [inputValue, setInputValue] = useState(() => storeName || value || '');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,6 +33,17 @@ function StoreNameStep({
     const trimmedValue = inputValue.trim();
 
     if (!trimmedValue || isLoading) return;
+
+    const prevStoreName = (storeName || '').trim();
+    const isStoreNameChanged = trimmedValue !== prevStoreName;
+
+    if (isStoreNameChanged) {
+      setLocation({
+        address: '',
+        latitude: null,
+        longitude: null,
+      });
+    }
 
     setStoreName(trimmedValue);
     onChange?.(trimmedValue);
