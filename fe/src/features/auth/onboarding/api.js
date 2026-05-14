@@ -20,7 +20,7 @@ export const onboardingApi = {
   },
 
   getStoreDetail(placeId) {
-    return api.get(`/api/v1/onboarding/store/${placeId}`);
+    return api.get(`/api/v1/onboarding/search/${placeId}`);
   },
 
   completeOnboarding(storeId, payload) {
