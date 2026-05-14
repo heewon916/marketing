@@ -213,6 +213,7 @@ class CaptionGenerationRequest:
     owner_persona: str
     utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
+    fallback_keywords: list[str] = field(default_factory=list)
     reference_captions: list[str] = field(default_factory=list)
     menu_candidates: list[StoreMenuCandidate] = field(default_factory=list)
 
@@ -258,15 +259,16 @@ class CaptionPipeline:
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
         selected_menu_name = self._select_fallback_menu_name(request)
+        fallback_keywords = self._fallback_keywords(request)
         draft_caption = self._build_fallback_caption(request, selected_menu_name)
         guide_text = (
             self._build_fallback_guide_text(request, selected_menu_name)
-            if request.keywords or selected_menu_name
+            if fallback_keywords or selected_menu_name
             else DEFAULT_FALLBACK_GUIDE_TEXT
         )
         effective_fallback_source = fallback_source
         if (
-            not request.keywords
+            not fallback_keywords
             and selected_menu_name is None
             and effective_fallback_source is None
         ):
@@ -352,9 +354,10 @@ class CaptionPipeline:
         request: CaptionGenerationRequest,
         selected_menu_name: str | None,
     ) -> str:
+        fallback_keywords = CaptionPipeline._fallback_keywords(request)
         related_keywords = [
             keyword
-            for keyword in request.keywords
+            for keyword in fallback_keywords
             if not selected_menu_name or keyword != selected_menu_name
         ]
         if selected_menu_name and related_keywords:
@@ -364,6 +367,10 @@ class CaptionPipeline:
         if related_keywords:
             return ", ".join(related_keywords)
         return "오늘의 매장 메뉴"
+
+    @staticmethod
+    def _fallback_keywords(request: CaptionGenerationRequest) -> list[str]:
+        return request.fallback_keywords or request.keywords
 
 
 def _build_caption_pipeline_registry() -> dict[ContentPurpose, CaptionPipeline]:

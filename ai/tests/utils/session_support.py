@@ -297,6 +297,7 @@ class FakeCaptionGenerationService:
             {
                 "purpose": request.purpose,
                 "keywords": list(request.keywords),
+                "fallback_keywords": list(request.fallback_keywords),
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
                 "reference_captions": list(request.reference_captions),
@@ -304,8 +305,9 @@ class FakeCaptionGenerationService:
                 "fallback_source": fallback_source,
             }
         )
+        fallback_keywords = request.fallback_keywords or request.keywords
         keyword_phrase = (
-            ", ".join(request.keywords) if request.keywords else "\uc624\ub298 \ub9e4\uc7a5"
+            ", ".join(fallback_keywords) if fallback_keywords else "\uc624\ub298 \ub9e4\uc7a5"
         )
         weather_context = _weather_context_for_tests(request.weather_tags)
         caption = (
@@ -314,11 +316,11 @@ class FakeCaptionGenerationService:
         )
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
-            if not request.keywords
-            else f"\uc0ac\uc7a5\ub2d8, {', '.join(request.keywords)}\uc774 \ub354 \ubcf4\uc774\ub3c4\ub85d \uc601\uc0c1\uc744 \ucd2c\uc601\ud574\ubcf4\uc138\uc694."
+            if not fallback_keywords
+            else f"\uc0ac\uc7a5\ub2d8, {', '.join(fallback_keywords)}\uc774 \ub354 \ubcf4\uc774\ub3c4\ub85d \uc601\uc0c1\uc744 \ucd2c\uc601\ud574\ubcf4\uc138\uc694."
         )
         effective_fallback_source = fallback_source
-        if not request.keywords and effective_fallback_source is None:
+        if not fallback_keywords and effective_fallback_source is None:
             effective_fallback_source = "default_guide"
         return CaptionFallbackResult(
             result=CaptionGenerationResult(

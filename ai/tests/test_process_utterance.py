@@ -275,9 +275,51 @@ def test_process_utterance_falls_back_when_caption_generation_fails(
 
     assert response.status_code == 200
     assert fake_service.fallback_calls[0]["fallback_source"] == "caption_model_fallback"
+    assert fake_service.fallback_calls[0]["fallback_keywords"] == [
+        "signature menu",
+        "cozy table",
+    ]
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:text_generation_fallback_source"] == "caption_model_fallback"
     assert saved["caption"]
+
+
+def test_process_utterance_fallback_uses_draft_keywords_for_text(
+    client: TestClient,
+) -> None:
+    session_id = "sess-caption-fallback-draft-keywords-1"
+    original_keyword_service = app.state.keyword_extraction_service
+    original_caption_service = app.state.caption_generation_service
+    original_canonical_service = app.state.canonical_keyword_resolver_service
+    app.state.keyword_extraction_service = FakeKeywordExtractionService(
+        purpose=MENU_PROMOTION_PURPOSE,
+        draft_keywords=["draft menu", "draft notice"],
+    )
+    app.state.canonical_keyword_resolver_service = FakeCanonicalKeywordResolverService(
+        final_keywords=["1042:final menu", "2051:final notice"],
+        display_names=["final menu", "final notice"],
+        matched_indexes={0, 1},
+    )
+    app.state.caption_generation_service = FakeCaptionGenerationService(
+        error=CaptionGenerationUnavailableError("caption unavailable")
+    )
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/process-utterance",
+            json=VALID_PAYLOAD,
+        )
+    finally:
+        app.state.keyword_extraction_service = original_keyword_service
+        app.state.caption_generation_service = original_caption_service
+        app.state.canonical_keyword_resolver_service = original_canonical_service
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "draft menu, draft notice" in body["guide_text"]
+    assert "draft menu, draft notice" in body["caption"]
+    assert "final menu" not in body["guide_text"]
+    assert "final notice" not in body["caption"]
 
 
 def test_process_utterance_falls_back_to_korean_when_caption_model_returns_english(
@@ -679,6 +721,23 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
     assert saved["debug:purpose"] == DAILY_SHARE_PURPOSE
     assert "draft_keyword:1" not in saved
     assert fake_service.fallback_calls[0]["fallback_source"] is None
+
+
+def test_caption_fallback_result_falls_back_to_keywords_when_fallback_keywords_missing() -> None:
+    service = CaptionGenerationService()
+
+    fallback_result = service.build_fallback_result(
+        CaptionGenerationRequest(
+            purpose=DAILY_SHARE_PURPOSE,
+            keywords=["readable keyword"],
+            owner_persona="calm",
+            weather_tags=[],
+        ),
+        fallback_source="caption_model_fallback",
+    )
+
+    assert "readable keyword" in fallback_result.result.guide_text
+    assert "readable keyword" in fallback_result.result.draft_caption
 
 
 def test_process_utterance_falls_back_to_draft_keywords_when_canonical_lookup_misses(

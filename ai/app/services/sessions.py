@@ -395,6 +395,7 @@ async def _prepare_caption_request(
         owner_persona=payload.owner_persona,
         utterance=payload.utterance,
         weather_tags=weather_tags,
+        fallback_keywords=list(draft_keywords),
     )
     return CaptionPreparation(
         purpose=purpose,
