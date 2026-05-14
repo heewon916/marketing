@@ -30,24 +30,32 @@ function OnboardingPage() {
   const setMerchantId = useOnboardingStore((state) => state.setMerchantId);
 
   const isInstagramSuccess =
-    new URLSearchParams(window.location.search).get('instagram') === 'success';
-
+    new URLSearchParams(location.search).get('instagram') === 'success';
   const authNotice = location.state?.authNotice ?? null;
   const authRedirectTo = location.state?.redirectTo ?? null;
   const hasAuthNotice = !!authNotice;
 
   const [step, setStep] = useState(() =>
-    isInstagramSuccess && !hasAuthNotice ? 3 : 1
+    isInstagramSuccess && !authNotice ? 3 : 1
   );
   const [stepHistory, setStepHistory] = useState([]);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [authCode, setAuthCode] = useState('');
 
   useEffect(() => {
-    if (isInstagramSuccess) {
-      window.history.replaceState({}, document.title, '/auth/onboarding');
-    }
-  }, [isInstagramSuccess]);
+    if (!isInstagramSuccess || hasAuthNotice) return;
+
+    navigate(location.pathname, {
+      replace: true,
+      state: location.state ?? null,
+    });
+  }, [
+    hasAuthNotice,
+    isInstagramSuccess,
+    location.pathname,
+    location.state,
+    navigate,
+  ]);
 
   useEffect(() => {
     window.history.pushState({ onboardingGuard: true }, '');
