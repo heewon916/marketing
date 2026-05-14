@@ -27,6 +27,8 @@ DEFAULT_CAPTION_MODEL_HF_REPO_ID = "LGAI-EXAONE/EXAONE-4.0-32B-GGUF"
 DEFAULT_CAPTION_MODEL_HF_FILENAME = "EXAONE-4.0-32B-Q4_K_M.gguf"
 DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS = 600.0
 DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT = "/health"
+DEFAULT_FINAL_EDIT_MODEL_TIMEOUT_SECONDS = 180.0
+DEFAULT_FINAL_EDIT_MODEL_HEALTH_ENDPOINT = "/health"
 
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-small"
 DEFAULT_CANONICAL_KEYWORD_EMBEDDING_MODEL_CACHE_DIR = (
@@ -137,6 +139,16 @@ class Settings(BaseSettings):
     CAPTION_MODEL_TOP_P: float = 0.9
     CAPTION_MODEL_ENABLED: bool = True
     CAPTION_MODEL_TIMEOUT_SECONDS: float = DEFAULT_CAPTION_MODEL_TIMEOUT_SECONDS
+    FINAL_EDIT_MODEL_BASE_URL: str | None = None
+    FINAL_EDIT_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
+    FINAL_EDIT_MODEL_HEALTH_ENDPOINT: str = DEFAULT_FINAL_EDIT_MODEL_HEALTH_ENDPOINT
+    FINAL_EDIT_MODEL_API_KEY: str | None = None
+    FINAL_EDIT_MODEL_MAX_TOKENS: int = 2048
+    FINAL_EDIT_MODEL_TEMPERATURE: float = 0.2
+    FINAL_EDIT_MODEL_TOP_P: float = 0.9
+    FINAL_EDIT_MODEL_TIMEOUT_SECONDS: float = DEFAULT_FINAL_EDIT_MODEL_TIMEOUT_SECONDS
+    FINAL_EDIT_MODEL_NAME: str = "Qwen/Qwen2.5-VL-3B-Instruct-AWQ"
+    FINAL_EDIT_MODEL_ENABLED: bool = True
 
     CANONICAL_KEYWORD_RESOLVER_ENABLED: bool = True
     CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME: str = (
@@ -224,6 +236,24 @@ class Settings(BaseSettings):
             temperature=self.CAPTION_MODEL_TEMPERATURE,
             top_p=self.CAPTION_MODEL_TOP_P,
             enabled=self.CAPTION_MODEL_ENABLED,
+        )
+
+    @computed_field
+    @property
+    def final_edit_model_client(self) -> LlamaModelClientSettings:
+        base_url = (
+            self.FINAL_EDIT_MODEL_BASE_URL or self.CAPTION_MODEL_BASE_URL
+        ).rstrip("/")
+        return LlamaModelClientSettings(
+            base_url=base_url,
+            chat_endpoint=self.FINAL_EDIT_MODEL_CHAT_ENDPOINT,
+            health_endpoint=self.FINAL_EDIT_MODEL_HEALTH_ENDPOINT,
+            api_key=self.FINAL_EDIT_MODEL_API_KEY,
+            timeout_seconds=self.FINAL_EDIT_MODEL_TIMEOUT_SECONDS,
+            max_tokens=self.FINAL_EDIT_MODEL_MAX_TOKENS,
+            temperature=self.FINAL_EDIT_MODEL_TEMPERATURE,
+            top_p=self.FINAL_EDIT_MODEL_TOP_P,
+            enabled=self.FINAL_EDIT_MODEL_ENABLED,
         )
 
     @computed_field
