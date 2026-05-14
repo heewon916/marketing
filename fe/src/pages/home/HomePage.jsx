@@ -11,7 +11,7 @@ import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
 import { POST_CREATE_STEP } from "@/features/postCreate/constants/postCreateStep"
 import { showToast } from '@/utils/toast'
 import { speak, stopTTS } from '@/utils/tts'
-import homeGreetingAudio from "@/assets/TTS/homePage_TTS.mp3"
+import homeGreetingAudio from "@/assets/TTS/home_tts.mp3"
 
 const HOME_GREETING_TEXT = "오늘 새로 공유해주실 이야기가 있나요?"
 const HOME_GREETING_AUDIO_SRC = homeGreetingAudio
