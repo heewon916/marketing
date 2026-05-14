@@ -7,9 +7,11 @@ import Modal from '@/components/common/Modal';
 import { mypageApi } from '@/features/mypage/api';
 
 const createFormDataFromStore = (store) => ({
-  businessName: store?.storeName ?? '매장명 없음',
+  businessName: store?.storeName ?? '',
   category: store?.category ?? '',
   address: store?.address ?? '',
+  latitude: store?.latitude ?? null,
+  longitude: store?.longitude ?? null,
 });
 
 export default function AccountInfoSection({
