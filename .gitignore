@@ -64,3 +64,9 @@ be/src/main/resources/firebase/firebase-service-account.json
 secrets/
 **/firebase-service-account.json
 ngrok
+
+
+
+outputs/
+models/
+.final_edit_agent_test.py
