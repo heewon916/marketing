@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 import re
 
+import cv2
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +14,7 @@ from app.core.config import settings
 from app.logging import build_log_extra
 from app.main import app
 from app.perfectframe.schemas import ExtractorConfig
+from app.services.final_edit_planner import FinalEditSessionContext, ImageEditPlan
 from app.services.final_edit import FinalEditService
 from app.services.frame_extraction import FrameExtractionService
 
@@ -81,7 +83,9 @@ class StubDraftDownloader:
 
     async def download_draft(self, draft_key: str, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(draft_key.encode("utf-8"))
+        image = np.full((16, 16, 3), 120, dtype=np.uint8)
+        image[:, :8, 1] = 220
+        cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
 
 class StubFinalUploader:
@@ -92,6 +96,14 @@ class StubFinalUploader:
 
     async def delete_final(self, uploaded_path: str) -> None:
         return None
+
+
+class StubPlannerClient:
+    def __init__(self, plans: list[ImageEditPlan]) -> None:
+        self.plans = plans
+
+    async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
+        return self.plans
 
 
 def test_formatter_includes_extra_fields_and_redacts_secrets() -> None:
@@ -210,18 +222,41 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
         downloader=StubDraftDownloader(),
         uploader=StubFinalUploader(),
         temp_root=tmp_path,
+        planner_client=StubPlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="케이크",
+                    strategy="디노이즈 후 샤프닝",
+                    tools=["denoise", "sharpen"],
+                    params={
+                        "denoise": {"strength": 0.4},
+                        "sharpen": {"strength": 0.3},
+                    },
+                )
+            ]
+        ),
     )
 
     with capture_app_logs() as stream:
         result = await service.edit_and_upload(
             session_id="final-log-session",
             drafts=["/ai-drafts/final-log-session/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                caption="연말 케이크 소개",
+                keywords=["케이크"],
+            ),
         )
 
     assert result.status == "PHOTO_EDITED"
     output = stream.getvalue()
+    assert 'event="final_edit.load_context.completed"' in output
+    assert 'event="final_edit.plan.started"' in output
+    assert 'event="final_edit.plan.completed"' in output
     assert 'event="final_edit.download_draft.started"' in output
     assert 'event="final_edit.download_draft.completed"' in output
+    assert 'event="final_edit.tool.started"' in output
+    assert 'event="final_edit.tool.completed"' in output
     assert 'event="final_edit.upload_final.started"' in output
     assert 'event="final_edit.upload_final.completed"' in output
     assert 'event="final_edit.cleanup_tempdir"' in output
