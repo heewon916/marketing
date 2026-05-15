@@ -5,6 +5,7 @@ import com.matketing.be.domain.store.entity.OwnerPersonaEnumType;
 import java.math.BigDecimal;
 
 public record StoreUpdateRequest(
+        String placeId,
         String storeName,
         CategoryEnumType category,
         OwnerPersonaEnumType ownerPersona,
