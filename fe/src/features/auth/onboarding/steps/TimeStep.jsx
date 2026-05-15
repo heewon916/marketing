@@ -95,12 +95,23 @@ function TimeStep({ onNext, onPrev, onChange }) {
     });
   };
 
-  const handleNext = () => {
+  const saveOperatingHours = () => {
     const nextOperatingHours = convertTimeDataToOperatingHours(timeData);
 
     setOperatingHours(nextOperatingHours);
     onChange?.(nextOperatingHours);
+
+    return nextOperatingHours;
+  };
+
+  const handleNext = () => {
+    saveOperatingHours();
     onNext?.();
+  };
+
+  const handlePrev = () => {
+    saveOperatingHours();
+    onPrev?.();
   };
 
   return (
@@ -126,7 +137,7 @@ function TimeStep({ onNext, onPrev, onChange }) {
         }
         footer={
           <OnboardingFooterButtons
-            onPrev={onPrev}
+            onPrev={handlePrev}
             onNext={handleNext}
             nextText="저장"
           />

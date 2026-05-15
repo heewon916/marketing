@@ -6,7 +6,7 @@ function StoreCard({ store, isSelected, onSelect }) {
       onClick={() => onSelect(store.id)}
       className={`
         px-5 py-4 rounded-2xl border cursor-pointer transition-all
-        flex justify-between items-center gap-4
+        flex items-center gap-4
         ${
           isSelected
             ? 'border-primary-100 bg-white ring-4 ring-primary-100/20'
@@ -14,11 +14,12 @@ function StoreCard({ store, isSelected, onSelect }) {
         }
       `}
     >
-      {/* 텍스트 */}
-      <div className="min-w-0">
+      {/* 텍스트 영역 */}
+      <div className="flex-1 min-w-0">
         <div className="font-bold text-gray-900 text-[17px]">
           {store.name}
         </div>
+
         <div className="text-[14px] text-gray-400 mt-0.5 break-keep">
           {store.address}
         </div>
@@ -27,8 +28,11 @@ function StoreCard({ store, isSelected, onSelect }) {
       {/* 체크 UI */}
       <div
         className={`
-          w-5 h-5 shrink-0 rounded-[6px] border
-          flex items-center justify-center transition-colors
+          flex-none
+          w-5 h-5 min-w-5 min-h-5 aspect-square
+          rounded-[6px] border
+          flex items-center justify-center
+          transition-colors
           ${
             isSelected
               ? 'bg-primary-100 border-primary-100 text-white'
@@ -37,7 +41,7 @@ function StoreCard({ store, isSelected, onSelect }) {
         `}
       >
         {isSelected && (
-          <span className="material-icons text-xs scale-[0.7]">
+          <span className="material-icons text-xs leading-none scale-[0.7]">
             check
           </span>
         )}

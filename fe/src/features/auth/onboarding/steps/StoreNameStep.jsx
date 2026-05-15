@@ -16,6 +16,9 @@ function StoreNameStep({
   const storeName = useOnboardingStore((state) => state.storeName);
   const setStoreName = useOnboardingStore((state) => state.setStoreName);
   const setLocation = useOnboardingStore((state) => state.setLocation);
+  const setOperatingHours = useOnboardingStore(
+    (state) => state.setOperatingHours
+  );
 
   const [inputValue, setInputValue] = useState(() => storeName || value || '');
   const [isLoading, setIsLoading] = useState(false);
@@ -43,6 +46,7 @@ function StoreNameStep({
         latitude: null,
         longitude: null,
       });
+      setOperatingHours({});
     }
 
     setStoreName(trimmedValue);

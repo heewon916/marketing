@@ -7,9 +7,11 @@ import Modal from '@/components/common/Modal';
 import { mypageApi } from '@/features/mypage/api';
 
 const createFormDataFromStore = (store) => ({
-  businessName: store?.storeName ?? '매장명 없음',
+  businessName: store?.storeName ?? '',
   category: store?.category ?? '',
   address: store?.address ?? '',
+  latitude: store?.latitude ?? null,
+  longitude: store?.longitude ?? null,
 });
 
 export default function AccountInfoSection({
@@ -17,6 +19,7 @@ export default function AccountInfoSection({
   onLogout,
   onRefresh,
   onDeleteAccount,
+  onEditingChange,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
@@ -41,11 +44,13 @@ export default function AccountInfoSection({
   const handleEditClick = () => {
     setFormData(createFormDataFromStore(store));
     setIsEditing(true);
+    onEditingChange?.(true);
   };
 
   const handleCancelClick = () => {
     setFormData(createFormDataFromStore(store));
     setIsEditing(false);
+    onEditingChange?.(false);
   };
 
   const handleSaveClick = async () => {
@@ -66,6 +71,7 @@ export default function AccountInfoSection({
       }
 
       setIsEditing(false);
+      onEditingChange?.(false);
     } catch (error) {
       console.error('내정보 수정 실패:', error);
       alert('매장 정보를 수정하지 못했습니다. 잠시 후 다시 시도해 주세요.');

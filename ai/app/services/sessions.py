@@ -34,14 +34,15 @@ STATUS_STARTED = "STARTED"
 STATUS_TEXT_GENERATED = "TEXT_GENERATED"
 MENU_PROMOTION_PURPOSE = "\uba54\ub274 \ud64d\ubcf4"
 DAILY_SHARE_PURPOSE = "\uc77c\uc0c1 \uacf5\uc720"
+
+HEALTH_CHECK_FALLBACK_SOURCE = "health_check_fallback"
 HEALTH_CHECK_FAILURE_GUIDE_TEXT = (
-    "?ъ옣?? ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭?? "
-    "吏湲덉? 媛寃뚯쓽 遺꾩쐞湲곗? 硫붾돱媛 ??蹂댁씠?꾨줉 ?먯쑀濡?쾶 珥ъ쁺?대낫?몄슂."
+    "사장님, 잠시 후 다시 시도해 주세요. "
+    "지금은 가게의 분위기와 메뉴가 잘 보이도록 자유롭게 촬영해보세요."
 )
 HEALTH_CHECK_FAILURE_CAPTION = (
-    "吏湲덉? AI 罹≪뀡 ?앹꽦???좎떆 ?댁슜?????놁뼱?? ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??"
+    "지금은 AI 캡션 생성에 필요한 내용이 충분하지 않아 잠시 후 다시 시도해 주세요."
 )
-HEALTH_CHECK_FALLBACK_SOURCE = "health_check_fallback"
 logger = logging.getLogger(__name__)
 
 
