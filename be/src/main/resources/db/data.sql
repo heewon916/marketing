@@ -57,13 +57,13 @@ INSERT INTO stores (
     37.5349660,
     126.9941570,
     '{
-        "mon": {"open":"12:30","close":"20:30","last_order":"20:00"},
-        "tue": null,
-        "wed": null,
-        "thu": {"open":"12:30","close":"20:30","last_order":"20:00"},
-        "fri": {"open":"12:30","close":"20:30","last_order":"20:00"},
-        "sat": {"open":"12:30","close":"21:00","last_order":"20:30"},
-        "sun": {"open":"12:30","close":"20:30","last_order":"20:00"}
+        "monday": {"open": "12:30", "close": "20:30", "isOpen": true},
+        "tuesday": {"open": null, "close": null, "isOpen": false},
+        "wednesday": {"open": null, "close": null, "isOpen": false},
+        "thursday": {"open": "12:30", "close": "20:30", "isOpen": true},
+        "friday": {"open": "12:30", "close": "20:30", "isOpen": true},
+        "saturday": {"open": "12:30", "close": "21:00", "isOpen": true},
+        "sunday": {"open": "12:30", "close": "20:30", "isOpen": true}
     }',
     NOW(),
     NOW()
