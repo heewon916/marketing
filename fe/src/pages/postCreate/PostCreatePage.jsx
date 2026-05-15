@@ -123,7 +123,9 @@ export default function PostCreatePage() {
 
       const startPublishAndPoll = async () => {
         try {
+          console.log("[PostCreate] publish:start request", { sessionId })
           await requestPublishStart(sessionId)
+          console.log("[PostCreate] publish:start success", { sessionId })
 
           if (!isActive) {
             return
@@ -165,6 +167,7 @@ export default function PostCreatePage() {
             }
           }, 1000)
         } catch (error) {
+          console.error("[PostCreate] publish:start failed", error)
           if (isActive) {
             showToast(error.message || "발행 시작에 실패했습니다.", 'error')
             setStep(POST_CREATE_STEP.PUBLISH_FAIL)
@@ -310,9 +313,13 @@ export default function PostCreatePage() {
   }
 
   const handlePublish = async (post) => {
+    console.log("[PostCreate] publish:clicked", { hasContent: post?.content !== undefined })
+
     if (post?.content !== undefined) {
       try {
+        console.log("[PostCreate] caption:edit request", { sessionId })
         const updated = await requestEditDraftCaption(sessionId, post.content)
+        console.log("[PostCreate] caption:edit success", { sessionId, updatedAt: updated.updatedAt })
         setGeneratedPost({
           ...(generatedPost ?? {}),
           ...post,
@@ -320,10 +327,12 @@ export default function PostCreatePage() {
           updatedAt: updated.updatedAt,
         })
       } catch (error) {
+        console.error("[PostCreate] caption:edit failed", error)
         showToast(error.message || "캡션 수정에 실패했습니다.", 'error')
         return
       }
     } else if (post) {
+      console.log("[PostCreate] caption:edit skipped", { reason: "content is undefined" })
       setGeneratedPost(post)
     }
 
