@@ -3,8 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react"
 const VIDEO_TYPES = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
 const MAX_RECORD_SECONDS = 60
 const TARGET_ASPECT_RATIO = 3 / 4
-const MAX_CANVAS_LONG_SIDE = 1440
-const OUTPUT_FPS = 30
+const MAX_CANVAS_LONG_SIDE = 4096
+const OUTPUT_FPS = 60
 
 export default function CameraStep({ onRecorded, onClose }) {
 	const videoRef = useRef(null)
@@ -46,6 +46,19 @@ export default function CameraStep({ onRecorded, onClose }) {
 				}
 
 				streamRef.current = stream
+
+				const videoTrack = stream.getVideoTracks()[0]
+				const zoomCapability = videoTrack?.getCapabilities?.()?.zoom
+				if (videoTrack && zoomCapability) {
+					try {
+						const initialZoom = Math.min(Math.max(1, zoomCapability.min), zoomCapability.max)
+						await videoTrack.applyConstraints({
+							advanced: [{ zoom: initialZoom }],
+						})
+					} catch {
+						// Ignore devices/browsers that report zoom but fail to apply it.
+					}
+				}
 
 				if (videoRef.current) {
 					videoRef.current.srcObject = stream
