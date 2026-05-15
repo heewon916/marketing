@@ -298,7 +298,7 @@ pipeline {
                     if [ "$FIREBASE_ENABLED_VALUE" != "true" ]; then
                       echo "ERROR: FIREBASE_ENABLED must be true for this deployment"
                       exit 1
-                    }
+                    fi
 
                     echo ".env validation passed"
                 '''
