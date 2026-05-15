@@ -45,6 +45,17 @@ from tests.utils.session_support import (
     _make_chat_response,
 )
 
+EXPECTED_HEALTH_CHECK_FAILURE_GUIDE_TEXT = (
+    "사장님, 잠시 후 다시 시도해 주세요. "
+    "지금은 가게의 분위기와 메뉴가 잘 보이도록 자유롭게 촬영해보세요."
+)
+EXPECTED_HEALTH_CHECK_FAILURE_CAPTION = (
+    "지금은 AI 캡션 생성에 필요한 내용이 충분하지 않아 잠시 후 다시 시도해 주세요."
+)
+EXPECTED_DEFAULT_FALLBACK_GUIDE_TEXT = (
+    "사장님, 가게의 분위기와 메뉴가 잘 보이도록 화면을 촬영해보세요."
+)
+
 
 def test_process_utterance_returns_session_id_and_guide(client: TestClient) -> None:
     session_id = "redis-session-id-123"
@@ -198,8 +209,10 @@ def test_process_utterance_returns_fixed_caption_when_keyword_server_unhealthy(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["guide_text"] == HEALTH_CHECK_FAILURE_GUIDE_TEXT
-    assert body["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert HEALTH_CHECK_FAILURE_GUIDE_TEXT == EXPECTED_HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert HEALTH_CHECK_FAILURE_CAPTION == EXPECTED_HEALTH_CHECK_FAILURE_CAPTION
+    assert body["guide_text"] == EXPECTED_HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert body["caption"] == EXPECTED_HEALTH_CHECK_FAILURE_CAPTION
     assert keyword_service.calls == []
     assert caption_service.calls == []
     saved = fake_redis_sync.hgetall(session_key(session_id))
@@ -231,8 +244,10 @@ def test_process_utterance_returns_fixed_caption_when_caption_server_unhealthy(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["guide_text"] == HEALTH_CHECK_FAILURE_GUIDE_TEXT
-    assert body["caption"] == HEALTH_CHECK_FAILURE_CAPTION
+    assert HEALTH_CHECK_FAILURE_GUIDE_TEXT == EXPECTED_HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert HEALTH_CHECK_FAILURE_CAPTION == EXPECTED_HEALTH_CHECK_FAILURE_CAPTION
+    assert body["guide_text"] == EXPECTED_HEALTH_CHECK_FAILURE_GUIDE_TEXT
+    assert body["caption"] == EXPECTED_HEALTH_CHECK_FAILURE_CAPTION
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:health_check_keyword_ok"] == "true"
     assert saved["debug:health_check_caption_ok"] == "false"
@@ -742,7 +757,8 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
 
     assert response.status_code == 200
     body = response.json()
-    assert body["guide_text"] == DEFAULT_FALLBACK_GUIDE_TEXT
+    assert DEFAULT_FALLBACK_GUIDE_TEXT == EXPECTED_DEFAULT_FALLBACK_GUIDE_TEXT
+    assert body["guide_text"] == EXPECTED_DEFAULT_FALLBACK_GUIDE_TEXT
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["debug:purpose"] == DAILY_SHARE_PURPOSE
     assert "draft_keyword:1" not in saved

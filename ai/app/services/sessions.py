@@ -42,6 +42,13 @@ HEALTH_CHECK_FAILURE_CAPTION = (
     "吏湲덉? AI 罹≪뀡 ?앹꽦???좎떆 ?댁슜?????놁뼱?? ?좎떆 ???ㅼ떆 ?쒕룄??二쇱꽭??"
 )
 HEALTH_CHECK_FALLBACK_SOURCE = "health_check_fallback"
+HEALTH_CHECK_FAILURE_GUIDE_TEXT = (
+    "사장님, 잠시 후 다시 시도해 주세요. "
+    "지금은 가게의 분위기와 메뉴가 잘 보이도록 자유롭게 촬영해보세요."
+)
+HEALTH_CHECK_FAILURE_CAPTION = (
+    "지금은 AI 캡션 생성에 필요한 내용이 충분하지 않아 잠시 후 다시 시도해 주세요."
+)
 logger = logging.getLogger(__name__)
 
 
