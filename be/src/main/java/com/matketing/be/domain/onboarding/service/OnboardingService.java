@@ -200,6 +200,35 @@ public class OnboardingService {
                 request.operatingHours()
         );
 
+        // 네이버 플레이스 ID가 넘어온 경우, 크롤러를 통해 메뉴 설명을 가져와 매칭합니다.
+        if (request.placeId() != null && !request.placeId().isBlank()) {
+            try {
+                Map<String, Object> crawlerData = getPlaceDetailViaCrawler(request.placeId());
+                if (crawlerData != null && crawlerData.get("data") instanceof Map<?, ?> dataMap) {
+                    if (dataMap.get("menus") instanceof List<?> crawlerMenus) {
+                        List<Menu> existingMenus = menuRepository.findByStoreId(storeId);
+                        for (Object obj : crawlerMenus) {
+                            if (obj instanceof Map<?, ?> crawlerMenu) {
+                                String crawlerMenuName = crawlerMenu.get("menu_name") instanceof String s ? s : null;
+                                String crawlerMenuDesc = crawlerMenu.get("menu_description") instanceof String s ? s : null;
+                                
+                                if (crawlerMenuName != null && crawlerMenuDesc != null && !crawlerMenuDesc.isBlank()) {
+                                    // 기존 메뉴와 이름 매칭 (공백 제거 후 비교 등 정규화)
+                                    String normalizedCrawlerName = crawlerMenuName.replaceAll("\\s+", "").toLowerCase();
+                                    existingMenus.stream()
+                                            .filter(m -> m.getName().replaceAll("\\s+", "").toLowerCase().equals(normalizedCrawlerName))
+                                            .findFirst()
+                                            .ifPresent(m -> m.updateDescription(crawlerMenuDesc));
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to sync menu descriptions from crawler for placeId {}: {}", request.placeId(), e.getMessage());
+            }
+        }
+
         return new SyncResponse(true, "Store data updated successfully", store.getId().toString(), store.getStoreName(), null, null);
     }
 
@@ -237,6 +266,8 @@ public class OnboardingService {
         return "테스트 매장";
     }
 
+    @CircuitBreaker(name = "externalApi", fallbackMethod = "fallbackSearchPlacesViaCrawler")
+    @Retry(name = "externalApi")
     public Map<String, Object> searchPlacesViaCrawler(String keyword) {
         String url = crawlerBaseUrl + "/api/search?keyword=" + keyword;
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
@@ -244,10 +275,22 @@ public class OnboardingService {
         return response.getBody();
     }
 
+    public Map<String, Object> fallbackSearchPlacesViaCrawler(String keyword, Throwable t) {
+        log.error("Fallback triggered for searchPlacesViaCrawler. Keyword: {}, Error: {}", keyword, t.getMessage());
+        return Map.of("status", "error", "message", "크롤러 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    @CircuitBreaker(name = "externalApi", fallbackMethod = "fallbackGetPlaceDetailViaCrawler")
+    @Retry(name = "externalApi")
     public Map<String, Object> getPlaceDetailViaCrawler(String placeId) {
         String url = crawlerBaseUrl + "/api/place/" + placeId;
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
         return response.getBody();
+    }
+
+    public Map<String, Object> fallbackGetPlaceDetailViaCrawler(String placeId, Throwable t) {
+        log.error("Fallback triggered for getPlaceDetailViaCrawler. PlaceId: {}, Error: {}", placeId, t.getMessage());
+        return null; // Update 과정에서 null을 반환하여 매칭 로직을 스킵하도록 유도
     }
 }

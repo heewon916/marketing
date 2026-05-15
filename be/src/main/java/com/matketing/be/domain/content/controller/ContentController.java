@@ -48,14 +48,18 @@ public class ContentController {
     }
 
     /**
-     * Clova TTS (Mock)
-     * 역할: 클라이언트에서 받은 텍스트(차후에는 내부 AI 모델 생성 결과)를 기반으로
-     * 네이버 Clova API에 오디오 생성을 요청한다.
+     * Clova TTS
+     * 역할: 클라이언트에서 전달받은 텍스트를 기반으로 네이버 Clova API에 오디오 생성을 요청한다.
+     * @param requestBody text를 포함한 JSON Map
      * @return MP3 바이트 배열을 포함한 ResponseEntity
      */
     @PostMapping(value = "/tts", produces = "audio/mpeg")
-    public org.springframework.http.ResponseEntity<byte[]> generateAudio() {
-        byte[] audioBytes = contentService.generateMockAudio();
+    public org.springframework.http.ResponseEntity<byte[]> generateAudio(@RequestBody java.util.Map<String, String> requestBody) {
+        String text = requestBody.get("text");
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("텍스트가 제공되어야 합니다.");
+        }
+        byte[] audioBytes = contentService.generateAudio(text);
         return org.springframework.http.ResponseEntity.ok()
                 .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"tts.mp3\"")
                 .contentType(org.springframework.http.MediaType.parseMediaType("audio/mpeg"))
