@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-import asyncio
 import argparse
+import asyncio
 import sys
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 
 from app.db.postgres import dispose_engine
+from app.services.canonical_keyword_resolver import (
+    build_canonical_keyword_resolver_service,
+)
 from scripts.backfill_utils import (
     load_all_rows,
     load_rows,
     run_embedding_backfill,
     update_embedding_rows,
-)
-from app.services.canonical_keyword_resolver import (
-    build_canonical_keyword_resolver_service,
 )
 
 BATCH_SIZE = 32
@@ -22,13 +21,13 @@ BATCH_SIZE = 32
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Backfill canonical keyword embeddings and dump INSERT SQL.",
+        description="Backfill reference caption embeddings and dump INSERT SQL.",
     )
     parser.add_argument(
         "--ids",
         nargs="*",
         type=int,
-        help="Optional canonical keyword ids to backfill and dump.",
+        help="Optional reference caption ids to backfill and dump.",
     )
     return parser.parse_args()
 
@@ -40,8 +39,8 @@ def _configure_stdout() -> None:
 
 async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
     return await load_rows(
-        table_name="canonical_keywords",
-        select_columns="id, code, display_name, created_at",
+        table_name="reference_captions",
+        select_columns="id, caption_content",
         order_by="id ASC",
         offset=offset,
         limit=limit,
@@ -50,7 +49,7 @@ async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
 
 async def _update_rows(rows: list[dict[str, object]], embeddings: list[list[float]]) -> None:
     await update_embedding_rows(
-        table_name="canonical_keywords",
+        table_name="reference_captions",
         rows=rows,
         embeddings=embeddings,
     )
@@ -58,8 +57,8 @@ async def _update_rows(rows: list[dict[str, object]], embeddings: list[list[floa
 
 async def _load_dump_rows(ids: list[int] | None = None) -> list[dict[str, object]]:
     return await load_all_rows(
-        table_name="canonical_keywords",
-        select_columns="id, code, display_name, embedding::text AS embedding_text, created_at",
+        table_name="reference_captions",
+        select_columns="id, caption_content, embedding::text AS embedding_text",
         order_by="id ASC",
         ids=ids,
     )
@@ -69,21 +68,13 @@ def _escape_sql_string(value: str) -> str:
     return value.replace("'", "''")
 
 
-def _format_timestamp(value: object) -> str:
-    if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d %H:%M:%S")
-    return str(value)
-
-
 def _build_insert_statement(row: dict[str, object]) -> str:
     return (
-        "INSERT INTO canonical_keywords "
-        '(id, code, display_name, embedding, created_at) VALUES '
+        "INSERT INTO reference_captions "
+        "(id, caption_content, embedding) VALUES "
         f"({row['id']}, "
-        f"'{_escape_sql_string(str(row['code']))}', "
-        f"'{_escape_sql_string(str(row['display_name']))}', "
-        f"'{row['embedding_text']}', "
-        f"'{_format_timestamp(row['created_at'])}') "
+        f"'{_escape_sql_string(str(row['caption_content']))}', "
+        f"'{row['embedding_text']}') "
         "ON CONFLICT (id) DO NOTHING;"
     )
 
@@ -105,8 +96,8 @@ async def main() -> None:
     await resolver.preload()
 
     async def _embed_rows(rows: list[dict[str, object]]) -> list[list[float]]:
-        display_names = [str(row["display_name"]) for row in rows]
-        return await resolver.embed_display_names(display_names)
+        caption_texts = [str(row["caption_content"]) for row in rows]
+        return await resolver.embed_passages(caption_texts)
 
     load_batch = _load_rows
     if args.ids:
