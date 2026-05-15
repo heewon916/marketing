@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.ClovaTtsClient;
 import com.matketing.be.domain.content.client.InstagramPublishClient;
 import com.matketing.be.domain.content.client.S3VideoClient;
 import com.matketing.be.domain.content.config.ContentS3Properties;
@@ -89,6 +90,9 @@ class ContentServiceTest {
     @Mock
     private WeatherContextProvider weatherService;
 
+    @Mock
+    private ClovaTtsClient clovaTtsClient;
+
     private final ContentProperties contentProperties = new ContentProperties(600);
     private final ContentS3Properties contentS3Properties = new ContentS3Properties("bucket", "ap-northeast-2", "https://cdn.example.com", "test-access-key", "test-secret-key");
 
@@ -111,7 +115,8 @@ class ContentServiceTest {
                 instagramPublishClient,
                 userRepository,
                 storeRepository,
-                weatherService
+                weatherService,
+                clovaTtsClient
         );
     }
 
@@ -389,10 +394,7 @@ class ContentServiceTest {
                         java.util.List.of()
                 ));
         User user = org.mockito.Mockito.mock(User.class);
-        when(user.getId()).thenReturn(UUID.fromString(USER_ID));
-        when(user.getInstagramUserId()).thenReturn("ig-user");
         when(user.getAccessToken()).thenReturn("token");
-        when(user.getTokenExpiresAt()).thenReturn(java.time.OffsetDateTime.now().plusDays(1));
         when(userRepository.findById(UUID.fromString(USER_ID))).thenReturn(Optional.of(user));
         when(instagramPublishClient.getPermalink("token", "existing-media-id")).thenReturn("permalink");
 
