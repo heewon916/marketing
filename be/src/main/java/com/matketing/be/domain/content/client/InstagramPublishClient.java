@@ -70,9 +70,11 @@ public class InstagramPublishClient {
     }
 
     public String createImageContainer(String instagramUserId, String accessToken, String imageUrl, String caption) {
-        validateCloudFrontUrl(imageUrl);
+        String normalizedImageUrl = normalizeImageUrl(imageUrl);
+        log.info("[Publish] Normalized single image URL: {}", normalizedImageUrl);
+        validateCloudFrontUrl(normalizedImageUrl);
         MultiValueMap<String, String> body = authenticatedBody(accessToken);
-        body.add("image_url", imageUrl);
+        body.add("image_url", normalizedImageUrl);
         addCaption(body, caption);
         String containerId = createContainer(instagramUserId, body);
         log.info("[Publish] Created single image container. containerId={}", containerId);
@@ -82,8 +84,10 @@ public class InstagramPublishClient {
     public String createCarouselContainer(String instagramUserId, String accessToken, List<String> imageUrls, String caption) {
         List<String> children = imageUrls.stream()
                 .map(imageUrl -> {
-                    validateCloudFrontUrl(imageUrl);
-                    String childId = createCarouselImageContainer(instagramUserId, accessToken, imageUrl);
+                    String normalizedImageUrl = normalizeImageUrl(imageUrl);
+                    log.info("[Publish] Normalized carousel image URL: {}", normalizedImageUrl);
+                    validateCloudFrontUrl(normalizedImageUrl);
+                    String childId = createCarouselImageContainer(instagramUserId, accessToken, normalizedImageUrl);
                     log.info("[Publish] Created carousel child container. childId={}", childId);
                     return childId;
                 })
@@ -172,6 +176,20 @@ public class InstagramPublishClient {
         body.add("image_url", imageUrl);
         body.add("is_carousel_item", "true");
         return createContainer(instagramUserId, body);
+    }
+
+    private String normalizeImageUrl(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            throw new IllegalArgumentException("Instagram publish imageUrl is empty");
+        }
+
+        String trimmed = imageUrl.trim();
+
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed;
+        }
+
+        return "https://" + trimmed;
     }
 
     private String createContainer(String instagramUserId, MultiValueMap<String, String> body) {
