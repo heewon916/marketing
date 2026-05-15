@@ -8,7 +8,7 @@ export async function requestDraftPost(sessionId) {
 	try {
 		const response = await api.get(`/api/v1/contents/${sessionId}`)
 		const data = response.data ?? {}
-		console.log(data)
+		console.log("백 raw", data)
 		const images = Array.isArray(data.images) ? data.images : []
 
 		const sortedImages = [...images].sort((a, b) => {
@@ -21,8 +21,8 @@ export async function requestDraftPost(sessionId) {
 			sessionId: data.sessionId ?? sessionId,
 			status: data.status ?? "",
 			caption: data.caption ?? "",
-			instagramUsername: data.instagramUsername ?? "",
-			instagramProfileImageUrl: data.instagramProfileImageUrl ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${data.instagramProfileImageUrl}` : "",
+			instagramUsername: data.instagram_username ?? "",
+			instagramProfileImageUrl: data.instagram_profile_image_url ? `${data.instagram_profile_image_url}` : "",
 			images: sortedImages.map((image, index) => ({
 				id: image.id ?? `image-${index}`,
 				url: image.filtered_url ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${image.filtered_url}` : "",
