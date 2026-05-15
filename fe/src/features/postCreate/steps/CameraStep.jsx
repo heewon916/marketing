@@ -33,12 +33,145 @@ export default function CameraStep({ onRecorded, onClose }) {
 	useEffect(() => {
 		let isMounted = true
 
+		const scoreRearCameraLabel = (label) => {
+			if (!label) {
+				return 0
+			}
+
+			const normalized = label.toLowerCase()
+			let score = 0
+
+			if (/back|rear|environment|후면/.test(normalized)) {
+				score += 30
+			}
+
+			if (/main|default|기본|광각|camera\s*0|back\s*camera\s*0|rear\s*camera\s*0/.test(normalized)) {
+				score += 10
+			}
+
+			if (/^back\s*camera$|^rear\s*camera$/.test(normalized)) {
+				score += 20
+			}
+
+			if (/ultra|0\.5|0,5|초광각|uw/.test(normalized)) {
+				score -= 100
+			}
+
+			if (/tele|망원|periscope/.test(normalized)) {
+				score -= 30
+			}
+
+			if (/camera\s*[1-9]/.test(normalized)) {
+				score -= 8
+			}
+
+			return score
+		}
+
+		const inspectRearCamera = async (deviceId) => {
+			let stream = null
+
+			try {
+				stream = await navigator.mediaDevices.getUserMedia({
+					video: {
+						deviceId: { exact: deviceId },
+						facingMode: { ideal: "environment" },
+					},
+					audio: false,
+				})
+
+				const track = stream.getVideoTracks()[0]
+				const capabilities = track?.getCapabilities?.() ?? {}
+				const zoom = capabilities.zoom
+				const minZoom = typeof zoom?.min === "number" ? zoom.min : null
+				const maxZoom = typeof zoom?.max === "number" ? zoom.max : null
+
+				return {
+					minZoom,
+					maxZoom,
+					hasZoom: minZoom !== null && maxZoom !== null,
+				}
+			} catch {
+				return null
+			} finally {
+				stream?.getTracks().forEach((track) => track.stop())
+			}
+		}
+
+		const getPreferredRearCameraId = async () => {
+			let probeStream = null
+
+			try {
+				probeStream = await navigator.mediaDevices.getUserMedia({
+					video: { facingMode: { ideal: "environment" } },
+					audio: false,
+				})
+
+				const fallbackDeviceId = probeStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
+				const devices = await navigator.mediaDevices.enumerateDevices()
+				const rearDevices = devices.filter(
+					(device) =>
+						device.kind === "videoinput" && /back|rear|environment|후면|camera 0/.test(device.label.toLowerCase())
+				)
+
+				if (!rearDevices.length) {
+					return fallbackDeviceId ?? null
+				}
+
+				let bestDeviceId = null
+				let bestScore = Number.NEGATIVE_INFINITY
+
+				for (const device of rearDevices) {
+					const inspect = await inspectRearCamera(device.deviceId)
+					let score = scoreRearCameraLabel(device.label)
+
+					if (inspect?.hasZoom) {
+						const { minZoom, maxZoom } = inspect
+						const supportsOneX = minZoom <= 1 && maxZoom >= 1
+						score += supportsOneX ? 40 : -40
+						score -= Math.abs(minZoom - 1) * 60
+
+						if (minZoom < 0.8) {
+							score -= 40
+						}
+
+						if (minZoom > 1.2) {
+							score -= 20
+						}
+					}
+
+					if (score > bestScore) {
+						bestScore = score
+						bestDeviceId = device.deviceId
+					}
+				}
+
+				return bestDeviceId ?? fallbackDeviceId ?? null
+			} catch {
+				return null
+			} finally {
+				probeStream?.getTracks().forEach((track) => track.stop())
+			}
+		}
+
 		const setupCamera = async () => {
 			try {
-				const stream = await navigator.mediaDevices.getUserMedia({
-					video: { facingMode: "environment" },
-					audio: true,
-				})
+				const preferredRearCameraId = await getPreferredRearCameraId()
+				let stream
+
+				try {
+					stream = await navigator.mediaDevices.getUserMedia({
+						video: preferredRearCameraId
+							? { deviceId: { exact: preferredRearCameraId }, facingMode: { ideal: "environment" } }
+							: { facingMode: { ideal: "environment" } },
+						audio: true,
+					})
+				} catch {
+					stream = await navigator.mediaDevices.getUserMedia({
+						video: { facingMode: { ideal: "environment" } },
+						audio: true,
+					})
+				}
 
 				if (!isMounted) {
 					stream.getTracks().forEach((track) => track.stop())
