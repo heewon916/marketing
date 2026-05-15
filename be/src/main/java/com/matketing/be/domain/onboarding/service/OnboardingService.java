@@ -110,7 +110,7 @@ public class OnboardingService {
                     .userId(userId)
                     .merchantId(merchantId)
                     .storeName(storeName)
-                    .category(CategoryEnumType.카페) // 임시 기본값 수정
+                    .category(CategoryEnumType.카페) // 임시 기본값
                     .address("")
                     .build();
             store = storeRepository.save(store); // 신규일 때만 save
@@ -213,7 +213,7 @@ public class OnboardingService {
                             if (obj instanceof Map<?, ?> crawlerMenu) {
                                 String crawlerMenuName = crawlerMenu.get("menu_name") instanceof String s ? s : null;
                                 String crawlerMenuDesc = crawlerMenu.get("menu_description") instanceof String s ? s : null;
-                                
+
                                 if (crawlerMenuName != null && crawlerMenuDesc != null && !crawlerMenuDesc.isBlank()) {
                                     // 기존 메뉴와 이름 매칭 (공백 제거 후 비교 등 정규화)
                                     String normalizedCrawlerName = crawlerMenuName.replaceAll("\\s+", "").toLowerCase();
