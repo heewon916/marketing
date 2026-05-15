@@ -27,6 +27,7 @@ import com.matketing.be.domain.content.dto.ContentPublishResponseDto;
 import com.matketing.be.domain.content.dto.ContentPublishStatusResponseDto;
 import com.matketing.be.domain.content.dto.ContentRedisResult;
 import com.matketing.be.domain.content.dto.ContentVideoResponseDto;
+import com.matketing.be.domain.content.dto.LlamaIntentResponse;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.domain.content.enums.ContentStatus;
@@ -51,6 +52,7 @@ import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -101,6 +103,7 @@ public class ContentService {
     private final StoreRepository storeRepository;
     private final WeatherContextProvider weatherService;
     private final ClovaTtsClient clovaTtsClient;
+    private final ChatClient chatClient;
 
 
     /**
@@ -210,6 +213,23 @@ public class ContentService {
         // 2. request_id + session_id 기준으로 Redis 멱등성 key 생성
         String userId = currentUserId();
         String requestId = request.requestId();
+
+        // [NEW] Llama 의도 파악 로직 추가
+        LlamaIntentResponse llamaResp = chatClient.prompt()
+                .user(request.utterance())
+                .system("당신은 카페 사장님을 돕는 친절한 AI 어시스턴트입니다. 사용자의 입력이 인스타그램 게시물(피드) 생성을 요청하거나 의도하는 것이라면 isCreatePost를 true로 설정하세요. 만약 단순한 일상 대화나 감정 표현이라면 isCreatePost를 false로 설정하고, 카페 사장님과 대화하듯 다정하고 친근한 답변을 reply에 작성하세요.")
+                .call()
+                .entity(LlamaIntentResponse.class);
+
+        if (!llamaResp.isCreatePost()) {
+            return new ChatResponse(
+                    null,
+                    ContentStatus.GENERAL_CHAT,
+                    "",
+                    llamaResp.reply()
+            );
+        }
+
         String sessionId = UUID.randomUUID().toString();
         Duration ttl = Duration.ofSeconds(contentProperties.idempotencyTtlSeconds()); // 10분 동안은 같은 request_id는 중복 처리된다
         boolean firstRequest = contentRedisRepository.setIdempotencyKeyIfAbsent(userId, requestId, sessionId, ttl); // Redis SET NX EX

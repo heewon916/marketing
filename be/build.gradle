@@ -16,6 +16,13 @@ java {
 
 repositories {
     mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.ai:spring-ai-bom:1.0.0-M1"
+    }
 }
 
 dependencies {
@@ -43,6 +50,9 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // Spring AI Ollama
+    implementation 'org.springframework.ai:spring-ai-ollama-spring-boot-starter'
 }
 
 tasks.named('test') {
