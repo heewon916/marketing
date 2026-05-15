@@ -254,6 +254,7 @@ pipeline {
                     require_env VITE_FIREBASE_APP_ID
                     require_env VITE_FIREBASE_VAPID_KEY
                     require_env VITE_API_BACKEND_URL
+                    require_env VITE_CLOUDFRONT_DOMAIN
 
                     require_env JWT_SECRET
                     require_env OAUTH_REDIRECT_URI
@@ -297,7 +298,7 @@ pipeline {
                     if [ "$FIREBASE_ENABLED_VALUE" != "true" ]; then
                       echo "ERROR: FIREBASE_ENABLED must be true for this deployment"
                       exit 1
-                    fi
+                    }
 
                     echo ".env validation passed"
                 '''
