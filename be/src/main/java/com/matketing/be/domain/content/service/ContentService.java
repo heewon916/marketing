@@ -119,12 +119,14 @@ public class ContentService {
     }
 
     /**
-     * [Clova TTS Mock]
-     * 가짜 데이터를 생성하여 네이버 Clova API에 오디오 생성을 요청한다.
+     * [Clova TTS]
+     * 프론트엔드에서 전달받은 텍스트를 기반으로 네이버 Clova API에 오디오 생성을 요청한다.
      */
-    public byte[] generateMockAudio() {
-        String mockText = "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요.";
-        return clovaTtsClient.synthesize(mockText);
+    public byte[] generateAudio(String text) {
+        if (text == null || text.isBlank()) {
+            throw new IllegalArgumentException("텍스트가 비어 있습니다.");
+        }
+        return clovaTtsClient.synthesize(text);
     }
 
 
