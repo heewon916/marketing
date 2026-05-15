@@ -167,8 +167,8 @@ class ContentServiceTest {
 
     private Store mockStore() {
         Store store = org.mockito.Mockito.mock(Store.class);
-        org.mockito.Mockito.when(store.getId()).thenReturn(STORE_ID);
-        org.mockito.Mockito.when(store.getOwnerPersona()).thenReturn(OwnerPersonaEnumType.aesthetic);
+        org.mockito.Mockito.lenient().when(store.getId()).thenReturn(STORE_ID);
+        org.mockito.Mockito.lenient().when(store.getOwnerPersona()).thenReturn(OwnerPersonaEnumType.aesthetic);
         return store;
     }
 
@@ -361,6 +361,8 @@ class ContentServiceTest {
         when(user.getAccessToken()).thenReturn("token");
         when(user.getTokenExpiresAt()).thenReturn(java.time.OffsetDateTime.now().plusDays(1));
         when(userRepository.findById(UUID.fromString(USER_ID))).thenReturn(Optional.of(user));
+        Store store = mockStore();
+        when(storeRepository.findFirstByUserId(UUID.fromString(USER_ID))).thenReturn(Optional.of(store));
         when(contentRedisRepository.queuePublish(eq(sessionId.toString()), any())).thenReturn(true);
         when(instagramPublishClient.createImageContainer("ig-user", "token", "https://cdn.example.com/photo1.jpg", "캡션"))
                 .thenReturn("container-id");
@@ -394,8 +396,11 @@ class ContentServiceTest {
                         java.util.List.of()
                 ));
         User user = org.mockito.Mockito.mock(User.class);
+        when(user.getId()).thenReturn(UUID.fromString(USER_ID));
         when(user.getAccessToken()).thenReturn("token");
         when(userRepository.findById(UUID.fromString(USER_ID))).thenReturn(Optional.of(user));
+        Store store = mockStore();
+        when(storeRepository.findFirstByUserId(UUID.fromString(USER_ID))).thenReturn(Optional.of(store));
         when(instagramPublishClient.getPermalink("token", "existing-media-id")).thenReturn("permalink");
 
         Content saved = org.mockito.Mockito.mock(Content.class);

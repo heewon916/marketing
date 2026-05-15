@@ -385,7 +385,12 @@ public class ContentService {
         }
 
         User user = currentUser();
+        Store store = storeRepository.findFirstByUserId(user.getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+        
         validateInstagramToken(user);
+        
+        log.info("[Publish] Store resolved from DB. userId={}, storeId={}", user.getId(), store.getId());
         
         log.info("[Publish] Starting publish process. sessionId={}, userId={}, igUserId={}, photoCount={}, hasVideo={}", 
                 sessionId, user.getId(), user.getInstagramUserId(), imageUrls.size(), session.video() != null && !session.video().isBlank());
@@ -428,7 +433,10 @@ public class ContentService {
         
         // media_publish는 성공했으나 이전 호출에서 DB 저장이 실패했던 경우 복구를 시도
         if (session.instagramMediaId() != null && !session.instagramMediaId().isBlank()) {
-            return completePublishAndSave(sessionId, session, currentUser(), session.instagramMediaId());
+            User user = currentUser();
+            Store store = storeRepository.findFirstByUserId(user.getId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+            return completePublishAndSave(sessionId, session, user, session.instagramMediaId(), store);
         }
 
         if (session.publishId() == null || session.publishId().isBlank()) {
@@ -443,12 +451,13 @@ public class ContentService {
             return new ContentPublishStatusResponseDto(null, safePublishProgress(session.publishProgress()), null, null);
         }
 
-        if (session.storeId() == null || session.storeId().isBlank()) {
-            throw new BusinessException(ErrorCode.STORE_NOT_FOUND);
-        }
-
         User user = currentUser();
+        Store store = storeRepository.findFirstByUserId(user.getId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+
         validateInstagramToken(user);
+        
+        log.info("[PublishStatus] Store resolved from DB. sessionId={}, userId={}, storeId={}", sessionId, user.getId(), store.getId());
         
         try {
             String containerStatus = instagramPublishClient.getContainerStatus(user.getAccessToken(), session.instagramContainerId());
@@ -475,7 +484,7 @@ public class ContentService {
             // media_publish 성공 직후 Redis에 id를 저장하여 동시성 및 재시도 상황 대비
             contentRedisRepository.saveInstagramMediaId(sessionId.toString(), instagramMediaId);
             
-            return completePublishAndSave(sessionId, session, user, instagramMediaId);
+            return completePublishAndSave(sessionId, session, user, instagramMediaId, store);
             
         } catch (BusinessException exception) {
             contentRedisRepository.failPublish(sessionId.toString(), exception.getMessage());
@@ -483,13 +492,13 @@ public class ContentService {
         }
     }
 
-    private ContentPublishStatusResponseDto completePublishAndSave(UUID sessionId, ContentRedisSession session, User user, String instagramMediaId) {
+    private ContentPublishStatusResponseDto completePublishAndSave(UUID sessionId, ContentRedisSession session, User user, String instagramMediaId, Store store) {
         String instagramPermalink;
         try {
             instagramPermalink = instagramPublishClient.getPermalink(user.getAccessToken(), instagramMediaId);
             
             Content content = Content.builder()
-                    .storeId(UUID.fromString(session.storeId()))
+                    .storeId(store.getId())
                     .sessionId(sessionId)
                     .caption(session.caption())
                     .instagramMediaId(instagramMediaId)
