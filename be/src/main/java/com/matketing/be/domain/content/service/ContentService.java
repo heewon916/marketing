@@ -123,7 +123,7 @@ public class ContentService {
      * 가짜 데이터를 생성하여 네이버 Clova API에 오디오 생성을 요청한다.
      */
     public byte[] generateMockAudio() {
-        String mockText = "이것은 테스트용 마케팅 문구입니다. 오늘도 좋은 하루 보내세요!";
+        String mockText = "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요.";
         return clovaTtsClient.synthesize(mockText);
     }
 
@@ -387,14 +387,14 @@ public class ContentService {
         User user = currentUser();
         Store store = storeRepository.findFirstByUserId(user.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
-        
+
         validateInstagramToken(user);
-        
+
         log.info("[Publish] Store resolved from DB. userId={}, storeId={}", user.getId(), store.getId());
-        
-        log.info("[Publish] Starting publish process. sessionId={}, userId={}, igUserId={}, photoCount={}, hasVideo={}", 
+
+        log.info("[Publish] Starting publish process. sessionId={}, userId={}, igUserId={}, photoCount={}, hasVideo={}",
                 sessionId, user.getId(), user.getInstagramUserId(), imageUrls.size(), session.video() != null && !session.video().isBlank());
-                
+
         if (session.video() != null && !session.video().isBlank()) {
             log.info("[Publish] Video exists in session but is ignored for Instagram publishing. sessionId={}", sessionId);
         }
@@ -430,7 +430,7 @@ public class ContentService {
                     session.instagramPermalink()
             );
         }
-        
+
         // media_publish는 성공했으나 이전 호출에서 DB 저장이 실패했던 경우 복구를 시도
         if (session.instagramMediaId() != null && !session.instagramMediaId().isBlank()) {
             User user = currentUser();
@@ -456,9 +456,9 @@ public class ContentService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
 
         validateInstagramToken(user);
-        
+
         log.info("[PublishStatus] Store resolved from DB. sessionId={}, userId={}, storeId={}", sessionId, user.getId(), store.getId());
-        
+
         try {
             String containerStatus = instagramPublishClient.getContainerStatus(user.getAccessToken(), session.instagramContainerId());
             if ("IN_PROGRESS".equalsIgnoreCase(containerStatus)) {
@@ -480,12 +480,12 @@ public class ContentService {
                     user.getAccessToken(),
                     session.instagramContainerId()
             );
-            
+
             // media_publish 성공 직후 Redis에 id를 저장하여 동시성 및 재시도 상황 대비
             contentRedisRepository.saveInstagramMediaId(sessionId.toString(), instagramMediaId);
-            
+
             return completePublishAndSave(sessionId, session, user, instagramMediaId, store);
-            
+
         } catch (BusinessException exception) {
             contentRedisRepository.failPublish(sessionId.toString(), exception.getMessage());
             return new ContentPublishStatusResponseDto(null, "failed", null, null);
@@ -496,7 +496,7 @@ public class ContentService {
         String instagramPermalink;
         try {
             instagramPermalink = instagramPublishClient.getPermalink(user.getAccessToken(), instagramMediaId);
-            
+
             Content content = Content.builder()
                     .storeId(store.getId())
                     .sessionId(sessionId)
