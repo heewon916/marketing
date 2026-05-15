@@ -5,12 +5,22 @@ import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function CodeInputStep({
+const expiredPinErrorMessage = [
+  '인증 번호가 일치하지 않아요.',
+  'POS 화면을 확인해 주세요.',
+];
+
+const isExpiredPinMessage = (message) =>
+  message?.includes('만료') ||
+  message?.includes('시간') ||
+  message?.toLowerCase().includes('expired');
+
+function PosCodeInputStep({
   onNext,
   onPrev,
   value = '',
   onChange,
-  onGoToQR,
+  // onGoToQR,
   onVerified,
 }) {
   const inputRefs = useRef([]);
@@ -46,7 +56,7 @@ function CodeInputStep({
     if (isLoading) return;
 
     if (value.length !== 6) {
-      setErrorMessage(['6자리 인증 코드를 입력해 주세요.']);
+      setErrorMessage(['6자리 인증 번호를 입력해 주세요.']);
       return;
     }
 
@@ -58,7 +68,12 @@ function CodeInputStep({
       const { success, merchantId, message } = response.data;
 
       if (!success || !merchantId) {
-        setErrorMessage([message || '인증 코드 검증에 실패했습니다.']);
+        if (isExpiredPinMessage(message)) {
+          setErrorMessage(expiredPinErrorMessage);
+          return;
+        }
+
+        setErrorMessage([message || '인증 번호 검증에 실패했습니다.']);
         return;
       }
 
@@ -68,10 +83,15 @@ function CodeInputStep({
     } catch (error) {
       const message = error.response?.data?.message;
 
+      if (isExpiredPinMessage(message)) {
+        setErrorMessage(expiredPinErrorMessage);
+        return;
+      }
+
       setErrorMessage(
         message
           ? [message]
-          : ['인증 코드 검증 중 오류가 발생했습니다.', '다시 시도해 주세요.']
+          : ['인증 번호 검증 중 오류가 발생했습니다.', '다시 시도해 주세요.']
       );
     } finally {
       setIsLoading(false);
@@ -87,30 +107,42 @@ function CodeInputStep({
         <OnboardingHeader
           title={
             <>
-              POS 화면에 보이는
+              POS에서 발급한
               <br />
               <span className="text-primary-100 font-extrabold">
-                인증 코드를 입력
+                인증 번호를 입력
               </span>
               해 주세요
             </>
           }
           subtitle={
             <>
-              토스 POS 기기 화면을 확인하신 뒤
+              토스 POS의 맡케팅 탭에서
               <br />
-              6자리 숫자를 입력해 주세요.
+              인증 번호를 발급받을 수 있어요
             </>
           }
         />
       }
       footer={
+        <>
         <OnboardingFooterButtons
           onPrev={onPrev}
           onNext={handleNext}
           nextText={isLoading ? '확인 중' : '다음'}
           nextDisabled={isLoading}
         />
+        {import.meta.env.DEV && (
+          <button
+            type="button"
+            onClick={onNext}
+            className="mt-3 text-sm font-medium text-gray-400 underline"
+          >
+            개발용: 인스타그램 연동 건너뛰기
+          </button>
+        )}
+        </>
+
       }
     >
       <div className="flex flex-col items-center mt-2 w-full">
@@ -126,7 +158,7 @@ function CodeInputStep({
               onChange={(e) => handleChange(e, idx)}
               onKeyDown={(e) => handleKeyDown(e, idx)}
               disabled={isLoading}
-              className="w-12 h-14 border border-gray-300 rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-primary-100 focus:ring-4 focus:ring-primary-100/20 transition-all disabled:bg-gray-50"
+              className="w-11 h-13 border border-gray-300 rounded-xl text-center text-2xl font-bold text-gray-900 focus:outline-none focus:border-primary-100 focus:ring-4 focus:ring-primary-100/20 transition-all disabled:bg-gray-50"
             />
           ))}
         </div>
@@ -141,18 +173,17 @@ function CodeInputStep({
           </p>
         )}
 
-        <button
+        {/* <button
           type="button"
           onClick={onGoToQR}
           disabled={isLoading}
           className="mt-8 text-lg text-gray-500 font-sm underline underline-offset-4 disabled:text-gray-300"
         >
           QR로 인증하기
-        </button>
-
+        </button> */}
       </div>
     </OnboardingLayout>
   );
 }
 
-export default CodeInputStep;
+export default PosCodeInputStep;

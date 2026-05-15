@@ -44,6 +44,34 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
     }
 
+    // 파일 업로드 용량 초과 예외 처리 (413 Payload Too Large)
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceededException(org.springframework.web.multipart.MaxUploadSizeExceededException exception) {
+        log.warn("Max upload size exceeded", exception);
+        return ResponseEntity
+                .status(ErrorCode.PAYLOAD_TOO_LARGE.getStatus())
+                .body(ErrorResponse.of(ErrorCode.PAYLOAD_TOO_LARGE));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MultipartException.class)
+    public ResponseEntity<ErrorResponse> handleMultipartException(org.springframework.web.multipart.MultipartException exception) {
+        log.warn("Multipart exception", exception);
+        return ResponseEntity
+                .status(ErrorCode.INVALID_REQUEST.getStatus())
+                .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
+    }
+
+    @ExceptionHandler({
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            org.springframework.web.multipart.support.MissingServletRequestPartException.class
+    })
+    public ResponseEntity<ErrorResponse> handleMissingParameterException(Exception exception) {
+        log.warn("Missing parameter/part exception", exception);
+        return ResponseEntity
+                .status(ErrorCode.INVALID_REQUEST.getStatus())
+                .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
+    }
+
     // 위 분기에 걸리지 않은 예외는 예상하지 못한 서버 오류로 보고, 상세 내용은 로그에만 남긴다.
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleException(Exception exception) {

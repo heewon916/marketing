@@ -1,13 +1,24 @@
+// fe/src/pages/landing/LandingPage.jsx
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import Modal from '@/components/common/Modal.jsx';
 import Character from '@/assets/character/CharacterDdabong.png';
-import { registerFcmToken } from '@/features/notification/api/FcmApi';
 import {
   authApi,
   INSTAGRAM_AUTH_PURPOSE,
 } from '@/features/auth/api.js';
+
+const AUTH_ERROR_MESSAGE = {
+  LOGIN_FAILED: {
+    title: '인스타그램 로그인에 실패했어요',
+    description: '로그인을 다시 시도해주세요.',
+  },
+  NEEDS_ONBOARDING: {
+    title: '가입한 이력이 없는 계정이에요',
+    description: '서비스 이용을 위해\n몇 가지 준비를 먼저 도와드릴게요.',
+  },
+};
 
 function LandingPage() {
   const navigate = useNavigate();
@@ -21,6 +32,7 @@ function LandingPage() {
     () => location.state?.redirectTo ?? null
   );
 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   useEffect(() => {
     if (!location.state?.authError) return;
@@ -31,8 +43,35 @@ function LandingPage() {
     });
   }, [location.pathname, location.state, navigate]);
 
-  const handleInstagramLogin = () => {
-    authApi.loginWithInstagram(INSTAGRAM_AUTH_PURPOSE.LOGIN);
+  const handleInstagramLogin = async () => {
+    if (isLoggingIn) return;
+
+    setIsLoggingIn(true);
+
+    try {
+      const response = await authApi.loginWithInstagram(
+        INSTAGRAM_AUTH_PURPOSE.LOGIN
+      );
+
+      const user = response.data?.data ?? response.data;
+      const isOnboarded = user?.isOnboarded;
+
+      if (isOnboarded) {
+        navigate('/home', { replace: true });
+        return;
+      }
+
+      setAuthError(AUTH_ERROR_MESSAGE.NEEDS_ONBOARDING);
+      setAuthRedirectTo('/auth/onboarding');
+    } catch (error) {
+      setAuthError({
+        title: AUTH_ERROR_MESSAGE.LOGIN_FAILED.title,
+        description:
+          error?.message || AUTH_ERROR_MESSAGE.LOGIN_FAILED.description,
+      });
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   const handleOnboarding = () => {
@@ -71,9 +110,10 @@ function LandingPage() {
 
       <Button
         onClick={handleInstagramLogin}
+        disabled={isLoggingIn}
         className="w-full max-w-[340px] font-bold shadow-lg shadow-primary-100/40 mb-6"
       >
-        인스타그램으로 로그인
+        {isLoggingIn ? '로그인 확인 중...' : '인스타그램으로 로그인'}
       </Button>
 
       <button

@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.logging import build_log_extra, preview_text
 from app.services.content_purpose import ContentPurpose
 from app.services.menu_promotion_context import StoreMenuCandidate
+from app.services.remote_model_client import RemoteModelClient
 from app.services.weather_tags import (
     PRECIP_CLEAR,
     PRECIP_CLOUDY,
@@ -212,6 +213,7 @@ class CaptionGenerationRequest:
     owner_persona: str
     utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
+    fallback_keywords: list[str] = field(default_factory=list)
     reference_captions: list[str] = field(default_factory=list)
     menu_candidates: list[StoreMenuCandidate] = field(default_factory=list)
 
@@ -257,15 +259,16 @@ class CaptionPipeline:
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
         selected_menu_name = self._select_fallback_menu_name(request)
+        fallback_keywords = self._fallback_keywords(request)
         draft_caption = self._build_fallback_caption(request, selected_menu_name)
         guide_text = (
             self._build_fallback_guide_text(request, selected_menu_name)
-            if request.keywords or selected_menu_name
+            if fallback_keywords or selected_menu_name
             else DEFAULT_FALLBACK_GUIDE_TEXT
         )
         effective_fallback_source = fallback_source
         if (
-            not request.keywords
+            not fallback_keywords
             and selected_menu_name is None
             and effective_fallback_source is None
         ):
@@ -320,10 +323,10 @@ class CaptionPipeline:
         weather_context = _build_weather_context(request.weather_tags)
         if weather_context != "날씨와 관련한 표현 없음":
             return (
-                f"{weather_context} 분위기와 {request.owner_persona} 무드로 "
-                f"{subject_phrase}를 자연스럽게 소개해보세요."
+                f"오늘, {weather_context} 분위기에 "
+                f"{subject_phrase} 어떤가요?"
             )
-        return f"{request.owner_persona} 무드로 {subject_phrase}를 자연스럽게 소개해보세요."
+        return f"오늘, {subject_phrase} 어떤가요?"
 
     def _build_fallback_guide_text(
         self,
@@ -335,8 +338,7 @@ class CaptionPipeline:
             selected_menu_name,
         )
         return (
-            f"사장님, {subject_phrase}가 잘 보이도록 구도와 초점을 먼저 맞춰보세요. "
-            "촬영 전에 주제가 선명하게 드러나는지 한 번 더 확인해주세요."
+            f"사장님, {subject_phrase}가 잘 보이도록 영상을 찍어주세요."
         )
 
     @staticmethod
@@ -352,9 +354,10 @@ class CaptionPipeline:
         request: CaptionGenerationRequest,
         selected_menu_name: str | None,
     ) -> str:
+        fallback_keywords = CaptionPipeline._fallback_keywords(request)
         related_keywords = [
             keyword
-            for keyword in request.keywords
+            for keyword in fallback_keywords
             if not selected_menu_name or keyword != selected_menu_name
         ]
         if selected_menu_name and related_keywords:
@@ -364,6 +367,10 @@ class CaptionPipeline:
         if related_keywords:
             return ", ".join(related_keywords)
         return "오늘의 매장 메뉴"
+
+    @staticmethod
+    def _fallback_keywords(request: CaptionGenerationRequest) -> list[str]:
+        return request.fallback_keywords or request.keywords
 
 
 def _build_caption_pipeline_registry() -> dict[ContentPurpose, CaptionPipeline]:
@@ -396,6 +403,13 @@ class CaptionGenerationService:
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
         self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
+        self._remote_client = RemoteModelClient(
+            base_url=self.base_url,
+            chat_endpoint=self.chat_endpoint,
+            health_endpoint=self.health_endpoint,
+            api_key=self.api_key,
+            timeout_seconds=self.timeout_seconds,
+        )
         self._server_checked = False
         self._response_format_supported: bool = True
         self._pipelines = _build_caption_pipeline_registry()
@@ -533,18 +547,15 @@ class CaptionGenerationService:
         return payload
 
     def _build_request_headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        return headers
+        return self._remote_client.build_headers()
 
     @property
     def _chat_url(self) -> str:
-        return f"{self.base_url}{self.chat_endpoint}"
+        return self._remote_client.chat_url
 
     @property
     def _health_url(self) -> str:
-        return f"{self.base_url}{self.health_endpoint}"
+        return self._remote_client.health_url
 
     async def _post_chat_completion(
         self,
@@ -560,12 +571,7 @@ class CaptionGenerationService:
             require_selected_menu=require_selected_menu,
             strict_language=strict_language,
         )
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            return await client.post(
-                self._chat_url,
-                headers=self._build_request_headers(),
-                json=payload,
-            )
+        return await self._remote_client.post_chat_completion(payload)
 
     async def _check_server_connection(self) -> None:
         if not self.base_url:
@@ -574,9 +580,7 @@ class CaptionGenerationService:
             )
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.get(self._health_url)
-            response.raise_for_status()
+            response = await self._remote_client.check_health()
         except httpx.TimeoutException as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation server connectivity check timed out."
@@ -701,12 +705,7 @@ class CaptionGenerationService:
             ) from exc
 
         self._server_checked = True
-        response_payload = response.json()
-        raw_output = (
-            response_payload.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        raw_output = self._remote_client.extract_message_content(response)
         logger.info(
             "llama-server caption completion returned.",
             extra=build_log_extra(

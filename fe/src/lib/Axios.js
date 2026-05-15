@@ -4,6 +4,8 @@ const baseURL = import.meta.env.DEV
   ? ''
   : import.meta.env.VITE_API_BACKEND_URL;
 
+const REFRESH_TOKEN_URL = '/api/v1/users/token/refresh';
+
 export const api = axios.create({
   baseURL,
   withCredentials: true,
@@ -13,8 +15,14 @@ export const api = axios.create({
 api.interceptors.request.use((config) => {
   const accessToken = localStorage.getItem('accessToken');
 
-  if (accessToken) {
+  const isRefreshRequest = config.url?.includes(REFRESH_TOKEN_URL);
+
+  if (accessToken && !isRefreshRequest) {
     config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  if (isRefreshRequest) {
+    delete config.headers.Authorization;
   }
 
   return config;
@@ -26,18 +34,19 @@ api.interceptors.response.use(
     const originalRequest = error.config;
 
     const isRefreshRequest = originalRequest?.url?.includes(
-      '/api/v1/users/token/refresh'
+      REFRESH_TOKEN_URL
     );
 
     if (
       error.response?.status === 401 &&
+      originalRequest &&
       !originalRequest._retry &&
       !isRefreshRequest
     ) {
       originalRequest._retry = true;
 
       try {
-        const response = await api.post('/api/v1/users/token/refresh');
+        const response = await api.post(REFRESH_TOKEN_URL);
 
         const newAccessToken = response.data.accessToken;
 

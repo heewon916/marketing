@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 
 import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
+import com.matketing.be.domain.content.client.InstagramPublishClient;
 import com.matketing.be.domain.content.client.S3VideoClient;
+import com.matketing.be.domain.content.config.ContentS3Properties;
 import com.matketing.be.domain.content.config.ContentProperties;
 import com.matketing.be.domain.content.dto.AiProcessUtteranceResponse;
 import com.matketing.be.domain.content.dto.AiWeatherRequest;
@@ -21,15 +23,21 @@ import com.matketing.be.domain.content.dto.ContentEditResponseDto;
 import com.matketing.be.domain.content.dto.ContentRequest;
 import com.matketing.be.domain.content.dto.ContentResponse;
 import com.matketing.be.domain.content.dto.ContentImageUrlsResponseDto;
+import com.matketing.be.domain.content.dto.ContentPublishResponseDto;
+import com.matketing.be.domain.content.dto.ContentPublishStatusResponseDto;
 import com.matketing.be.domain.content.dto.ContentRedisResult;
 import com.matketing.be.domain.content.dto.SttResponse;
+import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.domain.content.enums.ContentStatus;
 import com.matketing.be.domain.content.redis.ContentRedisRepository;
 import com.matketing.be.domain.content.redis.ContentRedisRepository.RedisImageValue;
+import com.matketing.be.domain.content.redis.ContentRedisRepository.ContentRedisSession;
 import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.store.entity.OwnerPersonaEnumType;
 import com.matketing.be.domain.store.entity.Store;
 import com.matketing.be.domain.store.repository.StoreRepository;
+import com.matketing.be.domain.user.entity.User;
+import com.matketing.be.domain.user.repository.UserRepository;
 import com.matketing.be.global.auth.jwt.AuthUser;
 import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
@@ -70,12 +78,19 @@ class ContentServiceTest {
     private ContentRedisRepository contentRedisRepository;
 
     @Mock
+    private InstagramPublishClient instagramPublishClient;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private StoreRepository storeRepository;
 
     @Mock
     private WeatherContextProvider weatherService;
 
     private final ContentProperties contentProperties = new ContentProperties(600);
+    private final ContentS3Properties contentS3Properties = new ContentS3Properties("bucket", "ap-northeast-2", "https://cdn.example.com", "test-access-key", "test-secret-key");
 
     private ContentService contentService;
 
@@ -92,6 +107,9 @@ class ContentServiceTest {
                 s3VideoClient,
                 contentRedisRepository,
                 contentProperties,
+                contentS3Properties,
+                instagramPublishClient,
+                userRepository,
                 storeRepository,
                 weatherService
         );
@@ -285,5 +303,107 @@ class ContentServiceTest {
 
         assertThat(response.utterance()).isEqualTo("인식된 문장");
         assertThat(response.status()).isEqualTo("TEXT_RECOGNIZED");
+    }
+    @Test
+    void publishContentThrowsExceptionIfVideoExistsButNoPhotos() {
+        UUID sessionId = UUID.randomUUID();
+        when(contentRedisRepository.getSession(sessionId.toString()))
+                .thenReturn(new ContentRedisSession(
+                        sessionId.toString(),
+                        STORE_ID.toString(),
+                        "COMPLETED",
+                        "캡션",
+                        "draft.mp4",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        java.util.List.of(),
+                        java.util.List.of()
+                ));
+
+        assertThatThrownBy(() -> contentService.publishContent(sessionId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("현재는 이미지 기반 Instagram 발행만 지원합니다");
+    }
+
+    @Test
+    void publishContentCreatesContainerIfPhotosExistAndVideoIsIgnored() {
+        UUID sessionId = UUID.randomUUID();
+        when(contentRedisRepository.getSession(sessionId.toString()))
+                .thenReturn(new ContentRedisSession(
+                        sessionId.toString(),
+                        STORE_ID.toString(),
+                        "COMPLETED",
+                        "캡션",
+                        "draft.mp4",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        java.util.List.of("photo1.jpg"),
+                        java.util.List.of()
+                ));
+        User user = org.mockito.Mockito.mock(User.class);
+        when(user.getId()).thenReturn(UUID.fromString(USER_ID));
+        when(user.getInstagramUserId()).thenReturn("ig-user");
+        when(user.getAccessToken()).thenReturn("token");
+        when(user.getTokenExpiresAt()).thenReturn(java.time.OffsetDateTime.now().plusDays(1));
+        when(userRepository.findById(UUID.fromString(USER_ID))).thenReturn(Optional.of(user));
+        when(contentRedisRepository.queuePublish(eq(sessionId.toString()), any())).thenReturn(true);
+        when(instagramPublishClient.createImageContainer("ig-user", "token", "https://cdn.example.com/photo1.jpg", "캡션"))
+                .thenReturn("container-id");
+
+        ContentPublishResponseDto response = contentService.publishContent(sessionId);
+
+        assertThat(response.publishProgress()).isEqualTo("queued");
+        verify(instagramPublishClient).createImageContainer(any(), any(), any(), any());
+        verify(instagramPublishClient, never()).createReelsContainer(any(), any(), any(), any());
+        verify(contentRedisRepository).markPublishContainerCreated(sessionId.toString(), "container-id");
+    }
+
+    @Test
+    void getPublishStatusDoesNotCallMediaPublishIfMediaIdAlreadyExists() {
+        UUID sessionId = UUID.randomUUID();
+        when(contentRedisRepository.getSession(sessionId.toString()))
+                .thenReturn(new ContentRedisSession(
+                        sessionId.toString(),
+                        STORE_ID.toString(),
+                        "PUBLISHING",
+                        "캡션",
+                        null,
+                        "pub-id",
+                        "uploading",
+                        "container-id",
+                        null,
+                        null,
+                        "existing-media-id",
+                        null,
+                        java.util.List.of("photo1.jpg"),
+                        java.util.List.of()
+                ));
+        User user = org.mockito.Mockito.mock(User.class);
+        when(user.getId()).thenReturn(UUID.fromString(USER_ID));
+        when(user.getInstagramUserId()).thenReturn("ig-user");
+        when(user.getAccessToken()).thenReturn("token");
+        when(user.getTokenExpiresAt()).thenReturn(java.time.OffsetDateTime.now().plusDays(1));
+        when(userRepository.findById(UUID.fromString(USER_ID))).thenReturn(Optional.of(user));
+        when(instagramPublishClient.getPermalink("token", "existing-media-id")).thenReturn("permalink");
+
+        Content saved = org.mockito.Mockito.mock(Content.class);
+        when(saved.getId()).thenReturn(123L);
+        when(contentRepository.save(any())).thenReturn(saved);
+
+        ContentPublishStatusResponseDto response = contentService.getPublishStatus(sessionId);
+
+        assertThat(response.publishProgress()).isEqualTo("completed");
+        assertThat(response.instagramMediaId()).isEqualTo("existing-media-id");
+        verify(instagramPublishClient, never()).publishContainer(any(), any(), any());
     }
 }

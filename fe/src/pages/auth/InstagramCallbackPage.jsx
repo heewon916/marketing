@@ -1,9 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  authApi,
-  INSTAGRAM_AUTH_PURPOSE,
-} from '@/features/auth/api.js';
 import { registerFcmToken } from '@/features/notification/api/FcmApi';
 
 const AUTH_ERROR_MESSAGE = {
@@ -15,21 +11,6 @@ const AUTH_ERROR_MESSAGE = {
     title: '로그인 정보를 확인할 수 없어요',
     description: '인증 정보가 전달되지 않았어요.\n다시 로그인해주세요.',
   },
-  ME_FETCH_FAILED: {
-    title: '로그인 정보를 불러오지 못했어요',
-    description: '잠시 후 다시 시도해주세요.',
-  },
-};
-
-const AUTH_NOTICE_MESSAGE = {
-  NEEDS_ONBOARDING: {
-    title: '가입한 이력이 없는 계정이에요',
-    description: '서비스 이용을 위해\n몇 가지 준비를 먼저 도와드릴게요.',
-  },
-  ALREADY_ONBOARDED: {
-    title: '이미 가입된 계정이에요',
-    description: '홈 화면으로 이동할게요.',
-  },
 };
 
 function InstagramCallbackPage() {
@@ -40,19 +21,38 @@ function InstagramCallbackPage() {
     if (hasHandledCallback.current) return;
     hasHandledCallback.current = true;
 
-    const handleCallback = async () => {
+    const isPopupWindow =
+      !!window.opener || window.name === 'instagram-login';
+
+    const closePopup = () => {
+      window.history.replaceState({}, document.title, '/auth/callback');
+
+      if (isPopupWindow) {
+        window.close();
+        return true;
+      }
+
+      return false;
+    };
+
+    const handleCallback = () => {
       const params = new URLSearchParams(window.location.search);
       const accessToken = params.get('token');
       const error = params.get('error');
 
-      const purpose =
-        sessionStorage.getItem('instagramAuthPurpose') ||
-        INSTAGRAM_AUTH_PURPOSE.LOGIN;
-
-      sessionStorage.removeItem('instagramAuthPurpose');
-
       if (error) {
-        window.history.replaceState({}, document.title, '/auth/callback');
+        localStorage.setItem(
+          'instagramAuthResult',
+          JSON.stringify({
+            status: 'error',
+            reason: 'LOGIN_FAILED',
+            timestamp: Date.now(),
+          })
+        );
+
+        const isClosed = closePopup();
+
+        if (isClosed) return;
 
         navigate('/', {
           replace: true,
@@ -64,7 +64,18 @@ function InstagramCallbackPage() {
       }
 
       if (!accessToken) {
-        window.history.replaceState({}, document.title, '/auth/callback');
+        localStorage.setItem(
+          'instagramAuthResult',
+          JSON.stringify({
+            status: 'error',
+            reason: 'TOKEN_MISSING',
+            timestamp: Date.now(),
+          })
+        );
+
+        const isClosed = closePopup();
+
+        if (isClosed) return;
 
         navigate('/', {
           replace: true,
@@ -76,57 +87,26 @@ function InstagramCallbackPage() {
       }
 
       localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem(
+        'instagramAuthResult',
+        JSON.stringify({
+          status: 'success',
+          timestamp: Date.now(),
+        })
+      );
+
       void registerFcmToken({ requestPermission: true });
-      window.history.replaceState({}, document.title, '/auth/callback');
 
-      try {
-        const response = await authApi.getMe();
+      const isClosed = closePopup();
 
-        const { isOnboarded } = response.data;
+      if (isClosed) return;
 
-        if (purpose === INSTAGRAM_AUTH_PURPOSE.ONBOARDING) {
-          if (isOnboarded) {
-            navigate('/auth/onboarding', {
-              replace: true,
-              state: {
-                authNotice: AUTH_NOTICE_MESSAGE.ALREADY_ONBOARDED,
-                redirectTo: '/home',
-              },
-            });
-            return;
-          }
-
-          navigate('/auth/onboarding?instagram=success', { replace: true });
-          return;
-        }
-
-        if (!isOnboarded) {
-          navigate('/', {
-            replace: true,
-            state: {
-              authError: AUTH_NOTICE_MESSAGE.NEEDS_ONBOARDING,
-              redirectTo: '/auth/onboarding',
-            },
-          });
-          return;
-        }
-
-        navigate('/home', { replace: true });
-      } catch (error) {
-        console.error('내 정보 조회 실패:', error);
-
-        localStorage.removeItem('accessToken');
-
-        navigate('/', {
-          replace: true,
-          state: {
-            authError: AUTH_ERROR_MESSAGE.ME_FETCH_FAILED,
-          },
-        });
-      }
+      navigate('/', {
+        replace: true,
+      });
     };
 
-    void handleCallback();
+    handleCallback();
   }, [navigate]);
 
   return (

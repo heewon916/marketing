@@ -20,14 +20,62 @@ class BestFrameExtractor:
         config: ExtractorConfig,
         image_processor: type[ImageProcessor],
         video_processor: type[VideoProcessor],
-        image_evaluator_class: type[ImageEvaluator],
+        image_evaluator: ImageEvaluator,
     ) -> None:
         self._config = config
         self._image_processor = image_processor
         self._video_processor = video_processor
-        self._image_evaluator = image_evaluator_class(self._config)
+        self._image_evaluator = image_evaluator
 
-    def extract_best_frame(self, video_path: Path) -> Image | None:
+    def extract_top_k_frames(
+        self,
+        video_path: Path,
+        k: int,
+    ) -> list[tuple[Image, float]]:
+        """Return up to k frames spread across the video timeline.
+
+        The video is split into k equal-length segments; the highest-scoring
+        frame within each segment is selected. Results are returned in
+        timeline order (segment 0 first), not score order.
+        """
+
+        if k <= 0:
+            return []
+
+        candidates: list[tuple[float, Image]] = []
+        frames_batch_generator = self._video_processor.get_next_frames(
+            video_path,
+            self._config.batch_size,
+        )
+        for frames in frames_batch_generator:
+            if not frames:
+                continue
+            normalized_images = self._image_processor.normalize_images(
+                frames,
+                self._config.input_size,
+            )
+            scores = self._image_evaluator.evaluate_images(normalized_images)
+            for frame, score in zip(frames, scores):
+                candidates.append((float(score), frame))
+
+        if not candidates:
+            return []
+        if len(candidates) <= k:
+            return [(frame, score) for score, frame in candidates]
+
+        n = len(candidates)
+        selected: list[tuple[Image, float]] = []
+        for index in range(k):
+            lo = (index * n) // k
+            hi = ((index + 1) * n) // k
+            segment = candidates[lo:hi]
+            if not segment:
+                continue
+            best_score, best_frame = max(segment, key=lambda item: item[0])
+            selected.append((best_frame, best_score))
+        return selected
+
+    def extract_best_frame(self, video_path: Path) -> tuple[Image, float] | None:
         best_frame: Image | None = None
         best_score: float | None = None
 
@@ -45,7 +93,9 @@ class BestFrameExtractor:
                 best_frame = frame
                 best_score = score
 
-        return best_frame
+        if best_frame is None or best_score is None:
+            return None
+        return best_frame, best_score
 
     def _get_best_frame(self, frames: Images) -> tuple[Image | None, float | None]:
         normalized_images = self._image_processor.normalize_images(

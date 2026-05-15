@@ -1,8 +1,40 @@
+import { useEffect } from 'react';
 import Character from '@/assets/character/CharacterRun.png';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
+import { onboardingApi } from '@/features/auth/onboarding/api.js';
+import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function StoreLoadingStep() {
+function StoreLoadingStep({ onSearchSuccess, onSearchFail }) {
+  const storeName = useOnboardingStore((state) => state.storeName);
+
+  useEffect(() => {
+    const searchStores = async () => {
+      const keyword = storeName?.trim();
+
+      if (!keyword) {
+        onSearchFail?.();
+        return;
+      }
+
+      try {
+        const response = await onboardingApi.searchStores(keyword);
+        const stores = response.data?.data ?? [];
+
+        if (stores.length > 0) {
+          onSearchSuccess?.();
+          return;
+        }
+
+        onSearchFail?.();
+      } catch {
+        onSearchFail?.();
+      }
+    };
+
+    void searchStores();
+  }, [storeName, onSearchSuccess, onSearchFail]);
+
   return (
     <OnboardingLayout
       currentStep={5}

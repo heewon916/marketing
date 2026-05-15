@@ -1,7 +1,5 @@
 package com.matketing.be.domain.content.controller;
 
-import com.matketing.be.domain.content.dto.ChatRequest;
-import com.matketing.be.domain.content.dto.ChatResponse;
 import com.matketing.be.domain.content.dto.ContentDraftResponseDto;
 import com.matketing.be.domain.content.dto.ContentEditRequestDto;
 import com.matketing.be.domain.content.dto.ContentEditResponseDto;
@@ -16,9 +14,11 @@ import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.service.ContentService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/contents")
@@ -45,6 +45,21 @@ public class ContentController {
     @PostMapping("/stt")
     public SttResponse recognizeSpeech(@RequestPart(value = "audio_file", required = false) MultipartFile audioFile) {
         return contentService.recognizeSpeech(audioFile);
+    }
+
+    /**
+     * Clova TTS (Mock)
+     * 역할: 클라이언트에서 받은 텍스트(차후에는 내부 AI 모델 생성 결과)를 기반으로
+     * 네이버 Clova API에 오디오 생성을 요청한다.
+     * @return MP3 바이트 배열을 포함한 ResponseEntity
+     */
+    @PostMapping(value = "/tts", produces = "audio/mpeg")
+    public org.springframework.http.ResponseEntity<byte[]> generateAudio() {
+        byte[] audioBytes = contentService.generateMockAudio();
+        return org.springframework.http.ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"tts.mp3\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType("audio/mpeg"))
+                .body(audioBytes);
     }
 
     /**
@@ -279,8 +294,11 @@ public class ContentController {
     @PostMapping("/{sessionId}/video")
     public ContentVideoResponseDto processVideo(
             @PathVariable UUID sessionId,
+            @RequestParam(value = "store_id", required = false) String storeId,
             @RequestPart("video_file") MultipartFile videoFile
     ) {
-        return contentService.processVideo(sessionId, videoFile);
+        log.info("[VideoUpload] request received. sessionId={}, storeId={}, fileName={}, fileSize={}, contentType={}",
+                sessionId, storeId, videoFile.getOriginalFilename(), videoFile.getSize(), videoFile.getContentType());
+        return contentService.processVideo(sessionId, storeId, videoFile);
     }
 }

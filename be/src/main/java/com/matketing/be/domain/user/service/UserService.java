@@ -8,6 +8,7 @@ import com.matketing.be.domain.user.dto.SyncInstagramResponse;
 import com.matketing.be.domain.user.dto.UserMeResponse;
 import com.matketing.be.domain.user.entity.User;
 import com.matketing.be.domain.user.repository.UserRepository;
+import com.matketing.be.global.auth.oauth2.InstagramApiClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final StoreRepository storeRepository;
     private final ObjectMapper objectMapper;
+    private final InstagramApiClient instagramApiClient;
 
     @Transactional(readOnly = true)
     public UserMeResponse getMe(User user) {
@@ -57,6 +59,7 @@ public class UserService {
         UserMeResponse.StoreDto storeDto = new UserMeResponse.StoreDto(
                 store.getId().toString(),
                 store.getMerchantId(),
+                store.getStoreName(),
                 store.getCategory() != null ? store.getCategory().name() : null,
                 store.getAddress(),
                 operatingHoursObj
@@ -71,15 +74,15 @@ public class UserService {
                 .orElseThrow(() -> new IllegalArgumentException("매장 정보가 없습니다."));
 
         if (request.category() != null) {
-            store.updateAllDetails(null, request.category(), null, null, null, null, null);
+            store.updateAllDetails(null,null, request.category(), null, null, null, null, null);
         }
         if (request.address() != null) {
-            store.updateAllDetails(null, null, null, request.address(), null, null, null);
+            store.updateAllDetails(null,null, null, null, request.address(), null, null, null);
         }
         if (request.operatingHours() != null) {
             try {
                 String hoursJson = objectMapper.writeValueAsString(request.operatingHours());
-                store.updateAllDetails(null, null, null, null, null, null, hoursJson);
+                store.updateAllDetails(null,null, null, null, null, null, null, hoursJson);
             } catch (JsonProcessingException e) {
                 throw new IllegalArgumentException("영업시간 형식이 올바르지 않습니다.");
             }
@@ -102,11 +105,23 @@ public class UserService {
 
     @Transactional
     public SyncInstagramResponse syncInstagram(User user) {
-        // Graph API 연동 로직이 필요하지만 MVP에서는 Mock 업데이트 처리
-        
-        // MVP Mock
-        String updatedUsername = user.getInstagramUsername();
-        String updatedProfileImageUrl = user.getProfileImageUrl() != null ? user.getProfileImageUrl() : "https://mock-image-url.com/profile.jpg";
+        String accessToken = user.getAccessToken();
+        if (accessToken == null || accessToken.isEmpty()) {
+            throw new IllegalArgumentException("인스타그램 연동 토큰이 존재하지 않습니다.");
+        }
+
+        Map<String, Object> profile = instagramApiClient.getUserProfile(accessToken);
+        if (profile == null) {
+            throw new IllegalArgumentException("인스타그램 프로필 정보를 가져오는데 실패했습니다.");
+        }
+
+        String updatedUsername = profile.get("username") != null ? profile.get("username").toString() : user.getInstagramUsername();
+        String updatedProfileImageUrl = profile.get("profile_picture_url") != null ? profile.get("profile_picture_url").toString() : user.getProfileImageUrl();
+
+        // 만약 여전히 프로필 이미지 URL이 없다면 기본값 사용 (선택 사항)
+        if (updatedProfileImageUrl == null) {
+            updatedProfileImageUrl = "https://mock-image-url.com/profile.jpg";
+        }
 
         user.updateProfile(updatedUsername, updatedProfileImageUrl);
 

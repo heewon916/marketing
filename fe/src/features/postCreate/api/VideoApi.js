@@ -13,6 +13,8 @@ export async function requestVideoUpload(videoFile, sessionId) {
 	try {
 		const formData = new FormData()
 		formData.append("video_file", videoFile)
+		console.log("보내는 비디오파일:", videoFile)
+		console.log("보내는 formData:", formData)
 
 		const response = await api.post(`/api/v1/contents/${sessionId}/video`, formData, {
 			headers: {
@@ -20,9 +22,22 @@ export async function requestVideoUpload(videoFile, sessionId) {
 			},
 		})
 
-		return response.data ?? {}
+		const data = response.data ?? {}
+		console.log(data)
+		console.log("다음으로 넘어감")
+		
+		// extracted_frames의 original_key에 CloudFront 도메인 붙이기
+		if (Array.isArray(data.extracted_frames)) {
+			data.extracted_frames = data.extracted_frames.map(frame => ({
+				...frame,
+				original_key: frame.original_key ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${frame.original_key}` : ""
+			}))
+		}
+		
+		return data
 	} catch (error) {
-		// const errorMessage = error.response?.data?.message
-		// throw new Error(errorMessage || "영상 업로드에 실패했습니다.", { cause: error })
+		const errorMessage = error.response?.data?.message
+		console.log(error.response.data)
+		throw new Error(errorMessage || "영상 업로드에 실패했습니다.", { cause: error })
 	}
 }

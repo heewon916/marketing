@@ -8,6 +8,7 @@ export async function requestDraftPost(sessionId) {
 	try {
 		const response = await api.get(`/api/v1/contents/${sessionId}`)
 		const data = response.data ?? {}
+		console.log(data)
 		const images = Array.isArray(data.images) ? data.images : []
 
 		const sortedImages = [...images].sort((a, b) => {
@@ -21,10 +22,10 @@ export async function requestDraftPost(sessionId) {
 			status: data.status ?? "",
 			caption: data.caption ?? "",
 			instagramUsername: data.instagramUsername ?? "",
-			instagramProfileImageUrl: data.instagramProfileImageUrl ?? "",
+			instagramProfileImageUrl: data.instagramProfileImageUrl ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${data.instagramProfileImageUrl}` : "",
 			images: sortedImages.map((image, index) => ({
 				id: image.id ?? `image-${index}`,
-				url: image.filtered_url ?? "",
+				url: image.filtered_url ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${image.filtered_url}` : "",
 				displayOrder: image.display_order ?? index + 1,
 			})),
 		}
@@ -45,7 +46,8 @@ export async function requestEditDraftCaption(sessionId, caption) {
 		})
 
 		const data = response.data ?? {}
-
+		console.log("EDIT", data)
+		
 		return {
 			sessionId: data.session_id ?? sessionId,
 			caption: data.caption ?? caption,

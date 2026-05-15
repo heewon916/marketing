@@ -50,6 +50,9 @@ public class SecurityConfig {
                         "/api/swagger-ui.html",
                         "/swagger-resources/**",
                         "/api/v1/internal/notifications/**",
+                        // TODO: 내부 배치 API 인증 정책 확정 후 permitAll 제거 또는 internal key 인증 적용 필요
+                        "/api/v1/internal/stats/**",
+                        "/api/v1/internal/metrics/**",
                         //"/api/v1/users/me/fcm-token",
                         "/webjars/**"
                 ).permitAll()

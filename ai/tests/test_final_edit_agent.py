@@ -1,0 +1,112 @@
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pytest
+
+from app.services.final_edit_agent import FinalEditAgent, FinalEditImageState
+from app.services.final_edit_planner import ImageEditPlan
+from app.services.final_edit_tools import FinalEditToolRegistry, normalize_tool_params
+
+
+def _write_test_image(path: Path, shape: tuple[int, int, int] = (16, 16, 3)) -> None:
+    image = np.full(shape, 120, dtype=np.uint8)
+    image[:, : shape[1] // 2, 2] = 220
+    cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+
+def test_normalize_tool_params_clamps_values() -> None:
+    assert normalize_tool_params("upscale", {"scale": 8}) == {"scale": 2}
+    assert normalize_tool_params("denoise", {"strength": 4}) == {"strength": 1.0}
+    assert normalize_tool_params(
+        "color_grading",
+        {"temperature": "invalid", "saturation": -3, "brightness": 3},
+    ) == {
+        "temperature": "warm",
+        "saturation": -1.0,
+        "brightness": 1.0,
+    }
+    assert normalize_tool_params("background_blur", {"blur_radius": 99}) == {
+        "blur_radius": 20
+    }
+
+
+def test_tool_registry_upscale_changes_shape() -> None:
+    registry = FinalEditToolRegistry()
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+
+    result = registry.execute("upscale", image, {"scale": 4})
+
+    assert result.shape == (32, 32, 3)
+
+
+def test_tool_registry_background_blur_preserves_shape() -> None:
+    registry = FinalEditToolRegistry()
+    image = np.zeros((12, 12, 3), dtype=np.uint8)
+
+    result = registry.execute("background_blur", image, {"blur_radius": 4})
+
+    assert result.shape == image.shape
+
+
+@pytest.mark.asyncio
+async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
+    image_path = tmp_path / "draft.jpg"
+    _write_test_image(image_path)
+    agent = FinalEditAgent(FinalEditToolRegistry())
+    state = FinalEditImageState(
+        image_path=image_path,
+        working_dir=tmp_path / "edited",
+        plan=ImageEditPlan(
+            image_index=0,
+            content="딸기 케이크",
+            strategy="업스케일 후 샤프닝",
+            tools=["upscale", "sharpen"],
+            params={
+                "upscale": {"scale": 2},
+                "sharpen": {"strength": 0.4},
+            },
+        ),
+    )
+
+    result = await agent.run(state)
+
+    assert result.output_path is not None
+    assert result.output_path.exists()
+    output_image = cv2.imread(str(result.output_path))
+    assert output_image is not None
+    assert output_image.shape[:2] == (32, 32)
+    assert result.fallback_to_original is False
+
+
+@pytest.mark.asyncio
+async def test_final_edit_agent_falls_back_when_tool_fails(tmp_path: Path) -> None:
+    image_path = tmp_path / "draft.jpg"
+    _write_test_image(image_path)
+    registry = FinalEditToolRegistry()
+    original_execute = registry.execute
+
+    def failing_execute(tool_name, image, params):
+        if tool_name == "denoise":
+            raise RuntimeError("boom")
+        return original_execute(tool_name, image, params)
+
+    registry.execute = failing_execute  # type: ignore[method-assign]
+    agent = FinalEditAgent(registry)
+    state = FinalEditImageState(
+        image_path=image_path,
+        working_dir=tmp_path / "edited",
+        plan=ImageEditPlan(
+            image_index=0,
+            content="매장 전경",
+            strategy="디노이즈",
+            tools=["denoise"],
+            params={"denoise": {"strength": 0.4}},
+        ),
+    )
+
+    result = await agent.run(state)
+
+    assert result.fallback_to_original is True
+    assert result.output_path == image_path
+    assert "tool_failed:denoise" in (result.failure_reason or "")

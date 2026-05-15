@@ -1,22 +1,41 @@
 import { useEffect, useRef, useState } from 'react';
 
-import Modal from '@/components/common/Modal.jsx';
-import Button from '@/components/common/Button.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import StoreCard from '../components/StoreCard.jsx';
 import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
-import StoreNotFoundModal from '../components/StoreNotFoundModal.jsx';
 
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
-function StoreSelectStep({ onNext, onPrev, onManualInput }) {
+function LoadingText() {
+  return (
+    <div className="flex items-end justify-center gap-2 pt-2" style={{ height: '36px' }}>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="block h-3 w-3 rounded-full bg-primary-100"
+          style={{
+            animation: 'dotBounce 0.8s ease-in-out infinite',
+            animationDelay: `${i * 0.15}s`,
+          }}
+        />
+      ))}
+      <style>{`
+        @keyframes dotBounce {
+          0%, 100% { transform: translateY(0); opacity: 1; }
+          45%       { transform: translateY(-20px); opacity: 0.5; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
   const listRef = useRef(null);
 
   const storeName = useOnboardingStore((state) => state.storeName);
-  const setStoreName = useOnboardingStore((state) => state.setStoreName);
   const setSelectedPlaceId = useOnboardingStore(
     (state) => state.setSelectedPlaceId
   );
@@ -24,15 +43,16 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
   const [stores, setStores] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [isLoading, setIsLoading] = useState(() => !!storeName?.trim());
-  const [isModalClosed, setIsModalClosed] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [retryCount, setRetryCount] = useState(0);
 
   const keyword = storeName?.trim() ?? '';
-  const isErrorModalOpen = !!errorMessage && !isLoading;
 
   useEffect(() => {
-    if (!keyword) return;
+    if (!keyword) {
+      onSearchFail?.();
+      return;
+    }
+
+    let isMounted = true;
 
     const searchStores = async () => {
       try {
@@ -41,6 +61,8 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
         const response = await onboardingApi.searchStores(keyword);
         const result = response.data?.data ?? [];
 
+        if (!isMounted) return;
+
         const normalizedStores = result.map((store) => ({
           id: store.place_id,
           placeId: store.place_id,
@@ -48,31 +70,30 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
           address: store.address,
         }));
 
+        if (normalizedStores.length === 0) {
+          onSearchFail?.();
+          return;
+        }
+
         setStores(normalizedStores);
         setSelectedId('');
-        setErrorMessage('');
-      } catch (error) {
-        const message = error.response?.data?.message;
+      } catch {
+        if (!isMounted) return;
 
-        setStores([]);
-        setSelectedId('');
-        setErrorMessage(
-          message || '잠시 후 다시 시도하거나,\n직접 입력으로 계속 진행해 주세요.'
-        );
+        onSearchFail?.();
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     void searchStores();
-  }, [keyword, retryCount]);
 
-  const isModalOpen =
-    !!keyword &&
-    !isLoading &&
-    stores.length === 0 &&
-    !isModalClosed &&
-    !errorMessage;
+    return () => {
+      isMounted = false;
+    };
+  }, [keyword, onSearchFail]);
 
   const handleSelectStore = (id) => {
     setSelectedId(id);
@@ -84,82 +105,67 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
     if (!selectedStore) return;
 
     setSelectedPlaceId(selectedStore.placeId);
-    setStoreName(selectedStore.name);
 
     onNext?.();
   };
 
-  const handleRetry = () => {
-    if (!keyword) return;
-
-    setStores([]);
-    setSelectedId('');
-    setErrorMessage('');
-    setIsModalClosed(false);
-    setIsLoading(true);
-    setRetryCount((prev) => prev + 1);
-  };
-
   const handleManualInput = () => {
-    setIsModalClosed(true);
-    setErrorMessage('');
+    setSelectedPlaceId('');
     onManualInput?.();
   };
 
   return (
-    <>
-      <OnboardingLayout
-        currentStep={5}
-        totalStep={7}
-        contentAlign="left"
-        header={
-          <OnboardingHeader
-            title={
-              <>
-                <span className="text-primary-100 font-extrabold">
-                  가게를 선택
-                </span>
-                해 주세요
-              </>
-            }
-            emphasis="어떤 가게가 사장님 가게인가요?"
-            subtitle="하단 목록에서 우리 매장을 선택해 주세요"
-          />
-        }
-        footer={
+    <OnboardingLayout
+      currentStep={5}
+      totalStep={7}
+      contentAlign="left"
+      header={
+        <OnboardingHeader
+          title={
+            <>
+              <span className="text-primary-100 font-extrabold">
+                가게를 선택
+              </span>
+              해 주세요
+            </>
+          }
+          emphasis="어떤 가게가 사장님 가게인가요?"
+          subtitle="하단 목록에서 우리 매장을 선택해 주세요"
+        />
+      }
+      footer={
+        <div className="w-full">
+          {!isLoading && stores.length > 0 && (
+            <div className="mb-8 text-center">
+              <p className="text-sm font-medium text-gray-500">
+                원하는 가게가 목록에 없나요?
+              </p>
+
+              <button
+                type="button"
+                onClick={handleManualInput}
+                className="mt-1 text-sm font-semibold text-primary-100 underline underline-offset-4"
+              >
+                직접 입력할게요
+              </button>
+            </div>
+          )}
+
           <OnboardingFooterButtons
             onPrev={onPrev}
             onNext={handleNext}
             nextDisabled={!selectedId}
             nextText="다음"
           />
-        }
-      >
-        <div className="relative mt-2 w-full flex-1">
-          <div className="absolute inset-0">
-            {isLoading && (
-              <p className="px-1 pt-2 text-sm font-medium text-gray-400">
-                가게 목록을 불러오고 있어요.
-              </p>
-            )}
+        </div>
+      }
+    >
+      <div className="relative mt-2 w-full flex-1">
+        <div className="absolute inset-0">
+          {isLoading && <LoadingText />}
 
-            {!keyword && (
-              <div className="px-1 pt-2">
-                <p className="text-sm font-medium text-gray-400">
-                  상호명 정보가 없어 직접 입력이 필요해요.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handleManualInput}
-                  className="mt-4 w-full rounded-xl bg-primary-100 py-3 text-sm font-bold text-white"
-                >
-                  직접 입력하기
-                </button>
-              </div>
-            )}
-
-            {!isLoading && !errorMessage && stores.length > 0 && (
+          {!isLoading && stores.length > 0 && (
+            <div className="flex h-full w-full flex-col">
               <div
                 ref={listRef}
                 className="flex h-full w-full flex-col gap-3 overflow-y-auto px-1 pb-24 pt-2 [&::-webkit-scrollbar]:hidden"
@@ -173,55 +179,13 @@ function StoreSelectStep({ onNext, onPrev, onManualInput }) {
                   />
                 ))}
               </div>
-            )}
-          </div>
-
-          {stores.length > 0 && <ScrollFadeArrow targetRef={listRef} />}
+            </div>
+          )}
         </div>
-      </OnboardingLayout>
 
-      <StoreNotFoundModal
-        isOpen={isModalOpen}
-        onManualInput={handleManualInput}
-        onGoHome={handleManualInput}
-      />
-
-    <Modal
-      isOpen={isErrorModalOpen}
-      onClose={() => setErrorMessage('')}
-      showClose={false}
-      closeOnBackdrop={false}
-    >
-      <div className="text-center">
-        <h3 className="text-xl font-bold text-gray-900">
-          가게 목록을 불러올 수 없어요
-        </h3>
-
-        <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
-          {errorMessage}
-        </p>
-
-        <div className="mt-8 flex gap-3">
-          <Button
-            variant="white"
-            size="sm"
-            onClick={handleManualInput}
-            className="flex-1"
-          >
-            직접 입력
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={handleRetry}
-            className="flex-1"
-          >
-            다시 시도
-          </Button>
-        </div>
+        {stores.length > 0 && <ScrollFadeArrow targetRef={listRef} />}
       </div>
-    </Modal>
-    </>
+    </OnboardingLayout>
   );
 }
 

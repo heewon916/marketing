@@ -9,13 +9,13 @@ export async function requestContentImages(sessionId) {
 		const response = await api.get(`/api/v1/contents/${sessionId}/images`)
 		const data = response.data ?? {}
 		const imageList = Array.isArray(data.image_url) ? data.image_url : []
-
+		console.log(data)
 		return {
 			sessionId: data.session_id ?? sessionId,
 			images: imageList.map((image, index) => ({
 				id: image.image_key ?? `image-${index}`,
 				imageKey: image.image_key ?? "",
-				url: image.image_url ?? "",
+				url: image.image_url ? `${import.meta.env.VITE_CLOUDFRONT_DOMAIN}${image.image_url}` : "",
 			})),
 		}
 	} catch (error) {

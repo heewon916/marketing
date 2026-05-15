@@ -27,6 +27,8 @@ public class ContentRedisRepository {
     private static final String UPDATED_AT = "updated_at";
     private static final String PUBLISH_ID = "publish_id";
     private static final String PUBLISH_PROGRESS = "publish_progress";
+    private static final String INSTAGRAM_CONTAINER_ID = "instagram_container_id";
+    private static final String INSTAGRAM_PUBLISH_ERROR = "instagram_publish_error";
     private static final String CONTENT_ID = "content_id";
     private static final String INSTAGRAM_MEDIA_ID = "instagram_media_id";
     private static final String INSTAGRAM_PERMALINK = "instagram_permalink";
@@ -175,7 +177,33 @@ public class ContentRedisRepository {
         }
         redisTemplate.opsForHash().put(key, PUBLISH_ID, publishId);
         redisTemplate.opsForHash().put(key, PUBLISH_PROGRESS, "queued");
+        redisTemplate.opsForHash().put(key, STATUS, ContentStatus.PUBLISHING.name());
+        redisTemplate.opsForHash().delete(key, INSTAGRAM_PUBLISH_ERROR);
         return true;
+    }
+
+    public void markPublishContainerCreated(String sessionId, String instagramContainerId) {
+        String key = contentKey(sessionId);
+        redisTemplate.opsForHash().put(key, INSTAGRAM_CONTAINER_ID, instagramContainerId);
+        redisTemplate.opsForHash().put(key, PUBLISH_PROGRESS, "uploading");
+        redisTemplate.opsForHash().delete(key, INSTAGRAM_PUBLISH_ERROR);
+    }
+
+    public void markPublishInProgress(String sessionId) {
+        redisTemplate.opsForHash().put(contentKey(sessionId), PUBLISH_PROGRESS, "uploading");
+    }
+
+    public void failPublish(String sessionId, String message) {
+        String key = contentKey(sessionId);
+        redisTemplate.opsForHash().put(key, PUBLISH_PROGRESS, "failed");
+        redisTemplate.opsForHash().put(key, STATUS, ContentStatus.PUBLISH_FAILED.name());
+        if (message != null && !message.isBlank()) {
+            redisTemplate.opsForHash().put(key, INSTAGRAM_PUBLISH_ERROR, message);
+        }
+    }
+
+    public void saveInstagramMediaId(String sessionId, String instagramMediaId) {
+        redisTemplate.opsForHash().put(contentKey(sessionId), INSTAGRAM_MEDIA_ID, instagramMediaId);
     }
 
     public void completePublish(String sessionId, Long contentId, String instagramMediaId, String instagramPermalink) {
@@ -184,7 +212,12 @@ public class ContentRedisRepository {
         redisTemplate.opsForHash().put(key, PUBLISH_PROGRESS, "completed");
         redisTemplate.opsForHash().put(key, INSTAGRAM_MEDIA_ID, instagramMediaId);
         redisTemplate.opsForHash().put(key, INSTAGRAM_PERMALINK, instagramPermalink);
-        redisTemplate.opsForHash().put(key, STATUS, ContentStatus.COMPLETED.name());
+        redisTemplate.opsForHash().put(key, STATUS, ContentStatus.PUBLISHED.name());
+    }
+
+    public boolean acquirePublishLock(String sessionId) {
+        Boolean result = redisTemplate.opsForValue().setIfAbsent("media_publish_lock:" + sessionId, "locked", Duration.ofSeconds(60));
+        return Boolean.TRUE.equals(result);
     }
 
     public ContentRedisSession getSession(String sessionId) {
@@ -200,6 +233,8 @@ public class ContentRedisRepository {
                 stringValue(entries.get(VIDEO)),
                 stringValue(entries.get(PUBLISH_ID)),
                 stringValue(entries.get(PUBLISH_PROGRESS)),
+                stringValue(entries.get(INSTAGRAM_CONTAINER_ID)),
+                stringValue(entries.get(INSTAGRAM_PUBLISH_ERROR)),
                 stringValue(entries.get(CONTENT_ID)),
                 stringValue(entries.get(INSTAGRAM_MEDIA_ID)),
                 stringValue(entries.get(INSTAGRAM_PERMALINK)),
@@ -337,6 +372,8 @@ public class ContentRedisRepository {
             String video,
             String publishId,
             String publishProgress,
+            String instagramContainerId,
+            String instagramPublishError,
             String contentId,
             String instagramMediaId,
             String instagramPermalink,
