@@ -8,10 +8,14 @@ import ScrollFadeArrow from '../../../../components/common/ScrollFadeArrow.jsx';
 
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
+import { convertOperatingHours } from '@/utils/operatingHours.js';
 
 function LoadingText() {
   return (
-    <div className="flex items-end justify-center gap-2 pt-2" style={{ height: '36px' }}>
+    <div
+      className="flex items-end justify-center gap-2 pt-2"
+      style={{ height: '36px' }}
+    >
       {[0, 1, 2].map((i) => (
         <span
           key={i}
@@ -39,10 +43,15 @@ function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
   const setSelectedPlaceId = useOnboardingStore(
     (state) => state.setSelectedPlaceId
   );
+  const setLocation = useOnboardingStore((state) => state.setLocation);
+  const setOperatingHours = useOnboardingStore(
+    (state) => state.setOperatingHours
+  );
 
   const [stores, setStores] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [isLoading, setIsLoading] = useState(() => !!storeName?.trim());
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const keyword = storeName?.trim() ?? '';
 
@@ -99,18 +108,55 @@ function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
     setSelectedId(id);
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const selectedStore = stores.find((store) => store.id === selectedId);
 
-    if (!selectedStore) return;
+    if (!selectedStore || isSubmitting) return;
 
     setSelectedPlaceId(selectedStore.placeId);
+
+    try {
+      setIsSubmitting(true);
+
+      const response = await onboardingApi.getStoreDetail(selectedStore.placeId);
+      const storeDetail = response.data?.data;
+
+      const location = storeDetail?.location;
+      const operatingHours =
+        storeDetail?.operatingHours ?? storeDetail?.business_hours;
+
+      const convertedOperatingHours = convertOperatingHours(operatingHours);
+      console.log('상세 조회 원본:', storeDetail);
+      console.log('영업시간 원본:', operatingHours);
+      console.log('변환된 영업시간:', convertedOperatingHours);
+
+      if (location) {
+        setLocation({
+          address: location.address,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        });
+      }
+
+      setOperatingHours(convertOperatingHours(operatingHours));
+    } catch (error) {
+      console.error('매장 상세 조회 실패:', error);
+      setOperatingHours({});
+    } finally {
+      setIsSubmitting(false);
+    }
 
     onNext?.();
   };
 
   const handleManualInput = () => {
     setSelectedPlaceId('');
+    setLocation({
+      address: '',
+      latitude: null,
+      longitude: null,
+    });
+    setOperatingHours({});
     onManualInput?.();
   };
 
@@ -154,8 +200,8 @@ function StoreSelectStep({ onNext, onPrev, onManualInput, onSearchFail }) {
           <OnboardingFooterButtons
             onPrev={onPrev}
             onNext={handleNext}
-            nextDisabled={!selectedId}
-            nextText="다음"
+            nextDisabled={!selectedId || isSubmitting}
+            nextText={isSubmitting ? '불러오는 중' : '다음'}
           />
         </div>
       }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomTab from '@/components/common/BottomTab';
+import Modal from '@/components/common/Modal';
+import Button from '@/components/common/Button';
 import MyPageHeader from '@/features/mypage/components/MyPageHeader';
 import MyPageTabSwitcher from '@/features/mypage/components/MyPageTabSwitcher';
 import MyPageStatsSection from '@/features/mypage/sections/MyPageStatsSection';
@@ -35,6 +37,8 @@ export default function MyPage() {
   const [myInfo, setMyInfo] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(DEFAULT_ANALYTICS_DATA);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isEditWarningModalOpen, setIsEditWarningModalOpen] = useState(false);
 
   const fetchMyInfo = async () => {
     try {
@@ -117,6 +121,19 @@ export default function MyPage() {
     ? `@${user.instagramUsername}`
     : '@instagram';
 
+  const handleTabChange = (nextTab) => {
+    if (isEditing) {
+      setIsEditWarningModalOpen(true);
+      return;
+    }
+
+    setActiveTab(nextTab);
+  };
+
+  const handleCloseEditWarningModal = () => {
+    setIsEditWarningModalOpen(false);
+  };
+
   const handleLogout = async () => {
     try {
       await authApi.logout();
@@ -177,7 +194,7 @@ export default function MyPage() {
         onInstagramUpdate={handleInstagramUpdate}
       />
 
-      <MyPageTabSwitcher activeTab={activeTab} onChange={setActiveTab} />
+      <MyPageTabSwitcher activeTab={activeTab} onChange={handleTabChange} />
 
       <main className="mx-auto flex min-h-0 w-full max-w-[430px] flex-1 flex-col gap-2 overflow-y-auto px-5 pt-4 pb-5">
         {activeTab === 'stats' && (
@@ -202,6 +219,7 @@ export default function MyPage() {
             onLogout={handleLogout}
             onRefresh={fetchMyInfo}
             onDeleteAccount={handleDeleteAccount}
+            onEditingChange={setIsEditing}
           />
         )}
 
@@ -209,11 +227,43 @@ export default function MyPage() {
           <OperatingHoursSection
             operatingHours={store?.operatingHours}
             onRefresh={fetchMyInfo}
+            onEditingChange={setIsEditing}
           />
         )}
       </main>
 
       <BottomTab fixed={false} />
+
+      {isEditWarningModalOpen && (
+        <Modal
+          isOpen={isEditWarningModalOpen}
+          onClose={handleCloseEditWarningModal}
+          showClose={false}
+        >
+          <div className="text-center">
+            <h2 className="text-[22px] font-bold text-accent-100">
+              수정 중인 내용이 있어요
+            </h2>
+
+            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
+              저장하거나 취소한 뒤
+              <br />
+              다른 화면으로 이동해주세요.
+            </p>
+
+            <div className="mt-7 flex justify-center">
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleCloseEditWarningModal}
+                className="text-[18px] font-bold"
+              >
+                확인
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
