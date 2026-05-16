@@ -11,6 +11,8 @@ import com.matketing.be.domain.store.repository.MenuRepository;
 import com.matketing.be.domain.store.repository.StoreRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpEntity;
@@ -26,6 +28,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import java.time.Duration;
 
 @Slf4j
 @Service
@@ -39,6 +45,9 @@ public class OnboardingService {
     private final PosPinRepository posPinRepository;
     private final StoreRepository storeRepository;
     private final MenuRepository menuRepository;
+    private final com.matketing.be.domain.user.repository.UserRepository userRepository;
+    private final StringRedisTemplate redisTemplate;
+    private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Value("${TOSS_ACCESS_KEY:}")
@@ -98,14 +107,17 @@ public class OnboardingService {
 
         if (store != null) {
             // [기존 행 덮어쓰기 (Upsert - Update)]
-            store.updateAllDetails(merchantId, storeName, CategoryEnumType.카페, null, "", null, null, null);
+            store.updateSyncInfo(merchantId, storeName, CategoryEnumType.카페);
+            store.updateDetails(null, "", null, null, null);
 
             // 중요: 이탈 전에 임시로 저장되었던 메뉴들이 중복으로 쌓이지 않게 싹 비워줍니다.
             menuRepository.deleteAllByStoreId(store.getId());
         } else {
             // [신규 생성 (Upsert - Insert)]
+            com.matketing.be.domain.user.entity.User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new IllegalArgumentException("User not found"));
             store = Store.builder()
-                    .userId(userId)
+                    .user(user)
                     .merchantId(merchantId)
                     .storeName(storeName)
                     .category(CategoryEnumType.카페) // 임시 기본값 수정
@@ -122,7 +134,8 @@ public class OnboardingService {
 
         // 3. 메뉴 이름들을 분석하여 카테고리 자동 유추 후 Store 업데이트
         CategoryEnumType guessedCategory = com.matketing.be.domain.onboarding.util.CategoryInferenceUtil.guessCategory(tossMenus);
-        store.updateAllDetails(null, storeName, guessedCategory, null, "", null, null, null);
+        store.updateSyncInfo(null, storeName, guessedCategory);
+        store.updateDetails(null, "", null, null, null);
 
         log.info("Successfully synced Toss store data for merchantId: {}", merchantId);
 
@@ -189,16 +202,43 @@ public class OnboardingService {
             throw new IllegalArgumentException("Not authorized to update this store");
         }
 
-        store.updateAllDetails(
-                null,
-                request.storeName(),
-                request.category(),
+        store.updateSyncInfo(null, request.storeName(), request.category());
+        store.updateDetails(
                 request.ownerPersona(),
                 request.address(),
                 request.latitude(),
                 request.longitude(),
                 request.operatingHours()
         );
+
+        // 네이버 플레이스 ID가 넘어온 경우, 크롤러를 통해 메뉴 설명을 가져와 매칭합니다.
+        if (request.placeId() != null && !request.placeId().isBlank()) {
+            try {
+                Map<String, Object> crawlerData = getPlaceDetailViaCrawler(request.placeId());
+                if (crawlerData != null && crawlerData.get("data") instanceof Map<?, ?> dataMap) {
+                    if (dataMap.get("menus") instanceof List<?> crawlerMenus) {
+                        List<Menu> existingMenus = menuRepository.findByStoreId(storeId);
+                        for (Object obj : crawlerMenus) {
+                            if (obj instanceof Map<?, ?> crawlerMenu) {
+                                String crawlerMenuName = crawlerMenu.get("menu_name") instanceof String s ? s : null;
+                                String crawlerMenuDesc = crawlerMenu.get("menu_description") instanceof String s ? s : null;
+
+                                if (crawlerMenuName != null && crawlerMenuDesc != null && !crawlerMenuDesc.isBlank()) {
+                                    // 기존 메뉴와 이름 매칭 (공백 제거 후 비교 등 정규화)
+                                    String normalizedCrawlerName = crawlerMenuName.replaceAll("\\s+", "").toLowerCase();
+                                    existingMenus.stream()
+                                            .filter(m -> m.getName().replaceAll("\\s+", "").toLowerCase().equals(normalizedCrawlerName))
+                                            .findFirst()
+                                            .ifPresent(m -> m.updateDescription(crawlerMenuDesc));
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to sync menu descriptions from crawler for placeId {}: {}", request.placeId(), e.getMessage());
+            }
+        }
 
         return new SyncResponse(true, "Store data updated successfully", store.getId().toString(), store.getStoreName(), null, null);
     }
@@ -237,6 +277,8 @@ public class OnboardingService {
         return "테스트 매장";
     }
 
+    @CircuitBreaker(name = "externalApi", fallbackMethod = "fallbackSearchPlacesViaCrawler")
+    @Retry(name = "externalApi")
     public Map<String, Object> searchPlacesViaCrawler(String keyword) {
         String url = crawlerBaseUrl + "/api/search?keyword=" + keyword;
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
@@ -244,10 +286,47 @@ public class OnboardingService {
         return response.getBody();
     }
 
+    public Map<String, Object> fallbackSearchPlacesViaCrawler(String keyword, Throwable t) {
+        log.error("Fallback triggered for searchPlacesViaCrawler. Keyword: {}, Error: {}", keyword, t.getMessage());
+        return Map.of("status", "error", "message", "크롤러 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.");
+    }
+
+    @CircuitBreaker(name = "externalApi", fallbackMethod = "fallbackGetPlaceDetailViaCrawler")
+    @Retry(name = "externalApi")
     public Map<String, Object> getPlaceDetailViaCrawler(String placeId) {
+        String cacheKey = "crawler:place:" + placeId;
+
+        try {
+            String cachedData = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedData != null && !cachedData.isBlank()) {
+                log.info("Hit Redis cache for placeId: {}", placeId);
+                return objectMapper.readValue(cachedData, new TypeReference<Map<String, Object>>() {});
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read crawler cache for placeId: {}", placeId, e);
+        }
+
+        log.info("Missed Redis cache. Calling actual crawler API for placeId: {}", placeId);
         String url = crawlerBaseUrl + "/api/place/" + placeId;
         ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
                 url, HttpMethod.GET, null, new ParameterizedTypeReference<>() {});
-        return response.getBody();
+        
+        Map<String, Object> body = response.getBody();
+
+        if (body != null && KEY_SUCCESS.equals(body.get("status"))) {
+            try {
+                String jsonToCache = objectMapper.writeValueAsString(body);
+                redisTemplate.opsForValue().set(cacheKey, jsonToCache, Duration.ofMinutes(30));
+            } catch (Exception e) {
+                log.warn("Failed to write crawler cache for placeId: {}", placeId, e);
+            }
+        }
+
+        return body;
+    }
+
+    public Map<String, Object> fallbackGetPlaceDetailViaCrawler(String placeId, Throwable t) {
+        log.error("Fallback triggered for getPlaceDetailViaCrawler. PlaceId: {}, Error: {}", placeId, t.getMessage());
+        return java.util.Collections.emptyMap(); // 빈 컬렉션을 반환하여 안전하게 스킵되도록 함
     }
 }
