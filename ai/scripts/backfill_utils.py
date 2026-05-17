@@ -39,17 +39,25 @@ async def load_all_rows(
     table_name: str,
     select_columns: str,
     order_by: str,
+    ids: list[int] | None = None,
 ) -> list[Row]:
+    where_clause = ""
+    params: dict[str, object] = {}
+    if ids:
+        where_clause = "WHERE id = ANY(CAST(:ids AS int[]))"
+        params["ids"] = ids
+
     query = text(
         f"""
         SELECT {select_columns}
         FROM {table_name}
+        {where_clause}
         ORDER BY {order_by}
         """
     )
     session_factory = get_session_factory()
     async with session_factory() as session:
-        result = await session.execute(query)
+        result = await session.execute(query, params)
         return [dict(row) for row in result.mappings().all()]
 
 

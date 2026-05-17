@@ -12,6 +12,7 @@ from redis.asyncio import Redis
 
 from app.core.config import LlamaModelClientSettings, settings
 from app.services.final_edit_tools import (
+    AESTHETIC_TARGET_TONE_PROFILE,
     SUPPORTED_TOOL_SPECS,
     ToolName,
     supported_tool_names,
@@ -20,11 +21,53 @@ from app.services.remote_model_client import RemoteModelClient
 from app.services.sessions import session_key
 
 _JSON_ARRAY_PATTERN = re.compile(r"\[[\s\S]*\]")
+DEFAULT_OWNER_PERSONA = "aesthetic"
+PERSONA_TARGET_PRESETS: dict[str, dict[str, Any]] = {
+    "friendly": {
+        "contrast": -8,
+        "highlights": -6,
+        "shadows": 18,
+        "vibrance": 10,
+        "saturation": 8,
+        "temperature": "warm",
+        "tone_curve_shadow_lift": 8,
+    },
+    "professional": {
+        "contrast": 12,
+        "highlights": -10,
+        "shadows": 8,
+        "vibrance": -6,
+        "saturation": -8,
+        "temperature": "cool",
+        "tone_curve_shadow_lift": 4,
+    },
+    "trendy": {
+        "contrast": 18,
+        "highlights": -16,
+        "shadows": 10,
+        "vibrance": 14,
+        "saturation": 10,
+        "temperature": "warm",
+        "tone_curve_shadow_lift": 2,
+    },
+    "other": {
+        "contrast": 0,
+        "highlights": -8,
+        "shadows": 10,
+        "vibrance": -4,
+        "saturation": -2,
+        "temperature": "warm",
+        "tone_curve_shadow_lift": 6,
+    },
+}
+TARGET_PROFILE_KIND_TONE = "tone_profile"
+TARGET_PROFILE_KIND_PRESET = "style_preset"
 
 
 @dataclass(frozen=True)
 class FinalEditSessionContext:
-    caption: str
+    owner_persona: str = "aesthetic"
+    caption: str = ""
     keywords: list[str] = field(default_factory=list)
 
 
@@ -74,6 +117,37 @@ def _humanize_final_keyword(value: str) -> str:
     return value.strip()
 
 
+def resolve_owner_persona_preset(
+    owner_persona: str,
+) -> tuple[str, dict[str, Any], bool]:
+    resolved_persona, resolved_target, used_fallback, _target_kind = (
+        resolve_owner_persona_target(owner_persona)
+    )
+    return resolved_persona, resolved_target, used_fallback
+
+
+def resolve_owner_persona_target(
+    owner_persona: str,
+) -> tuple[str, dict[str, Any], bool, str]:
+    normalized_owner_persona = owner_persona.strip().lower()
+    if normalized_owner_persona == DEFAULT_OWNER_PERSONA:
+        return (
+            DEFAULT_OWNER_PERSONA,
+            dict(AESTHETIC_TARGET_TONE_PROFILE),
+            False,
+            TARGET_PROFILE_KIND_TONE,
+        )
+    preset = PERSONA_TARGET_PRESETS.get(normalized_owner_persona)
+    if preset is not None:
+        return normalized_owner_persona, dict(preset), False, TARGET_PROFILE_KIND_PRESET
+    return (
+        DEFAULT_OWNER_PERSONA,
+        dict(AESTHETIC_TARGET_TONE_PROFILE),
+        True,
+        TARGET_PROFILE_KIND_TONE,
+    )
+
+
 async def load_final_edit_session_context(
     redis: Redis,
     session_id: str,
@@ -83,6 +157,9 @@ async def load_final_edit_session_context(
         _normalize_redis_value(key): _normalize_redis_value(value)
         for key, value in payload.items()
     }
+    owner_persona = normalized_payload.get("owner_persona", "").strip().lower()
+    if not owner_persona:
+        owner_persona = DEFAULT_OWNER_PERSONA
     caption = normalized_payload.get("caption", "").strip()
     keywords = _sorted_prefixed_values(normalized_payload, "draft_keyword:")
     if not keywords:
@@ -90,7 +167,11 @@ async def load_final_edit_session_context(
             _humanize_final_keyword(value)
             for value in _sorted_prefixed_values(normalized_payload, "final_keyword:")
         ]
-    return FinalEditSessionContext(caption=caption, keywords=keywords)
+    return FinalEditSessionContext(
+        owner_persona=owner_persona,
+        caption=caption,
+        keywords=keywords,
+    )
 
 
 def _tool_catalog_text() -> str:
@@ -104,18 +185,40 @@ def _tool_catalog_text() -> str:
     return "\n".join(lines)
 
 
+def _target_preset_text(context: FinalEditSessionContext) -> str:
+    preset_persona, preset, preset_fallback, target_kind = resolve_owner_persona_target(
+        context.owner_persona
+    )
+    preset_json = json.dumps(preset, ensure_ascii=False)
+    return (
+        f"[owner_persona] {context.owner_persona or DEFAULT_OWNER_PERSONA}\n"
+        f"[target_preset_persona] {preset_persona}\n"
+        f"[target_preset_fallback] {'true' if preset_fallback else 'false'}\n"
+        f"[target_profile_kind] {target_kind}\n"
+        f"[target_preset] {preset_json}"
+    )
+
+
 def _few_shot_example() -> str:
     return """
 Example output:
 [
   {
     "image_index": 0,
-    "content": "A signature cake placed on a warm-toned cafe table.",
-    "strategy": "Reduce noise, add warmth, and recover texture detail for a cozy food shot.",
+    "content": "A signature cake placed on a bright cafe table.",
+    "strategy": "The image is brighter and more saturated than the target aesthetic preset, so gently lower highlights, mute color, and lift shadows only enough to approach the preset.",
     "tools": ["denoise", "color_grading", "sharpen"],
     "params": {
       "denoise": {"strength": 0.5},
-      "color_grading": {"temperature": "warm", "saturation": 0.15, "brightness": 0.1},
+      "color_grading": {
+        "contrast": -10,
+        "highlights": -14,
+        "shadows": 12,
+        "vibrance": -18,
+        "saturation": -12,
+        "temperature": "cool",
+        "tone_curve_shadow_lift": 8
+      },
       "sharpen": {"strength": 0.35}
     }
   }
@@ -132,15 +235,20 @@ def build_final_edit_prompt(
     return (
         "You are a photo editing planner for draft images.\n\n"
         f"{_tool_catalog_text()}\n\n"
+        f"{_target_preset_text(context)}\n"
         f"[caption] {caption_text}\n"
         f"[keywords] {keywords_text}\n\n"
         "[instructions]\n"
         f"1. You must create an edit plan for all {image_count} input images.\n"
         f"2. The JSON array must include every image_index from 0 to {image_count - 1} exactly once.\n"
-        "3. Consider each image's content together with the caption and keywords.\n"
+        "3. Analyze each image's current style and compare it against the target preset for the owner persona.\n"
         "4. Use only supported tools.\n"
-        "5. Fill params with specific values for every selected tool.\n"
-        "6. Output only a JSON array.\n\n"
+        "5. Do not copy the target preset blindly. Estimate the gap between the current image and the target tone, then apply only the minimum adjustment needed for that image.\n"
+        "6. Summarize the gap analysis briefly in strategy.\n"
+        "7. If owner_persona is aesthetic, use the target_preset as a tone profile with target and tolerance values, and reason about the current image's gap from those metrics.\n"
+        "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
+        "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
+        "10. Output only a JSON array.\n\n"
         f"{_few_shot_example()}"
     )
 

@@ -64,7 +64,6 @@ _MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 메뉴 �
 - 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - 메뉴, 상품, 음료 또는 매장에서 실제로 판매하는 것만 홍보하세요.
 - "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 주제를 중심으로 작성하고, keywords, weather_context, menu_candidates는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords, weather_context, menu_candidates만으로 작성하세요.
-- guide_text와 caption은 반드시 한국어로 작성하세요.
 
 이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
 
@@ -86,7 +85,6 @@ _BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 영업 
 - 공지 내용은 명확하고 자연스럽게 전달하세요.
 - 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 공지 내용을 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
-- guide_text와 caption은 반드시 한국어로 작성하세요.
 
 이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
 
@@ -108,7 +106,6 @@ _DAILY_SHARE_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 일상 공�
 - 매장 분위기와 사장님의 일상이 자연스럽게 드러나게 작성하세요.
 - 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
-- guide_text와 caption은 반드시 한국어로 작성하세요.
 
 이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
 
@@ -323,10 +320,9 @@ class CaptionPipeline:
         weather_context = _build_weather_context(request.weather_tags)
         if weather_context != "날씨와 관련한 표현 없음":
             return (
-                f"오늘, {weather_context} 분위기에 "
-                f"{subject_phrase} 어떤가요?"
+                f"{weather_context}에는 {subject_phrase} 어떠한지.."
             )
-        return f"오늘, {subject_phrase} 어떤가요?"
+        return f"{subject_phrase}가 생각나는 날"
 
     def _build_fallback_guide_text(
         self,

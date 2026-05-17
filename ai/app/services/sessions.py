@@ -138,12 +138,14 @@ async def _persist_process_utterance_started(
     store: RedisSessionStore,
     session_id: str,
     utterance: str,
+    owner_persona: str,
     weather_tags: list[str],
 ) -> None:
     await store.upsert_content_session(
         session_id=session_id,
         scalar_fields={
             "caption": "",
+            "owner_persona": owner_persona,
             "utterance": utterance,
         },
         weather_tags=weather_tags,
@@ -239,6 +241,7 @@ def _build_process_utterance_debug_fields(
 async def _persist_process_utterance_result(
     store: RedisSessionStore,
     session_id: str,
+    owner_persona: str,
     caption: str,
     weather_tags: list[str],
     draft_keywords: list[str],
@@ -250,7 +253,6 @@ async def _persist_process_utterance_result(
         [
             "session_id",
             "store_id",
-            "owner_persona",
             "weather_condition",
             "weather_temperature",
             "date",
@@ -262,6 +264,7 @@ async def _persist_process_utterance_result(
         scalar_fields={
             "status": STATUS_TEXT_GENERATED,
             "caption": caption,
+            "owner_persona": owner_persona,
         },
         weather_tags=weather_tags,
         draft_keywords=draft_keywords,
@@ -285,6 +288,7 @@ async def _build_health_check_fallback_result(
     store: RedisSessionStore,
     session_id: str,
     utterance: str,
+    owner_persona: str,
     weather_tags: list[str],
     *,
     keyword_ok: bool,
@@ -312,6 +316,7 @@ async def _build_health_check_fallback_result(
         scalar_fields={
             "status": STATUS_TEXT_GENERATED,
             "caption": HEALTH_CHECK_FAILURE_CAPTION,
+            "owner_persona": owner_persona,
             "utterance": utterance,
         },
         weather_tags=weather_tags,
@@ -630,6 +635,7 @@ async def process_utterance(
             store,
             session_id,
             payload.utterance,
+            payload.owner_persona,
             weather_tags,
             keyword_ok=keyword_ok,
             caption_ok=caption_ok,
@@ -639,6 +645,7 @@ async def process_utterance(
         store,
         session_id,
         payload.utterance,
+        payload.owner_persona,
         weather_tags,
     )
     preparation = await _prepare_caption_request(
@@ -684,6 +691,7 @@ async def process_utterance(
     await _persist_process_utterance_result(
         store=store,
         session_id=session_id,
+        owner_persona=payload.owner_persona,
         caption=text_outcome.stored_caption,
         weather_tags=weather_tags,
         draft_keywords=preparation.draft_keywords,

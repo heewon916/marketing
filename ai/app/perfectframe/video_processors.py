@@ -9,6 +9,8 @@ from pathlib import Path
 
 from app.perfectframe.schemas import Image, Images
 
+TARGET_SAMPLE_FPS = 30
+
 
 def _import_cv2():
     try:
@@ -57,9 +59,10 @@ class OpenCVVideo(VideoProcessor):
         with cls._video_capture(video_path) as video:
             frame_rate = cls._get_video_property(video, cv2.CAP_PROP_FPS)
             total_frames = cls._get_video_property(video, cv2.CAP_PROP_FRAME_COUNT)
+            sampling_step = cls._get_sampling_step(frame_rate)
 
             frames_batch: Images = []
-            for frame_index in range(0, total_frames, frame_rate):
+            for frame_index in range(0, total_frames, sampling_step):
                 frame = cls._read_next_frame(video, frame_index)
                 if frame is None:
                     continue
@@ -79,6 +82,11 @@ class OpenCVVideo(VideoProcessor):
         if not success:
             return None
         return frame
+
+    @staticmethod
+    def _get_sampling_step(frame_rate: int) -> int:
+        # Cap sampling at 30 frames per second while keeping lower-FPS videos intact.
+        return max(1, round(frame_rate / TARGET_SAMPLE_FPS))
 
     @staticmethod
     def _get_video_property(video, property_id: int) -> int:

@@ -724,6 +724,7 @@ def test_redis_payload_persisted_and_ttl_set(
     assert response.status_code == 200
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["status"] == "TEXT_GENERATED"
+    assert saved["owner_persona"] == VALID_PAYLOAD["owner_persona"]
     assert saved["utterance"] == VALID_PAYLOAD["utterance"]
     assert saved["caption"]
     assert saved["draft_keyword:1"] == "signature menu"
