@@ -6,7 +6,12 @@ import pytest
 
 from app.services.final_edit_agent import FinalEditAgent, FinalEditImageState
 from app.services.final_edit_planner import ImageEditPlan
-from app.services.final_edit_tools import FinalEditToolRegistry, normalize_tool_params
+from app.services.final_edit_tools import (
+    AESTHETIC_TONE_METRIC_KEYS,
+    FinalEditToolRegistry,
+    analyze_image_tone,
+    normalize_tool_params,
+)
 
 
 def _write_test_image(path: Path, shape: tuple[int, int, int] = (16, 16, 3)) -> None:
@@ -58,6 +63,18 @@ def test_normalize_tool_params_supports_new_color_grading_fields() -> None:
         "tone_curve_shadow_lift": 100.0,
         "brightness": 0.0,
     }
+
+
+def test_analyze_image_tone_returns_expected_metrics() -> None:
+    image = np.full((32, 32, 3), 80, dtype=np.uint8)
+    image[:, :16, 2] = 180
+    image[:, 16:, 0] = 20
+
+    metrics = analyze_image_tone(image)
+
+    assert tuple(metrics.keys()) == AESTHETIC_TONE_METRIC_KEYS
+    assert all(isinstance(value, float) for value in metrics.values())
+    assert metrics["white_point"] >= metrics["black_point"]
 
 
 def test_tool_registry_upscale_changes_shape() -> None:

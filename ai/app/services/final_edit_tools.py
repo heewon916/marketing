@@ -24,6 +24,15 @@ AESTHETIC_TARGET_TONE_PROFILE: dict[str, dict[str, float]] = {
     "tint": {"target": 5.23, "tolerance": 6.26},
     "saturation": {"target": 106.89, "tolerance": 32.23},
 }
+AESTHETIC_TONE_METRIC_KEYS: tuple[str, ...] = (
+    "brightness",
+    "contrast",
+    "black_point",
+    "white_point",
+    "temperature",
+    "tint",
+    "saturation",
+)
 
 
 @dataclass(frozen=True)
@@ -168,6 +177,33 @@ def _tool_denoise(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     strength = cast(float, params["strength"])
     h_value = int(3 + strength * 12)
     return cv2.fastNlMeansDenoisingColored(image, None, h_value, h_value, 7, 21)
+
+
+def analyze_image_tone(image: np.ndarray) -> dict[str, float]:
+    cv2 = import_cv2()
+    working = image
+    height, width = working.shape[:2]
+    if max(height, width) > 1024:
+        scale = 1024.0 / float(max(height, width))
+        working = cv2.resize(working, (int(width * scale), int(height * scale)))
+
+    lab = cv2.cvtColor(working, cv2.COLOR_BGR2LAB)
+    l_channel = lab[:, :, 0].astype(np.float64)
+    a_channel = lab[:, :, 1].astype(np.float64) - 128.0
+    b_channel = lab[:, :, 2].astype(np.float64) - 128.0
+
+    hsv = cv2.cvtColor(working, cv2.COLOR_BGR2HSV)
+    saturation_channel = hsv[:, :, 1].astype(np.float64)
+
+    return {
+        "brightness": round(float(np.mean(l_channel)), 2),
+        "contrast": round(float(np.std(l_channel)), 2),
+        "black_point": round(float(np.percentile(l_channel, 5)), 2),
+        "white_point": round(float(np.percentile(l_channel, 95)), 2),
+        "temperature": round(float(np.mean(b_channel)), 2),
+        "tint": round(float(np.mean(a_channel)), 2),
+        "saturation": round(float(np.mean(saturation_channel)), 2),
+    }
 
 
 def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
