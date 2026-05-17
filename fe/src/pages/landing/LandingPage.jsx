@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import Modal from '@/components/common/Modal.jsx';
-import Character from '@/assets/character/CharacterDdabong.png';
+import Character from '@/assets/character/CharacterWaving.mp4';
 import {
   authApi,
   INSTAGRAM_AUTH_PURPOSE,
@@ -102,10 +102,13 @@ function LandingPage() {
         맡케팅
       </h2>
 
-      <img
+      <video
         src={Character}
-        alt="character"
-        className="w-full max-w-[340px] mb-12"
+        className="w-full max-w-[340px] mb-12 bg-white brightness-[1.03]"
+        autoPlay
+        loop
+        muted
+        playsInline
       />
 
       <Button

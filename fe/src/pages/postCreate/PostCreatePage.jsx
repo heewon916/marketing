@@ -12,19 +12,19 @@ import GeneratedPostStep from "@/features/postCreate/steps/GeneratedPostStep"
 import GeneratedPostEditStep from "@/features/postCreate/steps/GeneratedPostEditStep"
 import PublishResultStep from "@/features/postCreate/steps/PublishResultStep"
 import { useBlocker, useNavigate } from "react-router-dom"
-import CharacterListen from "@/assets/character/CharacterListen.png"
-import CharacterCamera from "@/assets/character/CharacterCamera.png"
+import CharacterListen from "@/assets/character/CharacterListen.mp4"
+import CharacterCamera from "@/assets/character/CharacterCamera.mp4"
 import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreateLeaveHomeModal"
 import { requestVideoUpload } from "@/features/postCreate/api/VideoApi"
 import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate/api/PostApi"
 import { requestPublishStart, requestPublishStatus } from "@/features/postCreate/api/PublishApi"
 import { showToast } from '@/utils/toast';
 import { speak, stopTTS } from '@/utils/tts'
-import { 
-  questionStepTTS, 
-  publishResultSuccessTTS, 
-  publishResultFailTTS, 
-  homeTTS 
+import {
+  questionStepTTS,
+  publishResultSuccessTTS,
+  publishResultFailTTS,
+  homeTTS
 } from "@/assets/TTS"
 
 const POST_QUESTION_TITLE = "이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"

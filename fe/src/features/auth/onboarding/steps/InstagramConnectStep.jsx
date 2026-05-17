@@ -1,8 +1,8 @@
 // fe/src/features/auth/onboarding/steps/InstagramConnectStep.jsx
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
-import Character from '@/assets/character/CharacterDdabong.png';
+import Character from '@/assets/character/CharacterIdea.mp4';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import {
@@ -12,7 +12,14 @@ import {
 
 function InstagramConnectStep({ onNext }) {
   const navigate = useNavigate();
+  const videoRef = useRef(null);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    videoRef.current.playbackRate = 1.3;
+  }, []);
 
   const handleConnect = async () => {
     if (isConnecting) return;
@@ -42,7 +49,6 @@ function InstagramConnectStep({ onNext }) {
       }
 
       onNext();
-
     } catch (error) {
       alert(error?.message || '인스타그램 연동에 실패했습니다.');
     } finally {
@@ -94,10 +100,14 @@ function InstagramConnectStep({ onNext }) {
       }
     >
       <div className="w-full flex justify-center mt-10">
-        <img
+        <video
+          ref={videoRef}
           src={Character}
-          alt="character"
-          className="w-full max-w-[320px]"
+          className="w-full max-w-[340px]"
+          autoPlay
+          loop
+          muted
+          playsInline
         />
       </div>
     </OnboardingLayout>

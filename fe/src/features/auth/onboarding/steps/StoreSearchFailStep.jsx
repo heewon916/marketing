@@ -1,5 +1,5 @@
 import Button from '@/components/common/Button.jsx';
-import CharacterFail from '@/assets/character/CharacterFail.png';
+import CharacterFail from '@/assets/character/CharacterFail.mp4';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 
@@ -47,9 +47,12 @@ function StoreSearchFailStep({ onNext, onPrev }) {
       }
     >
       <div className="w-full flex justify-center mt-10">
-        <img
+        <video
           src={CharacterFail}
-          alt="character"
+          autoPlay
+          loop
+          muted
+          playsInline
           className="w-full max-w-[320px]"
         />
       </div>

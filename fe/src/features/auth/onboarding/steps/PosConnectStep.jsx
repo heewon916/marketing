@@ -1,9 +1,18 @@
+import { useEffect, useRef } from 'react';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
-import Character from '@/assets/character/CharacterDdabong.png';
+import Character from '@/assets/character/CharacterIdea.mp4';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 
 function PosConnectStep({ onNext, onPrev }) {
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    videoRef.current.playbackRate = 1.3;
+  }, []);
+
   return (
     <OnboardingLayout
       currentStep={3}
@@ -31,10 +40,14 @@ function PosConnectStep({ onNext, onPrev }) {
       }
     >
       <div className="w-full flex justify-center mt-10">
-        <img
+        <video
+          ref={videoRef}
           src={Character}
-          alt="character"
           className="w-full max-w-[320px]"
+          autoPlay
+          loop
+          muted
+          playsInline
         />
       </div>
     </OnboardingLayout>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import Character from '@/assets/character/CharacterRun.png';
+import Character from '@/assets/character/CharacterRun.mp4';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
@@ -54,9 +54,12 @@ function StoreLoadingStep({ onSearchSuccess, onSearchFail }) {
       }
     >
       <div className="w-full flex justify-center mt-10">
-        <img
+        <video
           src={Character}
-          alt="character"
+          autoPlay
+          loop
+          muted
+          playsInline
           className="w-full max-w-[320px]"
         />
       </div>
