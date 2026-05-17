@@ -80,6 +80,30 @@ def _normalize_temperature(value: Any) -> str:
     return "warm"
 
 
+def _clamp_percent(value: Any, default: float = 0.0) -> float:
+    return _clamp_float(value, default, -100.0, 100.0)
+
+
+def _is_legacy_color_grading_params(params: dict[str, Any]) -> bool:
+    known_legacy_keys = {"temperature", "saturation", "brightness"}
+    known_new_keys = {
+        "contrast",
+        "highlights",
+        "shadows",
+        "vibrance",
+        "tone_curve_shadow_lift",
+    }
+    if any(key in params for key in known_new_keys):
+        return False
+    if not set(params).issubset(known_legacy_keys):
+        return False
+    try:
+        saturation = float(params.get("saturation", 0.0))
+    except (TypeError, ValueError):
+        return True
+    return abs(saturation) <= 1.0 or "brightness" in params
+
+
 def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[str, Any]:
     if tool_name == "upscale":
         scale = params.get("scale", 2)
@@ -87,9 +111,23 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
     if tool_name == "denoise":
         return {"strength": _clamp_float(params.get("strength"), 0.5, 0.0, 1.0)}
     if tool_name == "color_grading":
+        legacy_mode = _is_legacy_color_grading_params(params)
+        normalized_saturation = (
+            _clamp_float(params.get("saturation"), 0.0, -1.0, 1.0) * 100.0
+            if legacy_mode
+            else _clamp_percent(params.get("saturation"), 0.0)
+        )
         return {
+            "contrast": _clamp_percent(params.get("contrast"), 0.0),
+            "highlights": _clamp_percent(params.get("highlights"), 0.0),
+            "shadows": _clamp_percent(params.get("shadows"), 0.0),
+            "vibrance": _clamp_percent(params.get("vibrance"), 0.0),
             "temperature": _normalize_temperature(params.get("temperature", "warm")),
-            "saturation": _clamp_float(params.get("saturation"), 0.0, -1.0, 1.0),
+            "saturation": normalized_saturation,
+            "tone_curve_shadow_lift": _clamp_percent(
+                params.get("tone_curve_shadow_lift"),
+                0.0,
+            ),
             "brightness": _clamp_float(params.get("brightness"), 0.0, -1.0, 1.0),
         }
     if tool_name == "sharpen":
@@ -124,34 +162,64 @@ def _tool_denoise(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
 
 def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     cv2 = import_cv2()
+    contrast = cast(float, params["contrast"])
+    highlights = cast(float, params["highlights"])
+    shadows = cast(float, params["shadows"])
+    vibrance = cast(float, params["vibrance"])
     temperature = cast(str, params["temperature"])
     saturation = cast(float, params["saturation"])
+    tone_curve_shadow_lift = cast(float, params["tone_curve_shadow_lift"])
     brightness = cast(float, params["brightness"])
 
-    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-    l_channel, a_channel, b_channel = cv2.split(lab)
-
+    result = image.astype(np.float32)
     if temperature == "warm":
-        b_channel = cv2.add(b_channel, 15)
-        a_channel = cv2.add(a_channel, 8)
+        result[:, :, 2] += 8.0
+        result[:, :, 1] += 2.0
+        result[:, :, 0] -= 6.0
     else:
-        b_channel = cv2.subtract(b_channel, 15)
-        a_channel = cv2.subtract(a_channel, 5)
+        result[:, :, 0] += 8.0
+        result[:, :, 2] -= 6.0
 
-    merged = cv2.merge([l_channel, a_channel, b_channel])
-    result = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
-
-    if saturation != 0.0:
-        hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
-        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * (1 + saturation), 0, 255)
-        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+    if contrast != 0.0:
+        contrast_factor = 1.0 + (contrast / 100.0) * 0.7
+        result = (result - 127.5) * contrast_factor + 127.5
 
     if brightness != 0.0:
-        result = np.clip(result.astype(np.float32) * (1 + brightness), 0, 255).astype(
-            np.uint8
+        result = result * (1.0 + brightness)
+
+    luminance = (
+        0.114 * result[:, :, 0] + 0.587 * result[:, :, 1] + 0.299 * result[:, :, 2]
+    )
+    normalized_luminance = np.clip(luminance / 255.0, 0.0, 1.0)
+    highlight_mask = normalized_luminance**2
+    shadow_mask = (1.0 - normalized_luminance) ** 2
+
+    if highlights != 0.0:
+        result += highlight_mask[:, :, None] * (highlights * 0.8)
+
+    if shadows != 0.0:
+        result += shadow_mask[:, :, None] * (shadows * 0.8)
+
+    if tone_curve_shadow_lift != 0.0:
+        result += shadow_mask[:, :, None] * (tone_curve_shadow_lift * 0.7)
+
+    if vibrance != 0.0 or saturation != 0.0:
+        hsv = cv2.cvtColor(
+            np.clip(result, 0, 255).astype(np.uint8),
+            cv2.COLOR_BGR2HSV,
+        ).astype(np.float32)
+        saturation_channel = hsv[:, :, 1]
+        if vibrance != 0.0:
+            low_saturation_mask = 1.0 - (saturation_channel / 255.0)
+            saturation_channel += low_saturation_mask * (vibrance * 1.1)
+        if saturation != 0.0:
+            saturation_channel *= 1.0 + (saturation / 100.0)
+        hsv[:, :, 1] = np.clip(saturation_channel, 0, 255)
+        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(
+            np.float32
         )
 
-    return result
+    return np.clip(result, 0, 255).astype(np.uint8)
 
 
 def _tool_sharpen(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:

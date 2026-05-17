@@ -22,12 +22,41 @@ def test_normalize_tool_params_clamps_values() -> None:
         "color_grading",
         {"temperature": "invalid", "saturation": -3, "brightness": 3},
     ) == {
+        "contrast": 0.0,
+        "highlights": 0.0,
+        "shadows": 0.0,
+        "vibrance": 0.0,
         "temperature": "warm",
-        "saturation": -1.0,
+        "saturation": -100.0,
+        "tone_curve_shadow_lift": 0.0,
         "brightness": 1.0,
     }
     assert normalize_tool_params("background_blur", {"blur_radius": 99}) == {
         "blur_radius": 20
+    }
+
+
+def test_normalize_tool_params_supports_new_color_grading_fields() -> None:
+    assert normalize_tool_params(
+        "color_grading",
+        {
+            "contrast": 180,
+            "highlights": -140,
+            "shadows": 25,
+            "vibrance": -12,
+            "saturation": -18,
+            "temperature": "cool",
+            "tone_curve_shadow_lift": 130,
+        },
+    ) == {
+        "contrast": 100.0,
+        "highlights": -100.0,
+        "shadows": 25.0,
+        "vibrance": -12.0,
+        "temperature": "cool",
+        "saturation": -18.0,
+        "tone_curve_shadow_lift": 100.0,
+        "brightness": 0.0,
     }
 
 
@@ -47,6 +76,31 @@ def test_tool_registry_background_blur_preserves_shape() -> None:
     result = registry.execute("background_blur", image, {"blur_radius": 4})
 
     assert result.shape == image.shape
+
+
+def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> None:
+    registry = FinalEditToolRegistry()
+    image = np.full((16, 16, 3), 90, dtype=np.uint8)
+    image[:, :, 2] = 140
+    image[:, 8:, :] = 200
+
+    result = registry.execute(
+        "color_grading",
+        image,
+        {
+            "contrast": -18,
+            "highlights": -12,
+            "shadows": 20,
+            "vibrance": -25,
+            "saturation": -18,
+            "temperature": "cool",
+            "tone_curve_shadow_lift": 12,
+        },
+    )
+
+    assert result.shape == image.shape
+    assert result.dtype == np.uint8
+    assert np.any(result != image)
 
 
 @pytest.mark.asyncio
