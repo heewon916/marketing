@@ -5,8 +5,11 @@ from app.services.final_edit_planner import (
     FinalEditPlannerClient,
     FinalEditPlanningError,
     FinalEditSessionContext,
+    ImageEditPlan,
+    build_upscale_only_plan,
     build_final_edit_prompt,
     load_final_edit_session_context,
+    normalize_image_edit_plan,
     parse_image_edit_plans,
     resolve_owner_persona_target,
     resolve_owner_persona_preset,
@@ -94,6 +97,10 @@ def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     assert "\"contrast\"" in prompt
     assert "minimum adjustment needed" in prompt
     assert "color_grading" in prompt
+    assert "Upscale must be included for every image" in prompt
+    assert "it is 2x only" in prompt
+    assert "exactly once as the last tool" in prompt
+    assert "Denoise alone is not enough to justify upscale" in prompt
     assert "all 3 input images" in prompt
     assert "image_index from 0 to 2" in prompt
 
@@ -131,6 +138,80 @@ def test_resolve_owner_persona_target_marks_aesthetic_as_tone_profile() -> None:
     assert used_fallback is False
     assert target == AESTHETIC_TARGET_TONE_PROFILE
     assert target_kind == TARGET_PROFILE_KIND_TONE
+
+
+def test_normalize_image_edit_plan_enforces_execution_order() -> None:
+    normalized = normalize_image_edit_plan(
+        ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="upscale first",
+            tools=["upscale", "sharpen", "denoise", "color_grading"],
+            params={
+                "upscale": {"scale": 4},
+                "sharpen": {"strength": 0.3},
+                "denoise": {"strength": 0.4},
+                "color_grading": {"contrast": -10},
+            },
+        )
+    )
+
+    assert normalized.tools == ["denoise", "sharpen", "color_grading", "upscale"]
+    assert normalized.params["upscale"] == {"scale": 2}
+
+
+def test_normalize_image_edit_plan_appends_default_upscale() -> None:
+    normalized = normalize_image_edit_plan(
+        ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="denoise and sharpen",
+            tools=["sharpen", "denoise"],
+            params={
+                "sharpen": {"strength": 0.3},
+                "denoise": {"strength": 0.4},
+            },
+        )
+    )
+
+    assert normalized.tools == ["denoise", "sharpen", "upscale"]
+    assert normalized.params["upscale"] == {"scale": 2}
+
+
+def test_normalize_image_edit_plan_deduplicates_upscale_to_single_last_step() -> None:
+    normalized = normalize_image_edit_plan(
+        ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="duplicate upscale",
+            tools=["upscale", "color_grading", "upscale", "denoise"],
+            params={
+                "upscale": {"scale": 4},
+                "color_grading": {"contrast": -10},
+                "denoise": {"strength": 0.4},
+            },
+        )
+    )
+
+    assert normalized.tools == ["denoise", "color_grading", "upscale"]
+    assert normalized.tools.count("upscale") == 1
+    assert normalized.params["upscale"] == {"scale": 2}
+
+
+def test_build_upscale_only_plan_uses_default_two_x_scale() -> None:
+    plan = build_upscale_only_plan(1)
+
+    assert plan.image_index == 1
+    assert plan.tools == ["color_grading", "upscale"]
+    assert plan.params["color_grading"] == {}
+    assert plan.params["upscale"] == {"scale": 2}
+
+
+def test_build_upscale_only_plan_uses_persona_preset_for_non_aesthetic() -> None:
+    plan = build_upscale_only_plan(1, owner_persona="friendly")
+
+    assert plan.tools == ["color_grading", "upscale"]
+    assert plan.params["color_grading"]["temperature"] == "warm"
 
 
 def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:
@@ -194,7 +275,7 @@ async def test_final_edit_planner_client_builds_validated_plans() -> None:
 
     assert len(plans) == 1
     assert plans[0].image_index == 0
-    assert plans[0].tools == ["denoise", "color_grading"]
+    assert plans[0].tools == ["denoise", "color_grading", "upscale"]
 
 
 @pytest.mark.asyncio

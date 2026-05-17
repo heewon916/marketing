@@ -90,7 +90,17 @@ def _write_test_jpeg(destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     image = np.full((16, 16, 3), 120, dtype=np.uint8)
     image[:, :8, 2] = 220
-    cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    cv2.imwrite(str(destination), image)
+
+
+class FakeUpscaler:
+    def upscale(self, image: np.ndarray, scale: int) -> np.ndarray:
+        height, width = image.shape[:2]
+        return cv2.resize(
+            image,
+            (width * scale, height * scale),
+            interpolation=cv2.INTER_LANCZOS4,
+        )
 
 
 def _run_immediate(awaitable: Awaitable[object]) -> object:
@@ -404,7 +414,7 @@ class CapturingFinalUploader:
 
     async def upload_final(self, session_id: str, image_path, final_index: int) -> str:
         self.source_paths.append(str(image_path))
-        uploaded_path = f"/ai-finals/{session_id}/final-{final_index:03d}.jpg"
+        uploaded_path = f"/ai-finals/{session_id}/final-{final_index:03d}.png"
         self.uploaded_paths.append(uploaded_path)
         return uploaded_path
 
@@ -450,7 +460,7 @@ class FailingUploader:
     async def upload_final(self, session_id: str, image_path, final_index: int) -> str:
         if final_index == 2:
             raise RuntimeError("upload_failed")
-        uploaded_path = f"/ai-finals/{session_id}/final-{final_index:03d}.jpg"
+        uploaded_path = f"/ai-finals/{session_id}/final-{final_index:03d}.png"
         self.uploaded.append(uploaded_path)
         return uploaded_path
 

@@ -17,6 +17,7 @@ from app.perfectframe.schemas import ExtractorConfig
 from app.services.final_edit_planner import FinalEditSessionContext, ImageEditPlan
 from app.services.final_edit import FinalEditService
 from app.services.frame_extraction import FrameExtractionService
+from tests.utils.session_support import FakeUpscaler
 
 
 VALID_PAYLOAD = {
@@ -67,7 +68,7 @@ class StubDraftUploader:
     is_configured = True
 
     async def upload_frame(self, session_id: str, frame, workdir: Path, draft_index: int = 1) -> str:
-        return f"/ai-drafts/{session_id}/draft-{draft_index:03d}.jpg"
+        return f"/ai-drafts/{session_id}/draft-{draft_index:03d}.png"
 
 
 class StubFrameExtractor:
@@ -85,14 +86,14 @@ class StubDraftDownloader:
         destination.parent.mkdir(parents=True, exist_ok=True)
         image = np.full((16, 16, 3), 120, dtype=np.uint8)
         image[:, :8, 1] = 220
-        cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        cv2.imwrite(str(destination), image)
 
 
 class StubFinalUploader:
     is_configured = True
 
     async def upload_final(self, session_id: str, image_path: Path, final_index: int) -> str:
-        return f"/ai-finals/{session_id}/final-{final_index:03d}.jpg"
+        return f"/ai-finals/{session_id}/final-{final_index:03d}.png"
 
     async def delete_final(self, uploaded_path: str) -> None:
         return None
@@ -109,6 +110,14 @@ class StubPlannerClient:
 
     async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
         return self.plans
+
+
+@pytest.fixture(autouse=True)
+def fake_realesrgan_upscaler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.final_edit_tools.get_realesrgan_upscaler",
+        lambda: FakeUpscaler(),
+    )
 
 
 def test_formatter_includes_extra_fields_and_redacts_secrets() -> None:
@@ -213,11 +222,9 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
     assert 'frame_score="5.000000"' in output
     assert 'frame_score="4.000000"' in output
     assert 'frame_score="3.000000"' in output
-    assert output.count('event="frame_extraction.resize_frame.started"') == 3
-    assert output.count('event="frame_extraction.resize_frame.completed"') == 3
-    assert 'resized_shape="1440x1080x3"' in output
     assert output.count('event="frame_extraction.upload_frame.started"') == 3
     assert output.count('event="frame_extraction.upload_frame.completed"') == 3
+    assert 'frame_shape="8x8x3"' in output
     assert 'event="frame_extraction.cleanup_tempdir"' in output
 
 
@@ -246,7 +253,7 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     with capture_app_logs() as stream:
         result = await service.edit_and_upload(
             session_id="final-log-session",
-            drafts=["/ai-drafts/final-log-session/draft-001.jpg"],
+            drafts=["/ai-drafts/final-log-session/draft-001.png"],
             context=FinalEditSessionContext(
                 caption="연말 케이크 소개",
                 keywords=["케이크"],
@@ -269,7 +276,7 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     assert 'tool_params=' in output
     assert 'input_shape="16x16x3"' in output
     assert 'event="final_edit.tool.completed"' in output
-    assert 'output_shape="16x16x3"' in output
+    assert 'output_shape="32x32x3"' in output
     assert 'event="final_edit.image.completed"' in output
     assert 'output_source="edited"' in output
     assert 'event="final_edit.upload_final.started"' in output

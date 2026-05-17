@@ -20,8 +20,11 @@ from app.schemas.sessions import FinalEditRequest
 from app.services.final_edit_planner import (
     FinalEditPlannerClient,
     FinalEditSessionContext,
+    ImageEditPlan,
+    build_upscale_only_plan,
     build_final_edit_planner_client,
     load_final_edit_session_context,
+    normalize_image_edit_plan,
     resolve_owner_persona_preset,
 )
 from app.services.final_edit_runtime import (
@@ -38,6 +41,7 @@ STATUS_FAIL = "FRAME_EXTRACTED"
 STATUS_PHOTO_EDITED = "PHOTO_EDITED"
 logger = logging.getLogger(__name__)
 _PREVIEW_MAX_LENGTH = 120
+_PRE_UPSCALE_FILTER_TOOLS = {"color_grading", "sharpen", "background_blur"}
 
 
 def _build_default_agent(tool_event_sink):
@@ -92,6 +96,56 @@ def _read_image_dimensions(image_path: Path) -> tuple[int | None, int | None]:
 
 def _json_debug_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _resolve_image_suffix(image_path: str, default_suffix: str = ".png") -> str:
+    suffix = Path(normalize_s3_key(image_path)).suffix.lower()
+    return suffix or default_suffix
+
+
+def _ensure_filter_before_upscale(
+    plan: ImageEditPlan,
+    owner_persona: str,
+) -> ImageEditPlan:
+    plan = normalize_image_edit_plan(plan)
+    if "upscale" not in plan.tools:
+        return plan
+
+    upscale_index = plan.tools.index("upscale")
+    has_filter_before_upscale = any(
+        tool_name in _PRE_UPSCALE_FILTER_TOOLS for tool_name in plan.tools[:upscale_index]
+    )
+    if has_filter_before_upscale:
+        return plan
+
+    fallback_plan = build_upscale_only_plan(
+        plan.image_index,
+        owner_persona=owner_persona,
+        content=plan.content,
+        strategy=plan.strategy,
+    )
+    fallback_params = dict(fallback_plan.params["color_grading"])
+    merged_params = dict(plan.params)
+    merged_params["color_grading"] = dict(merged_params.get("color_grading", fallback_params))
+    merged_params["upscale"] = dict(merged_params.get("upscale", {"scale": 2}))
+
+    enforced_tools: list[str] = []
+    inserted_filter = False
+    for tool_name in plan.tools:
+        if tool_name == "upscale" and not inserted_filter:
+            enforced_tools.append("color_grading")
+            inserted_filter = True
+        enforced_tools.append(tool_name)
+
+    return normalize_image_edit_plan(
+        ImageEditPlan(
+            image_index=plan.image_index,
+            content=plan.content,
+            strategy=plan.strategy,
+            tools=enforced_tools,
+            params=merged_params,
+        )
+    )
 
 
 class S3DraftImageDownloader:
@@ -149,13 +203,13 @@ class S3FinalImageUploader:
         image_path: Path,
         final_index: int,
     ) -> str:
-        object_key = f"ai-finals/{session_id}/final-{final_index:03d}.jpg"
+        object_key = f"ai-finals/{session_id}/final-{final_index:03d}.png"
         client = build_s3_client()
         client.upload_file(
             str(image_path),
             self._settings.S3_BUCKET_NAME,
             object_key,
-            ExtraArgs={"ContentType": "image/jpeg"},
+            ExtraArgs={"ContentType": "image/png"},
         )
         return f"/{object_key}"
 
@@ -249,7 +303,8 @@ class FinalEditService:
         for final_index, draft_key in enumerate(drafts, start=1):
             debug_fields["debug:stage"] = f"download_draft_{final_index}"
             debug_fields[f"debug:draft_key:{final_index}"] = draft_key
-            draft_path = session_dir / f"draft-{final_index:03d}.jpg"
+            suffix = _resolve_image_suffix(draft_key)
+            draft_path = session_dir / f"draft-{final_index:03d}{suffix}"
             download_started_at = time.perf_counter()
             logger.info(
                 "Downloading draft image for final edit.",
@@ -362,12 +417,14 @@ class FinalEditService:
                     ),
                 )
             else:
-                plans_by_index = {plan.image_index: plan for plan in plans}
+                plans_by_index = {
+                    plan.image_index: normalize_image_edit_plan(plan) for plan in plans
+                }
                 debug_fields["debug:planner_response_received"] = str(
                     bool(getattr(self.planner_client, "last_raw_output", None))
                 ).lower()
                 debug_fields["debug:planned_indexes"] = ",".join(
-                    str(plan.image_index) for plan in plans
+                    str(plan.image_index) for plan in plans_by_index.values()
                 )
                 logger.info(
                     "Planned final edit sequence.",
@@ -377,14 +434,17 @@ class FinalEditService:
                         stage="plan",
                         session_id=session_id,
                         outcome="succeeded",
-                        planned_image_count=len(plans),
-                        planned_indexes=[plan.image_index for plan in plans],
+                        planned_image_count=len(plans_by_index),
+                        planned_indexes=[
+                            plan.image_index for plan in plans_by_index.values()
+                        ],
                         planned_tools_by_image={
-                            str(plan.image_index): plan.tools for plan in plans
+                            str(plan.image_index): plan.tools
+                            for plan in plans_by_index.values()
                         },
                         planned_strategy_preview_by_image={
                             str(plan.image_index): _preview_or_empty(plan.strategy)
-                            for plan in plans
+                            for plan in plans_by_index.values()
                         },
                         caption_preview=_preview_or_empty(context.caption),
                         keyword_preview=_preview_keywords(context.keywords),
@@ -415,38 +475,24 @@ class FinalEditService:
         for image_index, draft_path in enumerate(downloaded_drafts):
             plan = plans_by_index.get(image_index)
             if plan is None:
-                output_path = draft_path
-                output_source = "original_fallback"
-                debug_fields[f"debug:executed_tools:{image_index + 1}"] = ""
-                debug_fields[f"debug:upload_source_kind:{image_index + 1}"] = output_source
-                debug_fields[f"debug:output_path:{image_index + 1}"] = str(output_path)
-                debug_fields[f"debug:image_fallback:{image_index + 1}"] = "true"
-                debug_fields[f"debug:image_failure:{image_index + 1}"] = (
-                    "planner_fallback"
-                    if planner_fallback
-                    else "plan_missing_for_image"
+                fallback_reason = (
+                    "planner_fallback" if planner_fallback else "plan_missing_for_image"
                 )
-                logger.info(
-                    "Completed final edit image processing.",
-                    extra=build_log_extra(
-                        "final_edit.image.completed",
-                        component="final_edit",
-                        stage="image",
-                        session_id=session_id,
-                        final_index=image_index + 1,
-                        image_index=image_index,
-                        planned_tool_count=0,
-                        executed_tool_count=0,
-                        executed_tools=[],
-                        used_fallback=True,
-                        failure_reason=debug_fields[f"debug:image_failure:{image_index + 1}"],
-                        input_path=str(draft_path),
-                        output_path=str(output_path),
-                        output_source=output_source,
+                plan = build_upscale_only_plan(
+                    image_index,
+                    owner_persona=context.owner_persona,
+                    content="draft image",
+                    strategy=(
+                        "Planner fallback; apply minimum color grading before "
+                        "mandatory Real-ESRGAN upscale."
+                        if planner_fallback
+                        else "No plan returned for this image; apply minimum color "
+                        "grading before mandatory Real-ESRGAN upscale."
                     ),
                 )
-                edited_paths.append(draft_path)
-                continue
+                debug_fields[f"debug:plan_source:{image_index + 1}"] = fallback_reason
+            else:
+                plan = _ensure_filter_before_upscale(plan, context.owner_persona)
 
             debug_fields[f"debug:tool_count:{image_index + 1}"] = str(len(plan.tools))
             debug_fields[f"debug:tools:{image_index + 1}"] = ",".join(plan.tools)

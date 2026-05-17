@@ -13,12 +13,21 @@ from app.services.final_edit_tools import (
     build_aesthetic_color_grading_params,
     normalize_tool_params,
 )
+from tests.utils.session_support import FakeUpscaler
 
 
 def _write_test_image(path: Path, shape: tuple[int, int, int] = (16, 16, 3)) -> None:
     image = np.full(shape, 120, dtype=np.uint8)
     image[:, : shape[1] // 2, 2] = 220
-    cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    cv2.imwrite(str(path), image)
+
+
+@pytest.fixture(autouse=True)
+def fake_realesrgan_upscaler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.final_edit_tools.get_realesrgan_upscaler",
+        lambda: FakeUpscaler(),
+    )
 
 
 def test_normalize_tool_params_clamps_values() -> None:
@@ -79,7 +88,10 @@ def test_analyze_image_tone_returns_expected_metrics() -> None:
 
     metrics = analyze_image_tone(image)
 
-    assert tuple(metrics.keys()) == AESTHETIC_TONE_METRIC_KEYS
+    assert tuple(metrics.keys())[: len(AESTHETIC_TONE_METRIC_KEYS)] == (
+        AESTHETIC_TONE_METRIC_KEYS
+    )
+    assert "highlight_area_ratio" in metrics
     assert all(isinstance(value, float) for value in metrics.values())
     assert metrics["white_point"] >= metrics["black_point"]
 
@@ -105,13 +117,48 @@ def test_build_aesthetic_color_grading_params_skips_small_gaps() -> None:
     assert params["tint_strength"] == 0.0
 
 
+def test_analyze_image_tone_uses_trimmed_brightness_for_small_white_patch() -> None:
+    image = np.full((96, 96, 3), 90, dtype=np.uint8)
+    image[4:10, 4:10] = 255
+
+    metrics = analyze_image_tone(image)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l_channel = lab[:, :, 0].astype(np.float64)
+    raw_mean_brightness = round(float(np.mean(l_channel)), 2)
+    baseline_metrics = analyze_image_tone(np.full((96, 96, 3), 90, dtype=np.uint8))
+
+    assert metrics["brightness"] < raw_mean_brightness
+    assert metrics["brightness"] == baseline_metrics["brightness"]
+    assert metrics["highlight_area_ratio"] < 0.03
+
+
+def test_build_aesthetic_color_grading_params_attenuates_small_bright_highlights() -> None:
+    small_highlights = np.full((128, 128, 3), 95, dtype=np.uint8)
+    small_highlights[8:16, 8:16] = 255
+    broad_overexposure = np.full((128, 128, 3), 235, dtype=np.uint8)
+
+    small_params, small_debug = build_aesthetic_color_grading_params(small_highlights)
+    broad_params, broad_debug = build_aesthetic_color_grading_params(broad_overexposure)
+
+    assert (
+        small_debug["current_tone"]["highlight_area_ratio"]
+        < broad_debug["current_tone"]["highlight_area_ratio"]
+    )
+    assert abs(small_params["highlights"]) < abs(broad_params["highlights"])
+    assert abs(small_params["brightness"]) < abs(broad_params["brightness"])
+
+
 def test_tool_registry_upscale_changes_shape() -> None:
     registry = FinalEditToolRegistry()
     image = np.zeros((8, 8, 3), dtype=np.uint8)
 
     result = registry.execute("upscale", image, {"scale": 4})
 
-    assert result.shape == (32, 32, 3)
+    assert result.shape == (16, 16, 3)
+
+
+def test_normalize_tool_params_upscale_forces_two_x() -> None:
+    assert normalize_tool_params("upscale", {"scale": 4}) == {"scale": 2}
 
 
 def test_tool_registry_background_blur_preserves_shape() -> None:
@@ -152,7 +199,7 @@ def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> Non
 async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
     tmp_path: Path,
 ) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     agent = FinalEditAgent(FinalEditToolRegistry())
     state = FinalEditImageState(
@@ -193,7 +240,7 @@ async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
 async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
     tmp_path: Path,
 ) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     agent = FinalEditAgent(FinalEditToolRegistry())
     planned_params = {
@@ -231,7 +278,7 @@ async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
 
 @pytest.mark.asyncio
 async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     agent = FinalEditAgent(FinalEditToolRegistry())
     state = FinalEditImageState(
@@ -261,7 +308,7 @@ async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_final_edit_agent_falls_back_when_tool_fails(tmp_path: Path) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     registry = FinalEditToolRegistry()
     original_execute = registry.execute

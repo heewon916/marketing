@@ -19,6 +19,7 @@ from app.services.sessions import session_key
 from tests.utils.session_support import (
     CapturingFinalUploader,
     FakeFinalEditService,
+    FakeUpscaler,
     FakePlannerClient,
     FailingPlannerClient,
     FailingUploader,
@@ -26,6 +27,14 @@ from tests.utils.session_support import (
     StubDraftDownloader,
     VALID_PAYLOAD,
 )
+
+
+@pytest.fixture(autouse=True)
+def fake_realesrgan_upscaler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.final_edit_tools.get_realesrgan_upscaler",
+        lambda: FakeUpscaler(),
+    )
 
 
 @pytest.fixture(scope="module")
@@ -52,15 +61,15 @@ def test_final_edit_returns_success_and_persists_result(
     original_service = app.state.final_edit_service
     session_id = str(uuid4())
     drafts = [
-        "/ai-drafts/session-123/draft-001.jpg",
-        "/ai-drafts/session-123/draft-002.jpg",
+        "/ai-drafts/session-123/draft-001.png",
+        "/ai-drafts/session-123/draft-002.png",
     ]
     fake_service = FakeFinalEditService(
         FinalEditResult(
             status="PHOTO_EDITED",
             results=[
-                "/ai-finals/session-123/final-001.jpg",
-                "/ai-finals/session-123/final-002.jpg",
+                "/ai-finals/session-123/final-001.png",
+                "/ai-finals/session-123/final-002.png",
             ],
         )
     )
@@ -77,15 +86,15 @@ def test_final_edit_returns_success_and_persists_result(
     assert body["session_id"] == session_id
     assert body["status"] == "PHOTO_EDITED"
     assert body["results"] == [
-        "/ai-finals/session-123/final-001.jpg",
-        "/ai-finals/session-123/final-002.jpg",
+        "/ai-finals/session-123/final-001.png",
+        "/ai-finals/session-123/final-002.png",
     ]
     assert fake_service.calls == [(session_id, drafts)]
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["status"] == "PHOTO_EDITED"
-    assert saved["photo:1"] == "/ai-finals/session-123/final-001.jpg"
-    assert saved["photo:2"] == "/ai-finals/session-123/final-002.jpg"
+    assert saved["photo:1"] == "/ai-finals/session-123/final-001.png"
+    assert saved["photo:2"] == "/ai-finals/session-123/final-002.png"
 
 
 def test_final_edit_preserves_existing_final_keywords(
@@ -97,7 +106,7 @@ def test_final_edit_preserves_existing_final_keywords(
     fake_service = FakeFinalEditService(
         FinalEditResult(
             status="PHOTO_EDITED",
-            results=["/ai-finals/session-123/final-001.jpg"],
+            results=["/ai-finals/session-123/final-001.png"],
         )
     )
     app.state.final_edit_service = fake_service
@@ -113,7 +122,7 @@ def test_final_edit_preserves_existing_final_keywords(
             f"/ai/sessions/{session_id}/final-edit",
             json={
                 "session_id": session_id,
-                "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+                "drafts": ["/ai-drafts/session-123/draft-001.png"],
             },
         )
     finally:
@@ -136,7 +145,7 @@ def test_final_edit_reuses_owner_persona_from_session_context(
             self.context = context
             return FinalEditResult(
                 status="PHOTO_EDITED",
-                results=["/ai-finals/session-123/final-001.jpg"],
+                results=["/ai-finals/session-123/final-001.png"],
             )
 
     original_service = app.state.final_edit_service
@@ -157,7 +166,7 @@ def test_final_edit_reuses_owner_persona_from_session_context(
             f"/ai/sessions/{session_id}/final-edit",
             json={
                 "session_id": session_id,
-                "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+                "drafts": ["/ai-drafts/session-123/draft-001.png"],
             },
         )
     finally:
@@ -184,7 +193,7 @@ def test_final_edit_returns_fail_and_clears_photo_results(
     app.state.final_edit_service = fake_service
     payload = {
         "session_id": session_id,
-        "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+        "drafts": ["/ai-drafts/session-123/draft-001.png"],
     }
 
     try:
@@ -205,7 +214,7 @@ def test_final_edit_returns_fail_and_clears_photo_results(
 def test_final_edit_rejects_mismatched_session_id(client: TestClient) -> None:
     payload = {
         "session_id": str(uuid4()),
-        "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+        "drafts": ["/ai-drafts/session-123/draft-001.png"],
     }
 
     response = client.post("/ai/sessions/edit-session-3/final-edit", json=payload)
@@ -222,7 +231,7 @@ def test_final_edit_returns_503_when_service_is_unavailable(
     session_id = str(uuid4())
     payload = {
         "session_id": session_id,
-        "drafts": ["/ai-drafts/session-123/draft-001.jpg"],
+        "drafts": ["/ai-drafts/session-123/draft-001.png"],
     }
     app.state.final_edit_service = None
     app.state.final_edit_available = False
@@ -261,6 +270,35 @@ def test_initialize_final_edit_service_marks_unavailable_on_opencv_error(
     )
 
 
+def test_initialize_final_edit_service_marks_unavailable_on_upscaler_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    startup_app = FastAPI()
+
+    monkeypatch.setattr("app.bootstrap.import_cv2", lambda: object())
+
+    def fail_upscaler():
+        raise FinalEditUnavailableError(
+            "Real-ESRGAN runtime is unavailable for final edit."
+        )
+
+    monkeypatch.setattr(
+        "app.bootstrap.ensure_final_edit_upscaler_available",
+        fail_upscaler,
+    )
+
+    _initialize_final_edit_service(startup_app, tmp_path)
+
+    assert startup_app.state.final_edit_service is None
+    assert startup_app.state.final_edit_planner_client is None
+    assert startup_app.state.final_edit_available is False
+    assert (
+        startup_app.state.final_edit_unavailable_reason
+        == "FinalEditUnavailableError: Real-ESRGAN runtime is unavailable for final edit."
+    )
+
+
 def test_final_edit_response_limits_results_to_three() -> None:
     with pytest.raises(ValidationError):
         FinalEditResponse(
@@ -284,16 +322,16 @@ def test_final_edit_service_rolls_back_uploaded_results(tmp_path: Path, service_
         service.edit_and_upload(
             session_id=session_id,
             drafts=[
-                "/ai-drafts/session-rollback-1/draft-001.jpg",
-                "/ai-drafts/session-rollback-1/draft-002.jpg",
+                "/ai-drafts/session-rollback-1/draft-001.png",
+                "/ai-drafts/session-rollback-1/draft-002.png",
             ],
         ),
     )
 
     assert result.status == "FRAME_EXTRACTED"
     assert result.results == []
-    assert uploader.uploaded == ["/ai-finals/session-rollback-1/final-001.jpg"]
-    assert uploader.deleted == ["/ai-finals/session-rollback-1/final-001.jpg"]
+    assert uploader.uploaded == ["/ai-finals/session-rollback-1/final-001.png"]
+    assert uploader.deleted == ["/ai-finals/session-rollback-1/final-001.png"]
     assert not (tmp_path / session_id).exists()
 
 
@@ -313,7 +351,7 @@ def test_final_edit_service_marks_planner_fallback_on_planner_error(
         service_loop,
         service.edit_and_upload(
             session_id="session-planner-fallback-1",
-            drafts=["/ai-drafts/session-planner-fallback-1/draft-001.jpg"],
+            drafts=["/ai-drafts/session-planner-fallback-1/draft-001.png"],
             context=FinalEditSessionContext(
                 caption="\ucfc4\ub81b \ucf00\uc774\ud06c \uc18c\uac1c",
                 keywords=["\ucf00\uc774\ud06c"],
@@ -322,7 +360,7 @@ def test_final_edit_service_marks_planner_fallback_on_planner_error(
     )
 
     assert result.status == "PHOTO_EDITED"
-    assert result.results == ["/ai-finals/session-planner-fallback-1/final-001.jpg"]
+    assert result.results == ["/ai-finals/session-planner-fallback-1/final-001.png"]
     assert result.debug_fields is not None
     assert result.debug_fields["debug:planner_fallback"] == "true"
     assert result.debug_fields["debug:owner_persona"] == "aesthetic"
@@ -331,10 +369,12 @@ def test_final_edit_service_marks_planner_fallback_on_planner_error(
     assert result.debug_fields["debug:planner_failure_type"] == "RuntimeError"
     assert result.debug_fields["debug:planner_response_received"] == "false"
     assert result.debug_fields["debug:planned_indexes"] == ""
-    assert result.debug_fields["debug:executed_tools:1"] == ""
-    assert result.debug_fields["debug:upload_source_kind:1"] == "original_fallback"
-    assert result.debug_fields["debug:output_path:1"].endswith("draft-001.jpg")
-    assert uploader.source_paths[0].endswith("draft-001.jpg")
+    assert result.debug_fields["debug:tools:1"] == "color_grading,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "color_grading,upscale"
+    assert result.debug_fields["debug:plan_source:1"] == "planner_fallback"
+    assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
+    assert "edited-000.png" in result.debug_fields["debug:output_path:1"]
+    assert uploader.source_paths[0].endswith("edited-000.png")
 
 
 def test_final_edit_service_marks_image_fallback_when_agent_falls_back(
@@ -364,7 +404,7 @@ def test_final_edit_service_marks_image_fallback_when_agent_falls_back(
         service_loop,
         service.edit_and_upload(
             session_id="session-image-fallback-1",
-            drafts=["/ai-drafts/session-image-fallback-1/draft-001.jpg"],
+            drafts=["/ai-drafts/session-image-fallback-1/draft-001.png"],
             context=FinalEditSessionContext(
                 caption="\ucfc4\ub81b \ucf00\uc774\ud06c \uc18c\uac1c",
                 keywords=["\ucf00\uc774\ud06c"],
@@ -381,8 +421,8 @@ def test_final_edit_service_marks_image_fallback_when_agent_falls_back(
     assert result.debug_fields["debug:image_failure:1"] == "tool_failed:denoise:RuntimeError"
     assert result.debug_fields["debug:executed_tools:1"] == ""
     assert result.debug_fields["debug:upload_source_kind:1"] == "original_fallback"
-    assert result.debug_fields["debug:output_path:1"].endswith("draft-001.jpg")
-    assert uploader.source_paths[0].endswith("draft-001.jpg")
+    assert result.debug_fields["debug:output_path:1"].endswith("draft-001.png")
+    assert uploader.source_paths[0].endswith("draft-001.png")
 
 
 def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(
@@ -414,7 +454,7 @@ def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(
         service_loop,
         service.edit_and_upload(
             session_id="session-edited-upload-1",
-            drafts=["/ai-drafts/session-edited-upload-1/draft-001.jpg"],
+            drafts=["/ai-drafts/session-edited-upload-1/draft-001.png"],
             context=FinalEditSessionContext(
                 caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
                 keywords=["\ucf00\uc774\ud06c"],
@@ -427,10 +467,214 @@ def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(
     assert result.debug_fields["debug:planner_response_received"] == "true"
     assert result.debug_fields["debug:owner_persona"] == "aesthetic"
     assert result.debug_fields["debug:planned_indexes"] == "0"
-    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen"
+    assert result.debug_fields["debug:tools:1"] == "denoise,sharpen,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
     assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
-    assert "edited-000.jpg" in result.debug_fields["debug:output_path:1"]
-    assert "edited-000.jpg" in uploader.source_paths[0]
+    assert "edited-000.png" in result.debug_fields["debug:output_path:1"]
+    assert "edited-000.png" in uploader.source_paths[0]
+
+
+def test_final_edit_service_reorders_tools_before_execution(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="\ucf00\uc774\ud06c",
+                    strategy="\uc798\ubabb\ub41c \uc21c\uc11c",
+                    tools=["upscale", "sharpen", "denoise"],
+                    params={
+                        "upscale": {"scale": 4},
+                        "sharpen": {"strength": 0.3},
+                        "denoise": {"strength": 0.4},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-tool-order-1",
+            drafts=["/ai-drafts/session-tool-order-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
+                keywords=["\ucf00\uc774\ud06c"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "denoise,sharpen,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
+
+
+def test_final_edit_service_deduplicates_upscale_to_single_execution(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="케이크",
+                    strategy="duplicate upscale",
+                    tools=["upscale", "sharpen", "upscale", "denoise"],
+                    params={
+                        "upscale": {"scale": 4},
+                        "sharpen": {"strength": 0.3},
+                        "denoise": {"strength": 0.4},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-duplicate-upscale-1",
+            drafts=["/ai-drafts/session-duplicate-upscale-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="디저트 케이크 소개",
+                keywords=["케이크"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "denoise,sharpen,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
+
+
+def test_final_edit_service_uses_upscale_only_when_plan_is_missing(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient([]),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-missing-plan-1",
+            drafts=["/ai-drafts/session-missing-plan-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
+                keywords=["\ucf00\uc774\ud06c"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:plan_source:1"] == "plan_missing_for_image"
+    assert result.debug_fields["debug:tools:1"] == "color_grading,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "color_grading,upscale"
+    assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
+
+
+def test_final_edit_service_inserts_color_grading_before_upscale_only_plan(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="\ucf00\uc774\ud06c",
+                    strategy="upscale only",
+                    tools=["upscale"],
+                    params={"upscale": {"scale": 2}},
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-upscale-only-1",
+            drafts=["/ai-drafts/session-upscale-only-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
+                keywords=["\ucf00\uc774\ud06c"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "color_grading,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "color_grading,upscale"
+
+
+def test_final_edit_service_inserts_color_grading_between_denoise_and_upscale(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="\ucf00\uc774\ud06c",
+                    strategy="denoise then upscale",
+                    tools=["denoise", "upscale"],
+                    params={
+                        "denoise": {"strength": 0.4},
+                        "upscale": {"scale": 2},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-denoise-upscale-1",
+            drafts=["/ai-drafts/session-denoise-upscale-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
+                keywords=["\ucf00\uc774\ud06c"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "denoise,color_grading,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,color_grading,upscale"
 
 
 def test_final_edit_service_marks_persona_preset_fallback_for_unknown_persona(
@@ -449,7 +693,7 @@ def test_final_edit_service_marks_persona_preset_fallback_for_unknown_persona(
         service_loop,
         service.edit_and_upload(
             session_id="session-preset-fallback-1",
-            drafts=["/ai-drafts/session-preset-fallback-1/draft-001.jpg"],
+            drafts=["/ai-drafts/session-preset-fallback-1/draft-001.png"],
             context=FinalEditSessionContext(
                 owner_persona="mystery",
                 caption="디저트 소개",
@@ -501,7 +745,7 @@ def test_final_edit_service_records_aesthetic_tone_debug_fields(
         service_loop,
         service.edit_and_upload(
             session_id="session-aesthetic-tone-1",
-            drafts=["/ai-drafts/session-aesthetic-tone-1/draft-001.jpg"],
+            drafts=["/ai-drafts/session-aesthetic-tone-1/draft-001.png"],
             context=FinalEditSessionContext(
                 owner_persona="aesthetic",
                 caption="톤 보정",
@@ -520,6 +764,7 @@ def test_final_edit_service_records_aesthetic_tone_debug_fields(
     skip = json.loads(result.debug_fields["debug:aesthetic_tone_skip:1"])
     applied_params = json.loads(result.debug_fields["debug:aesthetic_applied_params:1"])
     assert "brightness" in current_tone
+    assert "highlight_area_ratio" in current_tone
     assert "brightness" in target_tone
     assert "brightness" in tolerance
     assert "brightness" in gap

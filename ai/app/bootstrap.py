@@ -27,6 +27,7 @@ from app.services.caption_generation import (
     build_caption_generation_service,
 )
 from app.services.final_edit_runtime import import_cv2, summarize_unavailable_reason
+from app.services.final_edit_upscaler import ensure_final_edit_upscaler_available
 from app.services.frame_extraction import (
     FrameExtractionService,
     S3DraftUploader,
@@ -137,6 +138,7 @@ def _mark_final_edit_unavailable(app: FastAPI, reason: str) -> None:
 def _initialize_final_edit_service(app: FastAPI, temp_root: Path) -> None:
     try:
         import_cv2()
+        ensure_final_edit_upscaler_available()
         from app.services.final_edit import (
             FinalEditService,
             S3DraftImageDownloader,
