@@ -29,8 +29,8 @@ public class ContentController {
     /**
      * S3 저장 규칙
      * 1. 사용자가 처음 찍은 영상 : /inputs/{session-id}/draft.mp4
-     * 2. AI가 처음 프레임 추출한 drafts : /ai-drafts/{session-id}/draft-001.jpg
-     * 3. AI가 최종 편집한 사진 : /ai-finals/{session-id}/final-001.jpg
+     * 2. AI가 처음 프레임 추출한 drafts : /ai-drafts/{session-id}/draft-001.png
+     * 3. AI가 최종 편집한 사진 : /ai-finals/{session-id}/final-001.png
      * 4. 레퍼런스 사진 : /references/{owner_persona}/{reference_id}/001.jpg
      */
 
@@ -102,7 +102,7 @@ public class ContentController {
      *      "image_url": [
      * 	        {
      * 	            "image_key": "photo:{no}",
-     * 			    "image_url" : "/ai-finals/{session-id}/final-001.jpg"
+     * 			    "image_url" : "/ai-finals/{session-id}/final-001.png"
      *          },
      *      ]
      * }
@@ -265,8 +265,8 @@ public class ContentController {
      * 	"session_id": "uuid",
      * 	"status" : "FRAME_EXTRACTED",
      * 	"drafts": [
-     * 		"/ai-drafts/session-123/draft-001.jpg",
-     * 		"/ai-drafts/session-123/draft-002.jpg"
+     * 		"/ai-drafts/session-123/draft-001.png",
+     * 		"/ai-drafts/session-123/draft-002.png"
      * 	]
      * }
      *
@@ -276,8 +276,8 @@ public class ContentController {
      * {
      * 	"session_id": "uuid",
      * 	"drafts" : [
-     * 		"/ai-drafts/session-123/draft-001.jpg",
-     * 		"/ai-drafts/session-123/draft-002.jpg"
+     * 		"/ai-drafts/session-123/draft-001.png",
+     * 		"/ai-drafts/session-123/draft-002.png"
      * 	]
      * }
      *
@@ -289,8 +289,8 @@ public class ContentController {
      * 	"status" : "PHOTO_EDITED",
      * 	"results":
      * 		[
-     * 			"/ai-finals/session-123/final-001.jpg",
-     * 			"/ai-finals/session-123/final-002.jpg"
+     * 			"/ai-finals/session-123/final-001.png",
+     * 			"/ai-finals/session-123/final-002.png"
      * 		]
      * }
      *

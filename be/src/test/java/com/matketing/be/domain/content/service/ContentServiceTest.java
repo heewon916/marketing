@@ -248,8 +248,8 @@ class ContentServiceTest {
         UUID sessionId = UUID.randomUUID();
         when(contentRedisRepository.getPhotoUrls(sessionId.toString()))
                 .thenReturn(java.util.List.of(
-                        new RedisImageValue("photo:1", "/ai-finals/%s/final-001.jpg".formatted(sessionId)),
-                        new RedisImageValue("photo:2", "/ai-finals/%s/final-002.jpg".formatted(sessionId))
+                        new RedisImageValue("photo:1", "/ai-finals/%s/final-001.png".formatted(sessionId)),
+                        new RedisImageValue("photo:2", "/ai-finals/%s/final-002.png".formatted(sessionId))
                 ));
 
         ContentImageUrlsResponseDto response = contentService.getContentImages(sessionId);
@@ -258,8 +258,8 @@ class ContentServiceTest {
         assertThat(response.imageUrl())
                 .extracting(ContentImageUrlsResponseDto.ImageUrlItem::imageUrl)
                 .containsExactly(
-                        "/ai-finals/%s/final-001.jpg".formatted(sessionId),
-                        "/ai-finals/%s/final-002.jpg".formatted(sessionId)
+                        "/ai-finals/%s/final-001.png".formatted(sessionId),
+                        "/ai-finals/%s/final-002.png".formatted(sessionId)
                 );
     }
 
