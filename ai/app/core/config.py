@@ -41,6 +41,13 @@ DEFAULT_NIMA_WEIGHTS_PATH = ROOT_DIR / "models" / "nima" / "weights.onnx"
 DEFAULT_NIMA_WEIGHTS_URL = (
     "https://huggingface.co/BKDDFS/nima_weights/resolve/main/weights.onnx"
 )
+DEFAULT_REALESRGAN_WEIGHTS_PATH = (
+    ROOT_DIR / "models" / "realesrgan" / "RealESRGAN_x4plus.pth"
+)
+DEFAULT_REALESRGAN_WEIGHTS_URL = (
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/"
+    "RealESRGAN_x4plus.pth"
+)
 
 
 @dataclass(frozen=True)
@@ -104,6 +111,7 @@ class Settings(BaseSettings):
     CLOUDFRONT_DOMAIN: str | None = None
 
     NIMA_WEIGHTS_URL: str = DEFAULT_NIMA_WEIGHTS_URL
+    REALESRGAN_WEIGHTS_URL: str = DEFAULT_REALESRGAN_WEIGHTS_URL
 
     KEYWORD_MODEL_HOST_DIR: str = DEFAULT_KEYWORD_MODEL_HOST_DIR
     KEYWORD_MODEL_HF_REPO_ID: str = DEFAULT_KEYWORD_MODEL_HF_REPO_ID

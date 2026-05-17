@@ -17,6 +17,7 @@ from app.perfectframe.schemas import ExtractorConfig
 from app.services.final_edit_planner import FinalEditSessionContext, ImageEditPlan
 from app.services.final_edit import FinalEditService
 from app.services.frame_extraction import FrameExtractionService
+from tests.utils.session_support import FakeUpscaler
 
 
 VALID_PAYLOAD = {
@@ -109,6 +110,14 @@ class StubPlannerClient:
 
     async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
         return self.plans
+
+
+@pytest.fixture(autouse=True)
+def fake_realesrgan_upscaler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.final_edit_tools.get_realesrgan_upscaler",
+        lambda: FakeUpscaler(),
+    )
 
 
 def test_formatter_includes_extra_fields_and_redacts_secrets() -> None:
@@ -269,7 +278,7 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     assert 'tool_params=' in output
     assert 'input_shape="16x16x3"' in output
     assert 'event="final_edit.tool.completed"' in output
-    assert 'output_shape="16x16x3"' in output
+    assert 'output_shape="32x32x3"' in output
     assert 'event="final_edit.image.completed"' in output
     assert 'output_source="edited"' in output
     assert 'event="final_edit.upload_final.started"' in output

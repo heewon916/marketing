@@ -93,6 +93,16 @@ def _write_test_jpeg(destination: Path) -> None:
     cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
 
+class FakeUpscaler:
+    def upscale(self, image: np.ndarray, scale: int) -> np.ndarray:
+        height, width = image.shape[:2]
+        return cv2.resize(
+            image,
+            (width * scale, height * scale),
+            interpolation=cv2.INTER_LANCZOS4,
+        )
+
+
 def _run_immediate(awaitable: Awaitable[object]) -> object:
     iterator = awaitable.__await__()
     try:

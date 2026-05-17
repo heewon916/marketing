@@ -20,8 +20,10 @@ from app.schemas.sessions import FinalEditRequest
 from app.services.final_edit_planner import (
     FinalEditPlannerClient,
     FinalEditSessionContext,
+    build_upscale_only_plan,
     build_final_edit_planner_client,
     load_final_edit_session_context,
+    normalize_image_edit_plan,
     resolve_owner_persona_preset,
 )
 from app.services.final_edit_runtime import (
@@ -362,12 +364,14 @@ class FinalEditService:
                     ),
                 )
             else:
-                plans_by_index = {plan.image_index: plan for plan in plans}
+                plans_by_index = {
+                    plan.image_index: normalize_image_edit_plan(plan) for plan in plans
+                }
                 debug_fields["debug:planner_response_received"] = str(
                     bool(getattr(self.planner_client, "last_raw_output", None))
                 ).lower()
                 debug_fields["debug:planned_indexes"] = ",".join(
-                    str(plan.image_index) for plan in plans
+                    str(plan.image_index) for plan in plans_by_index.values()
                 )
                 logger.info(
                     "Planned final edit sequence.",
@@ -377,14 +381,17 @@ class FinalEditService:
                         stage="plan",
                         session_id=session_id,
                         outcome="succeeded",
-                        planned_image_count=len(plans),
-                        planned_indexes=[plan.image_index for plan in plans],
+                        planned_image_count=len(plans_by_index),
+                        planned_indexes=[
+                            plan.image_index for plan in plans_by_index.values()
+                        ],
                         planned_tools_by_image={
-                            str(plan.image_index): plan.tools for plan in plans
+                            str(plan.image_index): plan.tools
+                            for plan in plans_by_index.values()
                         },
                         planned_strategy_preview_by_image={
                             str(plan.image_index): _preview_or_empty(plan.strategy)
-                            for plan in plans
+                            for plan in plans_by_index.values()
                         },
                         caption_preview=_preview_or_empty(context.caption),
                         keyword_preview=_preview_keywords(context.keywords),
@@ -415,38 +422,20 @@ class FinalEditService:
         for image_index, draft_path in enumerate(downloaded_drafts):
             plan = plans_by_index.get(image_index)
             if plan is None:
-                output_path = draft_path
-                output_source = "original_fallback"
-                debug_fields[f"debug:executed_tools:{image_index + 1}"] = ""
-                debug_fields[f"debug:upload_source_kind:{image_index + 1}"] = output_source
-                debug_fields[f"debug:output_path:{image_index + 1}"] = str(output_path)
-                debug_fields[f"debug:image_fallback:{image_index + 1}"] = "true"
-                debug_fields[f"debug:image_failure:{image_index + 1}"] = (
-                    "planner_fallback"
-                    if planner_fallback
-                    else "plan_missing_for_image"
+                fallback_reason = (
+                    "planner_fallback" if planner_fallback else "plan_missing_for_image"
                 )
-                logger.info(
-                    "Completed final edit image processing.",
-                    extra=build_log_extra(
-                        "final_edit.image.completed",
-                        component="final_edit",
-                        stage="image",
-                        session_id=session_id,
-                        final_index=image_index + 1,
-                        image_index=image_index,
-                        planned_tool_count=0,
-                        executed_tool_count=0,
-                        executed_tools=[],
-                        used_fallback=True,
-                        failure_reason=debug_fields[f"debug:image_failure:{image_index + 1}"],
-                        input_path=str(draft_path),
-                        output_path=str(output_path),
-                        output_source=output_source,
+                plan = build_upscale_only_plan(
+                    image_index,
+                    content="draft image",
+                    strategy=(
+                        "Planner fallback; apply mandatory Real-ESRGAN upscale only."
+                        if planner_fallback
+                        else "No plan returned for this image; apply mandatory "
+                        "Real-ESRGAN upscale only."
                     ),
                 )
-                edited_paths.append(draft_path)
-                continue
+                debug_fields[f"debug:plan_source:{image_index + 1}"] = fallback_reason
 
             debug_fields[f"debug:tool_count:{image_index + 1}"] = str(len(plan.tools))
             debug_fields[f"debug:tools:{image_index + 1}"] = ",".join(plan.tools)

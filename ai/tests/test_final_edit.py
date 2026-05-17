@@ -19,6 +19,7 @@ from app.services.sessions import session_key
 from tests.utils.session_support import (
     CapturingFinalUploader,
     FakeFinalEditService,
+    FakeUpscaler,
     FakePlannerClient,
     FailingPlannerClient,
     FailingUploader,
@@ -26,6 +27,14 @@ from tests.utils.session_support import (
     StubDraftDownloader,
     VALID_PAYLOAD,
 )
+
+
+@pytest.fixture(autouse=True)
+def fake_realesrgan_upscaler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.final_edit_tools.get_realesrgan_upscaler",
+        lambda: FakeUpscaler(),
+    )
 
 
 @pytest.fixture(scope="module")
@@ -261,6 +270,35 @@ def test_initialize_final_edit_service_marks_unavailable_on_opencv_error(
     )
 
 
+def test_initialize_final_edit_service_marks_unavailable_on_upscaler_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    startup_app = FastAPI()
+
+    monkeypatch.setattr("app.bootstrap.import_cv2", lambda: object())
+
+    def fail_upscaler():
+        raise FinalEditUnavailableError(
+            "Real-ESRGAN runtime is unavailable for final edit."
+        )
+
+    monkeypatch.setattr(
+        "app.bootstrap.ensure_final_edit_upscaler_available",
+        fail_upscaler,
+    )
+
+    _initialize_final_edit_service(startup_app, tmp_path)
+
+    assert startup_app.state.final_edit_service is None
+    assert startup_app.state.final_edit_planner_client is None
+    assert startup_app.state.final_edit_available is False
+    assert (
+        startup_app.state.final_edit_unavailable_reason
+        == "FinalEditUnavailableError: Real-ESRGAN runtime is unavailable for final edit."
+    )
+
+
 def test_final_edit_response_limits_results_to_three() -> None:
     with pytest.raises(ValidationError):
         FinalEditResponse(
@@ -331,10 +369,12 @@ def test_final_edit_service_marks_planner_fallback_on_planner_error(
     assert result.debug_fields["debug:planner_failure_type"] == "RuntimeError"
     assert result.debug_fields["debug:planner_response_received"] == "false"
     assert result.debug_fields["debug:planned_indexes"] == ""
-    assert result.debug_fields["debug:executed_tools:1"] == ""
-    assert result.debug_fields["debug:upload_source_kind:1"] == "original_fallback"
-    assert result.debug_fields["debug:output_path:1"].endswith("draft-001.jpg")
-    assert uploader.source_paths[0].endswith("draft-001.jpg")
+    assert result.debug_fields["debug:tools:1"] == "upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "upscale"
+    assert result.debug_fields["debug:plan_source:1"] == "planner_fallback"
+    assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
+    assert "edited-000.jpg" in result.debug_fields["debug:output_path:1"]
+    assert uploader.source_paths[0].endswith("edited-000.jpg")
 
 
 def test_final_edit_service_marks_image_fallback_when_agent_falls_back(
@@ -427,10 +467,87 @@ def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(
     assert result.debug_fields["debug:planner_response_received"] == "true"
     assert result.debug_fields["debug:owner_persona"] == "aesthetic"
     assert result.debug_fields["debug:planned_indexes"] == "0"
-    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen"
+    assert result.debug_fields["debug:tools:1"] == "denoise,sharpen,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
     assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
     assert "edited-000.jpg" in result.debug_fields["debug:output_path:1"]
     assert "edited-000.jpg" in uploader.source_paths[0]
+
+
+def test_final_edit_service_reorders_tools_before_execution(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="\ucf00\uc774\ud06c",
+                    strategy="\uc798\ubabb\ub41c \uc21c\uc11c",
+                    tools=["upscale", "sharpen", "denoise"],
+                    params={
+                        "upscale": {"scale": 4},
+                        "sharpen": {"strength": 0.3},
+                        "denoise": {"strength": 0.4},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-tool-order-1",
+            drafts=["/ai-drafts/session-tool-order-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
+                keywords=["\ucf00\uc774\ud06c"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "denoise,sharpen,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
+
+
+def test_final_edit_service_uses_upscale_only_when_plan_is_missing(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient([]),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-missing-plan-1",
+            drafts=["/ai-drafts/session-missing-plan-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                caption="\ub514\uc800\ud2b8 \ucf00\uc774\ud06c \uc18c\uac1c",
+                keywords=["\ucf00\uc774\ud06c"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:plan_source:1"] == "plan_missing_for_image"
+    assert result.debug_fields["debug:tools:1"] == "upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "upscale"
+    assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
 
 
 def test_final_edit_service_marks_persona_preset_fallback_for_unknown_persona(

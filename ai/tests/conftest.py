@@ -6,6 +6,7 @@ import fakeredis.aioredis
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core.config import DEFAULT_REALESRGAN_WEIGHTS_PATH
 from app.core.config import settings
 from app.db.redis import get_redis
 from app.main import app
@@ -28,6 +29,17 @@ from tests.utils.session_support import _weather_context_for_tests
 
 if hasattr(asyncio, "WindowsSelectorEventLoopPolicy"):
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(scope="session", autouse=True)
+def stub_realesrgan_startup() -> Iterator[None]:
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "app.bootstrap.ensure_final_edit_upscaler_available",
+        lambda: DEFAULT_REALESRGAN_WEIGHTS_PATH,
+    )
+    yield
+    monkeypatch.undo()
 
 
 class DefaultKeywordExtractionService:

@@ -62,6 +62,13 @@ PERSONA_TARGET_PRESETS: dict[str, dict[str, Any]] = {
 }
 TARGET_PROFILE_KIND_TONE = "tone_profile"
 TARGET_PROFILE_KIND_PRESET = "style_preset"
+_TOOL_ORDER_GROUPS: dict[ToolName, int] = {
+    "denoise": 0,
+    "color_grading": 1,
+    "sharpen": 1,
+    "background_blur": 1,
+    "upscale": 2,
+}
 
 
 @dataclass(frozen=True)
@@ -82,6 +89,63 @@ class ImageEditPlan:
 
 class FinalEditPlanningError(RuntimeError):
     """Raised when the final-edit planner cannot build a usable plan."""
+
+
+def build_upscale_only_plan(
+    image_index: int,
+    *,
+    content: str = "draft image",
+    strategy: str = "Apply mandatory Real-ESRGAN upscale after final edit fallback.",
+) -> ImageEditPlan:
+    return ImageEditPlan(
+        image_index=image_index,
+        content=content,
+        strategy=strategy,
+        tools=["upscale"],
+        params={"upscale": {"scale": 2}},
+    )
+
+
+def normalize_image_edit_plan(plan: ImageEditPlan) -> ImageEditPlan:
+    seen_tools: set[ToolName] = set()
+    deduplicated_tools: list[ToolName] = []
+    for tool_name in plan.tools:
+        if tool_name in seen_tools:
+            continue
+        deduplicated_tools.append(tool_name)
+        seen_tools.add(tool_name)
+
+    if "upscale" not in seen_tools:
+        deduplicated_tools.append("upscale")
+        seen_tools.add("upscale")
+
+    indexed_tools = list(enumerate(deduplicated_tools))
+    ordered_tools = [
+        tool_name
+        for _, tool_name in sorted(
+            indexed_tools,
+            key=lambda item: (
+                _TOOL_ORDER_GROUPS[item[1]],
+                item[0],
+            ),
+        )
+    ]
+    normalized_params: dict[str, dict[str, Any]] = {}
+    for tool_name in ordered_tools:
+        if tool_name == "upscale":
+            normalized_params[tool_name] = {
+                "scale": plan.params.get(tool_name, {}).get("scale", 2)
+            }
+            continue
+        normalized_params[tool_name] = dict(plan.params.get(tool_name, {}))
+
+    return ImageEditPlan(
+        image_index=plan.image_index,
+        content=plan.content,
+        strategy=plan.strategy,
+        tools=ordered_tools,
+        params=normalized_params,
+    )
 
 
 def _normalize_redis_value(value: object) -> str:
@@ -206,8 +270,8 @@ Example output:
   {
     "image_index": 0,
     "content": "A signature cake placed on a bright cafe table.",
-    "strategy": "The image is brighter and more saturated than the target aesthetic preset, so gently lower highlights, mute color, and lift shadows only enough to approach the preset.",
-    "tools": ["denoise", "color_grading", "sharpen"],
+    "strategy": "The image is brighter and more saturated than the target aesthetic preset, so denoise first, gently lower highlights, mute color, lift shadows only enough to approach the preset, and upscale last.",
+    "tools": ["denoise", "color_grading", "sharpen", "upscale"],
     "params": {
       "denoise": {"strength": 0.5},
       "color_grading": {
@@ -219,7 +283,8 @@ Example output:
         "temperature": "cool",
         "tone_curve_shadow_lift": 8
       },
-      "sharpen": {"strength": 0.35}
+      "sharpen": {"strength": 0.35},
+      "upscale": {"scale": 2}
     }
   }
 ]
@@ -248,7 +313,10 @@ def build_final_edit_prompt(
         "7. If owner_persona is aesthetic, use the target_preset as a tone profile with target and tolerance values, and reason about the current image's gap from those metrics.\n"
         "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
         "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
-        "10. Output only a JSON array.\n\n"
+        "10. If denoise is used, it must appear before any filter tool.\n"
+        "11. Upscale must be included for every image, and it must appear after every filter tool.\n"
+        "12. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
+        "13. Output only a JSON array.\n\n"
         f"{_few_shot_example()}"
     )
 
@@ -337,12 +405,14 @@ def parse_image_edit_plans(raw_output: str) -> list[ImageEditPlan]:
             raise FinalEditPlanningError("content and strategy must be non-empty.")
 
         plans.append(
-            ImageEditPlan(
-                image_index=image_index,
-                content=content,
-                strategy=strategy,
-                tools=normalized_tools,
-                params=normalized_params,
+            normalize_image_edit_plan(
+                ImageEditPlan(
+                    image_index=image_index,
+                    content=content,
+                    strategy=strategy,
+                    tools=normalized_tools,
+                    params=normalized_params,
+                )
             )
         )
 

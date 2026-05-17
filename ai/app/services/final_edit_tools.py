@@ -6,6 +6,7 @@ from typing import Any, Literal, cast
 import numpy as np
 
 from app.services.final_edit_runtime import import_cv2
+from app.services.final_edit_upscaler import get_realesrgan_upscaler
 
 ToolName = Literal[
     "upscale",
@@ -215,14 +216,8 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
 
 
 def _tool_upscale(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
-    cv2 = import_cv2()
     scale = cast(int, params["scale"])
-    height, width = image.shape[:2]
-    return cv2.resize(
-        image,
-        (width * scale, height * scale),
-        interpolation=cv2.INTER_LANCZOS4,
-    )
+    return get_realesrgan_upscaler().upscale(image, scale)
 
 
 def _tool_denoise(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:

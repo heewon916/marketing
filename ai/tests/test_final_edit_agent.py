@@ -13,12 +13,21 @@ from app.services.final_edit_tools import (
     build_aesthetic_color_grading_params,
     normalize_tool_params,
 )
+from tests.utils.session_support import FakeUpscaler
 
 
 def _write_test_image(path: Path, shape: tuple[int, int, int] = (16, 16, 3)) -> None:
     image = np.full(shape, 120, dtype=np.uint8)
     image[:, : shape[1] // 2, 2] = 220
     cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+
+@pytest.fixture(autouse=True)
+def fake_realesrgan_upscaler(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.services.final_edit_tools.get_realesrgan_upscaler",
+        lambda: FakeUpscaler(),
+    )
 
 
 def test_normalize_tool_params_clamps_values() -> None:
@@ -112,6 +121,10 @@ def test_tool_registry_upscale_changes_shape() -> None:
     result = registry.execute("upscale", image, {"scale": 4})
 
     assert result.shape == (32, 32, 3)
+
+
+def test_normalize_tool_params_upscale_preserves_supported_scale() -> None:
+    assert normalize_tool_params("upscale", {"scale": 4}) == {"scale": 4}
 
 
 def test_tool_registry_background_blur_preserves_shape() -> None:
