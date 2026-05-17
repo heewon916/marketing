@@ -34,6 +34,11 @@ AESTHETIC_TONE_METRIC_KEYS: tuple[str, ...] = (
     "tint",
     "saturation",
 )
+_TRIMMED_BRIGHTNESS_LOWER_PERCENTILE = 10.0
+_TRIMMED_BRIGHTNESS_UPPER_PERCENTILE = 90.0
+_HIGHLIGHT_PIXEL_THRESHOLD = 235.0
+_HIGHLIGHT_RATIO_LOW = 0.03
+_HIGHLIGHT_RATIO_MEDIUM = 0.08
 
 
 @dataclass(frozen=True)
@@ -164,6 +169,49 @@ def _scale_gap_to_unit_interval(
     return _clamp_float((gap / safe_tolerance) * multiplier, 0.0, -1.0, 1.0)
 
 
+def _trimmed_mean(
+    values: np.ndarray,
+    lower_percentile: float,
+    upper_percentile: float,
+) -> float:
+    flattened = values.reshape(-1).astype(np.float64)
+    lower_bound = float(np.percentile(flattened, lower_percentile))
+    upper_bound = float(np.percentile(flattened, upper_percentile))
+    trimmed = flattened[
+        (flattened >= lower_bound) & (flattened <= upper_bound)
+    ]
+    if trimmed.size == 0:
+        return float(np.mean(flattened))
+    return float(np.mean(trimmed))
+
+
+def _attenuate_negative_highlights(
+    highlight_adjustment: float,
+    highlight_area_ratio: float,
+) -> float:
+    if highlight_adjustment >= 0.0:
+        return highlight_adjustment
+    if highlight_area_ratio < _HIGHLIGHT_RATIO_LOW:
+        return round(highlight_adjustment * 0.25, 2)
+    if highlight_area_ratio < _HIGHLIGHT_RATIO_MEDIUM:
+        return round(highlight_adjustment * 0.5, 2)
+    return highlight_adjustment
+
+
+def _attenuate_combined_global_darkening(
+    brightness_adjustment: float,
+    highlight_adjustment: float,
+    highlight_area_ratio: float,
+) -> float:
+    if (
+        brightness_adjustment < 0.0
+        and highlight_adjustment < 0.0
+        and highlight_area_ratio < _HIGHLIGHT_RATIO_MEDIUM
+    ):
+        return round(brightness_adjustment * 0.7, 4)
+    return brightness_adjustment
+
+
 def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[str, Any]:
     if tool_name == "upscale":
         return {"scale": 2}
@@ -240,15 +288,24 @@ def analyze_image_tone(image: np.ndarray) -> dict[str, float]:
 
     hsv = cv2.cvtColor(working, cv2.COLOR_BGR2HSV)
     saturation_channel = hsv[:, :, 1].astype(np.float64)
+    brightness = _trimmed_mean(
+        l_channel,
+        _TRIMMED_BRIGHTNESS_LOWER_PERCENTILE,
+        _TRIMMED_BRIGHTNESS_UPPER_PERCENTILE,
+    )
+    highlight_area_ratio = float(
+        np.mean(l_channel >= _HIGHLIGHT_PIXEL_THRESHOLD)
+    )
 
     return {
-        "brightness": round(float(np.mean(l_channel)), 2),
+        "brightness": round(brightness, 2),
         "contrast": round(float(np.std(l_channel)), 2),
         "black_point": round(float(np.percentile(l_channel, 5)), 2),
         "white_point": round(float(np.percentile(l_channel, 95)), 2),
         "temperature": round(float(np.mean(b_channel)), 2),
         "tint": round(float(np.mean(a_channel)), 2),
         "saturation": round(float(np.mean(saturation_channel)), 2),
+        "highlight_area_ratio": round(highlight_area_ratio, 4),
     }
 
 
@@ -290,7 +347,10 @@ def build_aesthetic_color_grading_params(
                 40.0,
             )
         elif metric_name == "white_point":
-            applied_params["highlights"] = _scale_gap_to_percent(gap, tolerance, 45.0)
+            applied_params["highlights"] = _attenuate_negative_highlights(
+                _scale_gap_to_percent(gap, tolerance, 45.0),
+                current_tone.get("highlight_area_ratio", 0.0),
+            )
         elif metric_name == "temperature":
             applied_params["temperature"] = "warm" if gap >= 0.0 else "cool"
             applied_params["temperature_strength"] = _clamp_float(
@@ -309,6 +369,12 @@ def build_aesthetic_color_grading_params(
             )
         elif metric_name == "saturation":
             applied_params["saturation"] = _scale_gap_to_percent(gap, tolerance, 35.0)
+
+    applied_params["brightness"] = _attenuate_combined_global_darkening(
+        cast(float, applied_params["brightness"]),
+        cast(float, applied_params["highlights"]),
+        current_tone.get("highlight_area_ratio", 0.0),
+    )
 
     normalized_params = normalize_tool_params("color_grading", applied_params)
     debug_payload = {

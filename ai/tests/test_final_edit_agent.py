@@ -88,7 +88,10 @@ def test_analyze_image_tone_returns_expected_metrics() -> None:
 
     metrics = analyze_image_tone(image)
 
-    assert tuple(metrics.keys()) == AESTHETIC_TONE_METRIC_KEYS
+    assert tuple(metrics.keys())[: len(AESTHETIC_TONE_METRIC_KEYS)] == (
+        AESTHETIC_TONE_METRIC_KEYS
+    )
+    assert "highlight_area_ratio" in metrics
     assert all(isinstance(value, float) for value in metrics.values())
     assert metrics["white_point"] >= metrics["black_point"]
 
@@ -112,6 +115,37 @@ def test_build_aesthetic_color_grading_params_skips_small_gaps() -> None:
     assert debug["skip_by_metric"]["saturation"] is True
     assert params["temperature_strength"] == 0.0
     assert params["tint_strength"] == 0.0
+
+
+def test_analyze_image_tone_uses_trimmed_brightness_for_small_white_patch() -> None:
+    image = np.full((96, 96, 3), 90, dtype=np.uint8)
+    image[4:10, 4:10] = 255
+
+    metrics = analyze_image_tone(image)
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l_channel = lab[:, :, 0].astype(np.float64)
+    raw_mean_brightness = round(float(np.mean(l_channel)), 2)
+    baseline_metrics = analyze_image_tone(np.full((96, 96, 3), 90, dtype=np.uint8))
+
+    assert metrics["brightness"] < raw_mean_brightness
+    assert metrics["brightness"] == baseline_metrics["brightness"]
+    assert metrics["highlight_area_ratio"] < 0.03
+
+
+def test_build_aesthetic_color_grading_params_attenuates_small_bright_highlights() -> None:
+    small_highlights = np.full((128, 128, 3), 95, dtype=np.uint8)
+    small_highlights[8:16, 8:16] = 255
+    broad_overexposure = np.full((128, 128, 3), 235, dtype=np.uint8)
+
+    small_params, small_debug = build_aesthetic_color_grading_params(small_highlights)
+    broad_params, broad_debug = build_aesthetic_color_grading_params(broad_overexposure)
+
+    assert (
+        small_debug["current_tone"]["highlight_area_ratio"]
+        < broad_debug["current_tone"]["highlight_area_ratio"]
+    )
+    assert abs(small_params["highlights"]) < abs(broad_params["highlights"])
+    assert abs(small_params["brightness"]) < abs(broad_params["brightness"])
 
 
 def test_tool_registry_upscale_changes_shape() -> None:

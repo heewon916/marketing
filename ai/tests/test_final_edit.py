@@ -764,6 +764,7 @@ def test_final_edit_service_records_aesthetic_tone_debug_fields(
     skip = json.loads(result.debug_fields["debug:aesthetic_tone_skip:1"])
     applied_params = json.loads(result.debug_fields["debug:aesthetic_applied_params:1"])
     assert "brightness" in current_tone
+    assert "highlight_area_ratio" in current_tone
     assert "brightness" in target_tone
     assert "brightness" in tolerance
     assert "brightness" in gap
