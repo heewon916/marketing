@@ -114,6 +114,8 @@ class FinalEditAgent:
 
         tool_name = state.plan.tools[state.current_tool_index]
         params = state.normalized_params.get(tool_name, {})
+        if tool_name == "color_grading":
+            state.metadata["aesthetic_tone_target_applied"] = False
         if tool_name == "color_grading" and state.owner_persona == DEFAULT_OWNER_PERSONA:
             params, tone_debug = build_aesthetic_color_grading_params(state.current_image)
             state.metadata["aesthetic_tone_target_applied"] = True

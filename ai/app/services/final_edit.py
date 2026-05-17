@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
 from dataclasses import dataclass
@@ -87,6 +88,10 @@ def _read_image_dimensions(image_path: Path) -> tuple[int | None, int | None]:
         return None, None
     height, width = image.shape[:2]
     return width, height
+
+
+def _json_debug_value(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 class S3DraftImageDownloader:
@@ -462,6 +467,35 @@ class FinalEditService:
             )
             debug_fields[f"debug:upload_source_kind:{image_index + 1}"] = output_source
             debug_fields[f"debug:output_path:{image_index + 1}"] = str(output_path)
+            tone_debug = image_state.metadata.get("aesthetic_tone_debug")
+            debug_fields[f"debug:aesthetic_tone_applied:{image_index + 1}"] = str(
+                bool(image_state.metadata.get("aesthetic_tone_target_applied"))
+            ).lower()
+            if isinstance(tone_debug, dict):
+                debug_fields[f"debug:aesthetic_current_tone:{image_index + 1}"] = (
+                    _json_debug_value(tone_debug.get("current_tone", {}))
+                )
+                debug_fields[f"debug:aesthetic_target_tone:{image_index + 1}"] = (
+                    _json_debug_value(tone_debug.get("target_tone", {}))
+                )
+                debug_fields[f"debug:aesthetic_tolerance:{image_index + 1}"] = (
+                    _json_debug_value(
+                        {
+                            key: value.get("tolerance")
+                            for key, value in tone_debug.get("target_tone", {}).items()
+                            if isinstance(value, dict)
+                        }
+                    )
+                )
+                debug_fields[f"debug:aesthetic_tone_gap:{image_index + 1}"] = (
+                    _json_debug_value(tone_debug.get("gap_by_metric", {}))
+                )
+                debug_fields[f"debug:aesthetic_tone_skip:{image_index + 1}"] = (
+                    _json_debug_value(tone_debug.get("skip_by_metric", {}))
+                )
+                debug_fields[f"debug:aesthetic_applied_params:{image_index + 1}"] = (
+                    _json_debug_value(tone_debug.get("applied_params", {}))
+                )
             if image_state.fallback_to_original:
                 debug_fields[f"debug:image_fallback:{image_index + 1}"] = "true"
                 if image_state.failure_reason:

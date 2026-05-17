@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -462,3 +463,65 @@ def test_final_edit_service_marks_persona_preset_fallback_for_unknown_persona(
     assert result.debug_fields["debug:owner_persona"] == "mystery"
     assert result.debug_fields["debug:target_preset_persona"] == "aesthetic"
     assert result.debug_fields["debug:target_preset_fallback"] == "true"
+
+
+def test_final_edit_service_records_aesthetic_tone_debug_fields(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="케이크",
+                    strategy="aesthetic tone gap 보정",
+                    tools=["color_grading"],
+                    params={
+                        "color_grading": {
+                            "contrast": 12,
+                            "highlights": 8,
+                            "shadows": 5,
+                            "vibrance": 9,
+                            "saturation": 10,
+                            "temperature": "warm",
+                            "tone_curve_shadow_lift": 7,
+                        }
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-aesthetic-tone-1",
+            drafts=["/ai-drafts/session-aesthetic-tone-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                owner_persona="aesthetic",
+                caption="톤 보정",
+                keywords=["케이크"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:aesthetic_tone_applied:1"] == "true"
+    current_tone = json.loads(result.debug_fields["debug:aesthetic_current_tone:1"])
+    target_tone = json.loads(result.debug_fields["debug:aesthetic_target_tone:1"])
+    tolerance = json.loads(result.debug_fields["debug:aesthetic_tolerance:1"])
+    gap = json.loads(result.debug_fields["debug:aesthetic_tone_gap:1"])
+    skip = json.loads(result.debug_fields["debug:aesthetic_tone_skip:1"])
+    applied_params = json.loads(result.debug_fields["debug:aesthetic_applied_params:1"])
+    assert "brightness" in current_tone
+    assert "brightness" in target_tone
+    assert "brightness" in tolerance
+    assert "brightness" in gap
+    assert "brightness" in skip
+    assert "temperature_strength" in applied_params

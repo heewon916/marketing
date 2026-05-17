@@ -190,6 +190,46 @@ async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
 
 
 @pytest.mark.asyncio
+async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "draft.jpg"
+    _write_test_image(image_path)
+    agent = FinalEditAgent(FinalEditToolRegistry())
+    planned_params = {
+        "contrast": -8,
+        "highlights": -10,
+        "shadows": 6,
+        "vibrance": -4,
+        "saturation": -6,
+        "temperature": "warm",
+        "tone_curve_shadow_lift": 4,
+    }
+    state = FinalEditImageState(
+        image_path=image_path,
+        working_dir=tmp_path / "edited",
+        owner_persona="friendly",
+        plan=ImageEditPlan(
+            image_index=0,
+            content="케이크",
+            strategy="friendly 보정",
+            tools=["color_grading"],
+            params={"color_grading": planned_params},
+        ),
+    )
+
+    result = await agent.run(state)
+
+    assert result.fallback_to_original is False
+    assert result.metadata["aesthetic_tone_target_applied"] is False
+    assert result.metadata["current_tool_params"] == normalize_tool_params(
+        "color_grading",
+        planned_params,
+    )
+    assert "aesthetic_tone_debug" not in result.metadata
+
+
+@pytest.mark.asyncio
 async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
     image_path = tmp_path / "draft.jpg"
     _write_test_image(image_path)
