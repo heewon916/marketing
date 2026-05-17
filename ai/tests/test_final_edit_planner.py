@@ -99,6 +99,7 @@ def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     assert "color_grading" in prompt
     assert "Upscale must be included for every image" in prompt
     assert "it is 2x only" in prompt
+    assert "exactly once as the last tool" in prompt
     assert "Denoise alone is not enough to justify upscale" in prompt
     assert "all 3 input images" in prompt
     assert "image_index from 0 to 2" in prompt
@@ -174,6 +175,26 @@ def test_normalize_image_edit_plan_appends_default_upscale() -> None:
     )
 
     assert normalized.tools == ["denoise", "sharpen", "upscale"]
+    assert normalized.params["upscale"] == {"scale": 2}
+
+
+def test_normalize_image_edit_plan_deduplicates_upscale_to_single_last_step() -> None:
+    normalized = normalize_image_edit_plan(
+        ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="duplicate upscale",
+            tools=["upscale", "color_grading", "upscale", "denoise"],
+            params={
+                "upscale": {"scale": 4},
+                "color_grading": {"contrast": -10},
+                "denoise": {"strength": 0.4},
+            },
+        )
+    )
+
+    assert normalized.tools == ["denoise", "color_grading", "upscale"]
+    assert normalized.tools.count("upscale") == 1
     assert normalized.params["upscale"] == {"scale": 2}
 
 

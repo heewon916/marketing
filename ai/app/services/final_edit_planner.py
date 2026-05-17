@@ -324,7 +324,7 @@ def build_final_edit_prompt(
         "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
         "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
         "10. If denoise is used, it must appear before any filter tool.\n"
-        "11. Upscale must be included for every image, it is 2x only, and it must appear after every filter tool.\n"
+        "11. Upscale must be included for every image, it is 2x only, and it must appear exactly once as the last tool.\n"
         "12. Do not place upscale on an image unless at least one filter tool precedes it.\n"
         "13. Denoise alone is not enough to justify upscale; insert a filter before upscale.\n"
         "14. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"

@@ -518,6 +518,50 @@ def test_final_edit_service_reorders_tools_before_execution(
     assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
 
 
+def test_final_edit_service_deduplicates_upscale_to_single_execution(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="케이크",
+                    strategy="duplicate upscale",
+                    tools=["upscale", "sharpen", "upscale", "denoise"],
+                    params={
+                        "upscale": {"scale": 4},
+                        "sharpen": {"strength": 0.3},
+                        "denoise": {"strength": 0.4},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-duplicate-upscale-1",
+            drafts=["/ai-drafts/session-duplicate-upscale-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="디저트 케이크 소개",
+                keywords=["케이크"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "denoise,sharpen,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen,upscale"
+
+
 def test_final_edit_service_uses_upscale_only_when_plan_is_missing(
     tmp_path: Path,
     service_loop,

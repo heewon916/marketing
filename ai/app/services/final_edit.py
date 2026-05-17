@@ -107,6 +107,7 @@ def _ensure_filter_before_upscale(
     plan: ImageEditPlan,
     owner_persona: str,
 ) -> ImageEditPlan:
+    plan = normalize_image_edit_plan(plan)
     if "upscale" not in plan.tools:
         return plan
 
