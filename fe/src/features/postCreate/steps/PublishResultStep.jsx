@@ -1,7 +1,7 @@
 import { useEffect } from "react"
 import confetti from "canvas-confetti"
-import CharacterLove from "@/assets/character/CharacterLove.png"
-import CharacterFail from "@/assets/character/CharacterFail.png"
+import CharacterLove from "@/assets/character/CharacterLove.mp4"
+import CharacterFail from "@/assets/character/CharacterFail.mp4"
 import StepProgress from "@/components/common/StepProgress"
 import Button from "@/components/common/Button"
 
@@ -40,10 +40,14 @@ export default function PublishResultStep({ type, stepNum, onGoHome, onViewInsta
 
 			{/* 캐릭터 이미지 */}
 			<div className="flex flex-1 items-center justify-center">
-				<img
+				<video
 					src={isSuccess ? CharacterLove : CharacterFail}
 					alt={isSuccess ? "발행 성공 캐릭터" : "발행 실패 캐릭터"}
 					className="object-contain"
+					autoPlay
+					loop
+					muted
+					playsInline
 				/>
 			</div>
 

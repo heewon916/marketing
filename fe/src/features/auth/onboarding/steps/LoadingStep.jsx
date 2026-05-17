@@ -3,7 +3,7 @@ import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
 import tossLoading from '@/assets/videos/toss-loading.mp4';
-import CharacterFail from '@/assets/character/CharacterFail.png';
+import CharacterFail from '@/assets/character/CharacterFail.mp4';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
@@ -162,9 +162,12 @@ function LoadingStep({ onNext, onPrev }) {
     >
       <div className="flex flex-col items-center w-full">
         {isError ? (
-          <img
+          <video
             src={CharacterFail}
-            alt="character"
+            autoPlay
+            loop
+            muted
+            playsInline
             className="mt-10 w-full max-w-[320px]"
           />
         ) : (
