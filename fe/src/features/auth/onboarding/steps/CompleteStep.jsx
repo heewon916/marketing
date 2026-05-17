@@ -28,7 +28,7 @@ const waitRemainingTime = async (startedAt) => {
   }
 };
 
-function CompleteStep({ onPrev, onRestartPos }) {
+function CompleteStep({ onPrev, onRestartPos, onStatusChange }) {
   const navigate = useNavigate();
   const hasSubmittedRef = useRef(false);
 
@@ -36,6 +36,10 @@ function CompleteStep({ onPrev, onRestartPos }) {
   const [status, setStatus] = useState('saving');
   const [errorMessage, setErrorMessage] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   const storeId = useOnboardingStore((state) => state.storeId);
   const getOnboardingPayload = useOnboardingStore(

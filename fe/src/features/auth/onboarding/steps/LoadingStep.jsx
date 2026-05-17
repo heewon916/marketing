@@ -26,11 +26,15 @@ const waitRemainingTime = async (startedAt) => {
   }
 };
 
-function LoadingStep({ onNext, onPrev }) {
+function LoadingStep({ onNext, onPrev, onStatusChange }) {
   const hasSyncedRef = useRef(false);
   const [status, setStatus] = useState('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   const merchantId = useOnboardingStore((state) => state.merchantId);
   const setPosSyncResult = useOnboardingStore(

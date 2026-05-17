@@ -22,6 +22,38 @@ import CompleteStep from '@/features/auth/onboarding/steps/CompleteStep.jsx';
 
 import OnboardingLeaveConfirmModal from '@/features/auth/onboarding/components/OnboardingLeaveConfirmModal.jsx';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
+import { speak, stopTTS } from '@/utils/tts';
+import onboardingStep2TTS from '@/assets/TTS/on_boarding_case2_TTS.mp3';
+import onboardingStep3TTS from '@/assets/TTS/on_boarding_case3_TTS.mp3';
+import onboardingStep4TTS from '@/assets/TTS/on_boarding_case4_TTS.mp3';
+import onboardingStep8TTS from '@/assets/TTS/on_boarding_case8_TTS.mp3';
+// TODO: 아래 파일을 추가하면 import 주석을 해제하세요
+// import onboardingCase7ErrorTTS from '@/assets/TTS/on_boarding_case7_error_TTS.mp3';
+// import onboardingCase9TTS from '@/assets/TTS/on_boarding_case9_TTS.mp3';
+// import onboardingCase11TTS from '@/assets/TTS/on_boarding_case11_TTS.mp3';
+// import onboardingCase16TTS from '@/assets/TTS/on_boarding_case16_TTS.mp3';
+// import onboardingCase16SuccessTTS from '@/assets/TTS/on_boarding_case16_success_TTS.mp3';
+// import onboardingCase16ErrorTTS from '@/assets/TTS/on_boarding_case16_error_TTS.mp3';
+import onboardingStep16TTS from '@/assets/TTS/on_boarding_case16_TTS.mp3';
+
+// 스텝 진입 시 재생할 고정 TTS 맵 (case 9, 11은 파일 추가 후 활성화)
+const ONBOARDING_TTS_BY_STEP = {
+  2: onboardingStep2TTS,
+  3: onboardingStep3TTS,
+  4: onboardingStep4TTS,
+  8: onboardingStep8TTS,
+  // 9: onboardingCase9TTS,
+  // 11: onboardingCase11TTS,
+};
+
+// case 16 상태별 TTS 맵 (파일 추가 후 활성화)
+const ONBOARDING_CASE16_TTS_BY_STATUS = {
+  success: onboardingStep16TTS,
+  // error: onboardingCase16ErrorTTS,
+};
+
+// case 7 에러 상태 TTS (파일 추가 후 활성화)
+// const ONBOARDING_CASE7_ERROR_TTS = onboardingCase7ErrorTTS;
 
 function OnboardingPage() {
   const navigate = useNavigate();
@@ -41,6 +73,8 @@ function OnboardingPage() {
   const [stepHistory, setStepHistory] = useState([]);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [authCode, setAuthCode] = useState('');
+  const [loadingStepStatus, setLoadingStepStatus] = useState('loading');
+  const [completeStepStatus, setCompleteStepStatus] = useState('saving');
 
   useEffect(() => {
     if (!isInstagramSuccess || hasAuthNotice) return;
@@ -69,6 +103,51 @@ function OnboardingPage() {
 
     return () => {
       window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // 스텝 진입 시 고정 TTS (case 16은 상태별로 별도 처리)
+  useEffect(() => {
+    if (step === 16) return;
+
+    const audioSrc = ONBOARDING_TTS_BY_STEP[step];
+
+    if (!audioSrc) {
+      stopTTS();
+      return;
+    }
+
+    void speak('', {
+      source: 'file',
+      audioSrc,
+      fallbackToTTS: false,
+    });
+  }, [step]);
+
+  // case 7: 에러 상태 전환 시 TTS
+  useEffect(() => {
+    if (step !== 7 || loadingStepStatus !== 'error') return;
+    // TODO: 파일 추가 후 아래 주석 해제
+    // void speak('', { source: 'file', audioSrc: ONBOARDING_CASE7_ERROR_TTS, fallbackToTTS: false });
+  }, [step, loadingStepStatus]);
+
+  // case 16: 상태별 TTS
+  useEffect(() => {
+    if (step !== 16) return;
+
+    const audioSrc = ONBOARDING_CASE16_TTS_BY_STATUS[completeStepStatus];
+    if (!audioSrc) return;
+
+    void speak('', {
+      source: 'file',
+      audioSrc,
+      fallbackToTTS: false,
+    });
+  }, [step, completeStepStatus]);
+
+  useEffect(() => {
+    return () => {
+      stopTTS();
     };
   }, []);
 
@@ -172,7 +251,7 @@ function OnboardingPage() {
         );
 
       case 7:
-        return <LoadingStep {...commonProps} />;
+        return <LoadingStep {...commonProps} onStatusChange={setLoadingStepStatus} />;
 
       case 8:
         return (
@@ -232,6 +311,7 @@ function OnboardingPage() {
           <CompleteStep
             {...commonProps}
             onRestartPos={() => moveToStep(4)}
+            onStatusChange={setCompleteStepStatus}
           />
         );
 
