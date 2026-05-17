@@ -4,6 +4,7 @@ import com.matketing.be.domain.content.client.AiContentClient;
 import com.matketing.be.domain.content.client.ClovaSttClient;
 import com.matketing.be.domain.content.client.ClovaTtsClient;
 import com.matketing.be.domain.content.client.InstagramPublishClient;
+import com.matketing.be.domain.content.client.LlamaIntentClient;
 import com.matketing.be.domain.content.client.S3VideoClient;
 import com.matketing.be.domain.content.config.ContentS3Properties;
 import com.matketing.be.domain.content.config.ContentProperties;
@@ -27,6 +28,7 @@ import com.matketing.be.domain.content.dto.ContentPublishResponseDto;
 import com.matketing.be.domain.content.dto.ContentPublishStatusResponseDto;
 import com.matketing.be.domain.content.dto.ContentRedisResult;
 import com.matketing.be.domain.content.dto.ContentVideoResponseDto;
+import com.matketing.be.domain.content.dto.LlamaIntentResponse;
 import com.matketing.be.domain.content.dto.SttResponse;
 import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.domain.content.enums.ContentStatus;
@@ -101,6 +103,7 @@ public class ContentService {
     private final StoreRepository storeRepository;
     private final WeatherContextProvider weatherService;
     private final ClovaTtsClient clovaTtsClient;
+    private final LlamaIntentClient llamaIntentClient;
 
 
     /**
@@ -135,7 +138,6 @@ public class ContentService {
      * - 기존 ChatRequest를 신규 ContentRequest로 변환해 실제 처리 메서드로 위임한다.
      * - 기존 프론트/테스트 코드와의 호환성을 유지하기 위한 어댑터 역할이다.
      * @param request request_id, 최종 utterance
-     * @param userId 인증 사용자 식별자
      * @return AI 캡션 생성 응답
      */
     public ChatResponse createTextContent(ChatRequest request) {
@@ -147,7 +149,6 @@ public class ContentService {
      * - request_id가 있으면 기존 캡션 생성 플로우를 실행한다.
      * - request_id가 없으면 FastAPI 호출 없이 AI 게시글 생성에 필요한 참고 JSON만 생성한다.
      * @param request store_id, request_id(선택), utterance
-     * @param userId 인증 사용자 식별자
      * @return ChatResponse 또는 ContentResponse
      */
     public Object createCaption(ContentRequest request) {
@@ -164,7 +165,6 @@ public class ContentService {
      * - 매장의 owner_persona, 좌표, 주소를 사용해 날씨/대기질/특보 정보를 조합한다.
      * - FastAPI를 호출하지 않고, /ai/sessions/{session_id}/process-utterance 요청 바디와 같은 참고 JSON을 반환한다.
      * @param request store_id, utterance
-     * @param userId 인증 사용자 식별자
      * @return store, utterance, persona, date, weather가 포함된 참고정보 응답
      */
     public ContentResponse createCaptionContext(ContentRequest request) {
@@ -196,7 +196,6 @@ public class ContentService {
      * - 최초 요청이면 store/weather 컨텍스트를 만든 뒤 FastAPI process-utterance를 호출한다.
      * - 중복 요청이면 FastAPI를 재호출하지 않고 Redis에 저장된 기존 처리 결과를 반환한다.
      * @param request store_id(선택), request_id, utterance
-     * @param userId 인증 사용자 식별자
      * @return FastAPI 캡션 생성 결과
      */
     public ChatResponse createTextContent(ContentRequest request) {
@@ -212,6 +211,19 @@ public class ContentService {
         // 2. request_id + session_id 기준으로 Redis 멱등성 key 생성
         String userId = currentUserId();
         String requestId = request.requestId();
+
+        // [NEW] Llama 의도 파악 로직 추가
+        LlamaIntentResponse llamaResp = llamaIntentClient.classify(request.utterance());
+
+        if (!llamaResp.isCreatePost()) {
+            return new ChatResponse(
+                    null,
+                    ContentStatus.GENERAL_CHAT,
+                    "",
+                    llamaResp.reply()
+            );
+        }
+
         String sessionId = UUID.randomUUID().toString();
         Duration ttl = Duration.ofSeconds(contentProperties.idempotencyTtlSeconds()); // 10분 동안은 같은 request_id는 중복 처리된다
         boolean firstRequest = contentRedisRepository.setIdempotencyKeyIfAbsent(userId, requestId, sessionId, ttl); // Redis SET NX EX
@@ -288,7 +300,7 @@ public class ContentService {
     /**
      * [게시물 이미지 삭제] /api/v1/contents/{sessionId}/images/delete 핵심 비즈니스 로직
      * @param sessionId
-     * @param imageUrl
+     * @param deletedImageKey
      * @return
      */
     @Transactional
