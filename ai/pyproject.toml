@@ -23,6 +23,7 @@ dependencies = [
   "openai>=2.36.0",
   "huggingface-hub>=0.36.2",
   "langgraph>=1.0,<2.0",
+  "matplotlib>=3.10.9",
 ]
 
 [dependency-groups]
