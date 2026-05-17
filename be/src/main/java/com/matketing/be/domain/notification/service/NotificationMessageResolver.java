@@ -27,6 +27,8 @@ public class NotificationMessageResolver {
                 return "인스타그램 게시물 발행이 완료됐어요.";
             case POSTING_FAILED:
                 return "인스타그램 게시물 발행에 실패했어요. 다시 시도해 주세요.";
+            case POST_PROMOTION_REMINDER:
+                return "지금이 인스타 조회수가 가장 잘 나오는 시간이에요 사장님! 가게 홍보 글을 올려볼까요?";
             default:
                 return "맡케팅 알림입니다.";
         }

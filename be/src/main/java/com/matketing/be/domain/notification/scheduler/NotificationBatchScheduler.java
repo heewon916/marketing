@@ -49,4 +49,17 @@ public class NotificationBatchScheduler {
             log.error("[NotificationBatchScheduler] Failed to create weekly batch for WEEKLY_STATS", e);
         }
     }
+
+    // 로컬 테스트 시 매분 실행으로 임시 변경 가능: @Scheduled(cron = "0 * * * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 0 0 * * *", zone = "Asia/Seoul")
+    public void createPostPromotionReminderBatches() {
+        log.info("[NotificationBatchScheduler] Starting to create POST_PROMOTION_REMINDER batches...");
+        try {
+            NotificationBatchCreateResponse response = notificationBatchCreateService.createBatch(NotificationType.POST_PROMOTION_REMINDER);
+            log.info("[NotificationBatchScheduler] Daily batch created for POST_PROMOTION_REMINDER. createdCount={}, skippedCount={}",
+                    response.getCreatedCount(), response.getSkippedCount());
+        } catch (Exception e) {
+            log.error("[NotificationBatchScheduler] Failed to create daily batch for POST_PROMOTION_REMINDER", e);
+        }
+    }
 }
