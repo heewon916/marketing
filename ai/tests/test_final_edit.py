@@ -259,6 +259,9 @@ def test_final_edit_service_marks_planner_fallback_on_planner_error(tmp_path: Pa
     assert result.results == ["/ai-finals/session-planner-fallback-1/final-001.jpg"]
     assert result.debug_fields is not None
     assert result.debug_fields["debug:planner_fallback"] == "true"
+    assert result.debug_fields["debug:owner_persona"] == "aesthetic"
+    assert result.debug_fields["debug:target_preset_persona"] == "aesthetic"
+    assert result.debug_fields["debug:target_preset_fallback"] == "false"
     assert result.debug_fields["debug:planner_failure_type"] == "RuntimeError"
     assert result.debug_fields["debug:planner_response_received"] == "false"
     assert result.debug_fields["debug:planned_indexes"] == ""
@@ -302,6 +305,7 @@ def test_final_edit_service_marks_image_fallback_when_agent_falls_back(tmp_path:
     assert result.status == "PHOTO_EDITED"
     assert result.debug_fields is not None
     assert result.debug_fields["debug:planner_response_received"] == "true"
+    assert result.debug_fields["debug:owner_persona"] == "aesthetic"
     assert result.debug_fields["debug:planned_indexes"] == "0"
     assert result.debug_fields["debug:image_fallback:1"] == "true"
     assert result.debug_fields["debug:image_failure:1"] == "tool_failed:denoise:RuntimeError"
@@ -347,8 +351,39 @@ def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(tmp_p
     assert result.status == "PHOTO_EDITED"
     assert result.debug_fields is not None
     assert result.debug_fields["debug:planner_response_received"] == "true"
+    assert result.debug_fields["debug:owner_persona"] == "aesthetic"
     assert result.debug_fields["debug:planned_indexes"] == "0"
     assert result.debug_fields["debug:executed_tools:1"] == "denoise,sharpen"
     assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
     assert "edited-000.jpg" in result.debug_fields["debug:output_path:1"]
     assert "edited-000.jpg" in uploader.source_paths[0]
+
+
+def test_final_edit_service_marks_persona_preset_fallback_for_unknown_persona(
+    tmp_path: Path,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FailingPlannerClient(),
+    )
+
+    result = asyncio.run(
+        service.edit_and_upload(
+            session_id="session-preset-fallback-1",
+            drafts=["/ai-drafts/session-preset-fallback-1/draft-001.jpg"],
+            context=FinalEditSessionContext(
+                owner_persona="mystery",
+                caption="디저트 소개",
+                keywords=["케이크"],
+            ),
+        )
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:owner_persona"] == "mystery"
+    assert result.debug_fields["debug:target_preset_persona"] == "aesthetic"
+    assert result.debug_fields["debug:target_preset_fallback"] == "true"

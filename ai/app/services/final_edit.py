@@ -21,6 +21,7 @@ from app.services.final_edit_planner import (
     FinalEditSessionContext,
     build_final_edit_planner_client,
     load_final_edit_session_context,
+    resolve_owner_persona_preset,
 )
 from app.services.final_edit_runtime import (
     FinalEditUnavailableError,
@@ -184,9 +185,15 @@ class FinalEditService:
         drafts: list[str],
         context: FinalEditSessionContext,
     ) -> dict[str, str]:
+        preset_persona, _, preset_fallback = resolve_owner_persona_preset(
+            context.owner_persona
+        )
         return {
             "debug:draft_count": str(len(drafts)),
             "debug:session_dir": str(session_dir),
+            "debug:owner_persona": context.owner_persona,
+            "debug:target_preset_persona": preset_persona,
+            "debug:target_preset_fallback": str(preset_fallback).lower(),
             "debug:caption_present": str(bool(context.caption)).lower(),
             "debug:keyword_count": str(len(context.keywords)),
             "debug:planner_mode": "json_batch",

@@ -36,11 +36,16 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     ),
     FinalEditToolSpec(
         name="color_grading",
-        description="색온도, 채도, 밝기를 보정한다.",
+        description="목표 톤에 맞춰 색온도와 톤 밸런스를 미세 조정한다.",
         params_schema={
+            "contrast": "-100~100",
+            "highlights": "-100~100",
+            "shadows": "-100~100",
+            "vibrance": "-100~100",
+            "saturation": "-100~100",
             "temperature": "warm 또는 cool",
-            "saturation": "-1.0~1.0",
-            "brightness": "-1.0~1.0",
+            "tone_curve_shadow_lift": "-100~100",
+            "brightness": "-1.0~1.0 (legacy)",
         },
     ),
     FinalEditToolSpec(
