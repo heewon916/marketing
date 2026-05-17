@@ -401,6 +401,7 @@ class FinalEditService:
         downloaded_drafts: list[Path],
         plans_by_index: dict[int, object],
         planner_fallback: bool,
+        context: FinalEditSessionContext,
         debug_fields: dict[str, str],
     ) -> list[Path]:
         from app.services.final_edit_agent import FinalEditImageState
@@ -449,6 +450,7 @@ class FinalEditService:
                     image_path=draft_path,
                     working_dir=session_dir / "edited",
                     plan=plan,
+                    owner_persona=context.owner_persona,
                     session_id=session_id,
                     final_index=image_index + 1,
                 )
@@ -583,6 +585,7 @@ class FinalEditService:
                 downloaded_drafts,
                 plans_by_index,
                 planner_fallback,
+                context,
                 debug_fields,
             )
             await self._upload_edited_images(

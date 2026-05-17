@@ -45,7 +45,7 @@ class FinalEditToolSpec:
 SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     FinalEditToolSpec(
         name="upscale",
-        description="저해상도 이미지를 업스케일한다.",
+        description="이미지를 업스케일한다.",
         params_schema={"scale": "2 또는 4"},
     ),
     FinalEditToolSpec(
@@ -55,7 +55,7 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     ),
     FinalEditToolSpec(
         name="color_grading",
-        description="목표 톤에 맞춰 색온도와 톤 밸런스를 미세 조정한다.",
+        description="목표 톤에 맞춰 색온도와 채도, 명암을 미세 조정한다.",
         params_schema={
             "contrast": "-100~100",
             "highlights": "-100~100",
@@ -63,18 +63,21 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
             "vibrance": "-100~100",
             "saturation": "-100~100",
             "temperature": "warm 또는 cool",
+            "temperature_strength": "0.0~1.0 (internal)",
+            "tint": "-100~100 (internal)",
+            "tint_strength": "0.0~1.0 (internal)",
             "tone_curve_shadow_lift": "-100~100",
             "brightness": "-1.0~1.0 (legacy)",
         },
     ),
     FinalEditToolSpec(
         name="sharpen",
-        description="샤프닝으로 디테일을 살린다.",
+        description="샤프로 디테일을 올린다.",
         params_schema={"strength": "0.0~1.0"},
     ),
     FinalEditToolSpec(
         name="background_blur",
-        description="배경을 흐리게 만든다.",
+        description="배경을 부드럽게 흐린다.",
         params_schema={"blur_radius": "1~20"},
     ),
 )
@@ -111,6 +114,9 @@ def _is_legacy_color_grading_params(params: dict[str, Any]) -> bool:
         "shadows",
         "vibrance",
         "tone_curve_shadow_lift",
+        "temperature_strength",
+        "tint",
+        "tint_strength",
     }
     if any(key in params for key in known_new_keys):
         return False
@@ -121,6 +127,40 @@ def _is_legacy_color_grading_params(params: dict[str, Any]) -> bool:
     except (TypeError, ValueError):
         return True
     return abs(saturation) <= 1.0 or "brightness" in params
+
+
+def _empty_color_grading_params() -> dict[str, Any]:
+    return {
+        "contrast": 0.0,
+        "highlights": 0.0,
+        "shadows": 0.0,
+        "vibrance": 0.0,
+        "temperature": "warm",
+        "temperature_strength": 0.0,
+        "tint": 0.0,
+        "tint_strength": 0.0,
+        "saturation": 0.0,
+        "tone_curve_shadow_lift": 0.0,
+        "brightness": 0.0,
+    }
+
+
+def _is_gap_within_skip_threshold(gap: float, tolerance: float) -> bool:
+    return abs(gap) <= tolerance * 0.5
+
+
+def _scale_gap_to_percent(gap: float, tolerance: float, multiplier: float) -> float:
+    safe_tolerance = max(tolerance, 1.0)
+    return _clamp_percent((gap / safe_tolerance) * multiplier)
+
+
+def _scale_gap_to_unit_interval(
+    gap: float,
+    tolerance: float,
+    multiplier: float,
+) -> float:
+    safe_tolerance = max(tolerance, 1.0)
+    return _clamp_float((gap / safe_tolerance) * multiplier, 0.0, -1.0, 1.0)
 
 
 def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[str, Any]:
@@ -142,6 +182,19 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
             "shadows": _clamp_percent(params.get("shadows"), 0.0),
             "vibrance": _clamp_percent(params.get("vibrance"), 0.0),
             "temperature": _normalize_temperature(params.get("temperature", "warm")),
+            "temperature_strength": _clamp_float(
+                params.get("temperature_strength"),
+                1.0 if "temperature" in params else 0.0,
+                0.0,
+                1.0,
+            ),
+            "tint": _clamp_percent(params.get("tint"), 0.0),
+            "tint_strength": _clamp_float(
+                params.get("tint_strength"),
+                1.0 if "tint" in params else 0.0,
+                0.0,
+                1.0,
+            ),
             "saturation": normalized_saturation,
             "tone_curve_shadow_lift": _clamp_percent(
                 params.get("tone_curve_shadow_lift"),
@@ -206,6 +259,76 @@ def analyze_image_tone(image: np.ndarray) -> dict[str, float]:
     }
 
 
+def build_aesthetic_color_grading_params(
+    image: np.ndarray,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    current_tone = analyze_image_tone(image)
+    applied_params = _empty_color_grading_params()
+    gap_by_metric: dict[str, float] = {}
+    skip_by_metric: dict[str, bool] = {}
+    threshold_by_metric: dict[str, float] = {}
+
+    for metric_name in AESTHETIC_TONE_METRIC_KEYS:
+        target_config = AESTHETIC_TARGET_TONE_PROFILE[metric_name]
+        target = float(target_config["target"])
+        tolerance = float(target_config["tolerance"])
+        gap = round(target - current_tone[metric_name], 2)
+        should_skip = _is_gap_within_skip_threshold(gap, tolerance)
+
+        gap_by_metric[metric_name] = gap
+        skip_by_metric[metric_name] = should_skip
+        threshold_by_metric[metric_name] = round(tolerance * 0.5, 2)
+
+        if should_skip:
+            continue
+
+        if metric_name == "brightness":
+            applied_params["brightness"] = _scale_gap_to_unit_interval(
+                gap,
+                tolerance,
+                0.35,
+            )
+        elif metric_name == "contrast":
+            applied_params["contrast"] = _scale_gap_to_percent(gap, tolerance, 40.0)
+        elif metric_name == "black_point":
+            applied_params["tone_curve_shadow_lift"] = _scale_gap_to_percent(
+                gap,
+                tolerance,
+                40.0,
+            )
+        elif metric_name == "white_point":
+            applied_params["highlights"] = _scale_gap_to_percent(gap, tolerance, 45.0)
+        elif metric_name == "temperature":
+            applied_params["temperature"] = "warm" if gap >= 0.0 else "cool"
+            applied_params["temperature_strength"] = _clamp_float(
+                abs(gap) / max(tolerance, 1.0),
+                0.0,
+                0.0,
+                1.0,
+            )
+        elif metric_name == "tint":
+            applied_params["tint"] = _scale_gap_to_percent(gap, tolerance, 45.0)
+            applied_params["tint_strength"] = _clamp_float(
+                abs(gap) / max(tolerance, 1.0),
+                0.0,
+                0.0,
+                1.0,
+            )
+        elif metric_name == "saturation":
+            applied_params["saturation"] = _scale_gap_to_percent(gap, tolerance, 35.0)
+
+    normalized_params = normalize_tool_params("color_grading", applied_params)
+    debug_payload = {
+        "current_tone": current_tone,
+        "target_tone": AESTHETIC_TARGET_TONE_PROFILE,
+        "gap_by_metric": gap_by_metric,
+        "skip_by_metric": skip_by_metric,
+        "skip_threshold_by_metric": threshold_by_metric,
+        "applied_params": normalized_params,
+    }
+    return normalized_params, debug_payload
+
+
 def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     cv2 = import_cv2()
     contrast = cast(float, params["contrast"])
@@ -213,18 +336,28 @@ def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray
     shadows = cast(float, params["shadows"])
     vibrance = cast(float, params["vibrance"])
     temperature = cast(str, params["temperature"])
+    temperature_strength = cast(float, params["temperature_strength"])
+    tint = cast(float, params["tint"])
+    tint_strength = cast(float, params["tint_strength"])
     saturation = cast(float, params["saturation"])
     tone_curve_shadow_lift = cast(float, params["tone_curve_shadow_lift"])
     brightness = cast(float, params["brightness"])
 
     result = image.astype(np.float32)
-    if temperature == "warm":
-        result[:, :, 2] += 8.0
-        result[:, :, 1] += 2.0
-        result[:, :, 0] -= 6.0
-    else:
-        result[:, :, 0] += 8.0
-        result[:, :, 2] -= 6.0
+    if temperature_strength > 0.0:
+        if temperature == "warm":
+            result[:, :, 2] += 8.0 * temperature_strength
+            result[:, :, 1] += 2.0 * temperature_strength
+            result[:, :, 0] -= 6.0 * temperature_strength
+        else:
+            result[:, :, 0] += 8.0 * temperature_strength
+            result[:, :, 2] -= 6.0 * temperature_strength
+
+    if tint != 0.0 and tint_strength > 0.0:
+        tint_shift = (tint / 100.0) * 24.0 * tint_strength
+        result[:, :, 2] += tint_shift * 0.65
+        result[:, :, 0] += tint_shift * 0.35
+        result[:, :, 1] -= tint_shift
 
     if contrast != 0.0:
         contrast_factor = 1.0 + (contrast / 100.0) * 0.7

@@ -7,9 +7,12 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from langgraph.graph import END, START, StateGraph
 import numpy as np
 
-from app.services.final_edit_planner import ImageEditPlan
+from app.services.final_edit_planner import DEFAULT_OWNER_PERSONA, ImageEditPlan
 from app.services.final_edit_runtime import import_cv2
-from app.services.final_edit_tools import normalize_tool_params
+from app.services.final_edit_tools import (
+    build_aesthetic_color_grading_params,
+    normalize_tool_params,
+)
 
 if TYPE_CHECKING:
     from app.services.final_edit_tools import FinalEditToolRegistry
@@ -20,6 +23,7 @@ class FinalEditImageState:
     image_path: Path
     working_dir: Path
     plan: ImageEditPlan
+    owner_persona: str = DEFAULT_OWNER_PERSONA
     session_id: str = ""
     final_index: int = 0
     current_tool_index: int = 0
@@ -110,6 +114,10 @@ class FinalEditAgent:
 
         tool_name = state.plan.tools[state.current_tool_index]
         params = state.normalized_params.get(tool_name, {})
+        if tool_name == "color_grading" and state.owner_persona == DEFAULT_OWNER_PERSONA:
+            params, tone_debug = build_aesthetic_color_grading_params(state.current_image)
+            state.metadata["aesthetic_tone_target_applied"] = True
+            state.metadata["aesthetic_tone_debug"] = tone_debug
         state.metadata["current_tool_order"] = state.current_tool_index + 1
         state.metadata["current_tool_params"] = params
         state.metadata["current_tool_input_shape"] = self._shape_to_string(

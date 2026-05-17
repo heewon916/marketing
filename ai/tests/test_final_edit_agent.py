@@ -10,6 +10,7 @@ from app.services.final_edit_tools import (
     AESTHETIC_TONE_METRIC_KEYS,
     FinalEditToolRegistry,
     analyze_image_tone,
+    build_aesthetic_color_grading_params,
     normalize_tool_params,
 )
 
@@ -32,6 +33,9 @@ def test_normalize_tool_params_clamps_values() -> None:
         "shadows": 0.0,
         "vibrance": 0.0,
         "temperature": "warm",
+        "temperature_strength": 1.0,
+        "tint": 0.0,
+        "tint_strength": 0.0,
         "saturation": -100.0,
         "tone_curve_shadow_lift": 0.0,
         "brightness": 1.0,
@@ -59,6 +63,9 @@ def test_normalize_tool_params_supports_new_color_grading_fields() -> None:
         "shadows": 25.0,
         "vibrance": -12.0,
         "temperature": "cool",
+        "temperature_strength": 1.0,
+        "tint": 0.0,
+        "tint_strength": 0.0,
         "saturation": -18.0,
         "tone_curve_shadow_lift": 100.0,
         "brightness": 0.0,
@@ -75,6 +82,27 @@ def test_analyze_image_tone_returns_expected_metrics() -> None:
     assert tuple(metrics.keys()) == AESTHETIC_TONE_METRIC_KEYS
     assert all(isinstance(value, float) for value in metrics.values())
     assert metrics["white_point"] >= metrics["black_point"]
+
+
+def test_build_aesthetic_color_grading_params_skips_small_gaps() -> None:
+    image = np.dstack(
+        [
+            np.full((48, 48), 70, dtype=np.uint8),
+            np.full((48, 48), 90, dtype=np.uint8),
+            np.full((48, 48), 110, dtype=np.uint8),
+        ]
+    )
+
+    params, debug = build_aesthetic_color_grading_params(image)
+
+    assert debug["current_tone"] == analyze_image_tone(image)
+    assert set(debug["gap_by_metric"]) == set(AESTHETIC_TONE_METRIC_KEYS)
+    assert set(debug["skip_by_metric"]) == set(AESTHETIC_TONE_METRIC_KEYS)
+    assert debug["skip_by_metric"]["temperature"] is True
+    assert debug["skip_by_metric"]["tint"] is True
+    assert debug["skip_by_metric"]["saturation"] is True
+    assert params["temperature_strength"] == 0.0
+    assert params["tint_strength"] == 0.0
 
 
 def test_tool_registry_upscale_changes_shape() -> None:
@@ -118,6 +146,47 @@ def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> Non
     assert result.shape == image.shape
     assert result.dtype == np.uint8
     assert np.any(result != image)
+
+
+@pytest.mark.asyncio
+async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "draft.jpg"
+    _write_test_image(image_path)
+    agent = FinalEditAgent(FinalEditToolRegistry())
+    state = FinalEditImageState(
+        image_path=image_path,
+        working_dir=tmp_path / "edited",
+        owner_persona="aesthetic",
+        plan=ImageEditPlan(
+            image_index=0,
+            content="케이크",
+            strategy="tone gap 보정",
+            tools=["color_grading"],
+            params={
+                "color_grading": {
+                    "contrast": 99,
+                    "highlights": 99,
+                    "shadows": 99,
+                    "vibrance": 99,
+                    "saturation": 99,
+                    "temperature": "warm",
+                    "tone_curve_shadow_lift": 99,
+                }
+            },
+        ),
+    )
+
+    result = await agent.run(state)
+
+    assert result.fallback_to_original is False
+    assert result.metadata["aesthetic_tone_target_applied"] is True
+    assert "aesthetic_tone_debug" in result.metadata
+    assert result.metadata["current_tool_params"] != normalize_tool_params(
+        "color_grading",
+        state.plan.params["color_grading"],
+    )
 
 
 @pytest.mark.asyncio
