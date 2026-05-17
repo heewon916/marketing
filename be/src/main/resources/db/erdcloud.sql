@@ -273,16 +273,16 @@ CREATE TABLE "upload_history" (
 --  매장 계정의 주간 성과 지표와 목표 달성 정보를 저장한다.
 -- =============================================================
 CREATE TABLE "account_weekly_metrics" (
-                                           "id"                   UUID            NOT NULL,
-                                           "store_id"             UUID            NOT NULL,
-                                           "week_start"           DATE            NULL,
-                                           "total_reach"          INTEGER         NULL,
-                                           "total_saves"          INTEGER         NULL,
-                                           "total_shares"         INTEGER         NULL,
-                                           "target_post_count"    INTEGER         NULL,
-                                           "actual_post_count"    INTEGER         NULL,
-                                           "achievement_rate"     DECIMAL(5, 2)   NULL,
-                                           "visit_intent_score"   DECIMAL(5, 2)   NULL,
+                                          "id"                   UUID            NOT NULL,
+                                          "store_id"             UUID            NOT NULL,
+                                          "week_start"           DATE            NULL,
+                                          "total_reach"          INTEGER         NULL,
+                                          "total_saves"          INTEGER         NULL,
+                                          "total_shares"         INTEGER         NULL,
+                                          "target_post_count"    INTEGER         NULL,
+                                          "actual_post_count"    INTEGER         NULL,
+                                          "achievement_rate"     DECIMAL(5, 2)   NULL,
+                                          "visit_intent_score"   DECIMAL(5, 2)   NULL,
                                           "created_at"           TIMESTAMPTZ     NULL,
                                           "is_deleted"           BOOLEAN         NULL,
                                           CONSTRAINT "PK_ACCOUNT_WEEKLY_METRICS" PRIMARY KEY ("id"),
@@ -336,8 +336,8 @@ CREATE TABLE "notifications" (
                                  "notification"     TEXT          NOT NULL,
                                  "scheduled_at"     TIMESTAMPTZ   NOT NULL,
                                  "created_at"       TIMESTAMPTZ   NOT NULL,
-                                   "type"             VARCHAR(50)   NOT NULL,
-                                   "status"           VARCHAR(50)   NOT NULL,
+                                 "type"             VARCHAR(50)   NOT NULL,
+                                 "status"           VARCHAR(50)   NOT NULL,
                                  "sent_at"          TIMESTAMPTZ   NULL,
                                  "updated_at"       TIMESTAMPTZ   NOT NULL,
                                  "retry_count"      INTEGER       NOT NULL,
@@ -404,16 +404,16 @@ CREATE TABLE "video_recordings" (
 --  Instagram 게시물별 도달/저장/공유/좋아요 지표를 저장한다.
 -- =============================================================
 CREATE TABLE "instagram_metrics" (
-                                       "id"                   UUID           NOT NULL,
-                                       "contents_id"          BIGINT         NULL,
-                                       "store_id"             UUID           NOT NULL,
-                                       "instagram_media_id"   VARCHAR(100)   NOT NULL,
-                                       "week_start"           DATE           NULL,
-                                       "week_end"             DATE           NULL,
-                                       "reaches"              INTEGER        NULL,
-                                       "saves"                INTEGER        NULL,
-                                       "shares"               INTEGER        NULL,
-                                       "likes"                INTEGER        NULL,
+                                     "id"                   UUID           NOT NULL,
+                                     "contents_id"          BIGINT         NULL,
+                                     "store_id"             UUID           NOT NULL,
+                                     "instagram_media_id"   VARCHAR(100)   NOT NULL,
+                                     "week_start"           DATE           NULL,
+                                     "week_end"             DATE           NULL,
+                                     "reaches"              INTEGER        NULL,
+                                     "saves"                INTEGER        NULL,
+                                     "shares"               INTEGER        NULL,
+                                     "likes"                INTEGER        NULL,
                                      "created_at"           TIMESTAMPTZ    NULL,
                                      CONSTRAINT "PK_INSTAGRAM_METRICS" PRIMARY KEY ("id"),
                                      CONSTRAINT "FK_contents_TO_instagram_metrics"
@@ -456,21 +456,21 @@ CREATE INDEX idx_menus_holiday_tags_gin ON "menus" USING GIN ("holiday_tags");
 
 ALTER TABLE notifications
     ALTER COLUMN type TYPE varchar(50)
-    USING CASE type::text
-    WHEN '0' THEN 'REMIND'
-    WHEN '1' THEN 'WEATHER_MENU'
-    WHEN '2' THEN 'HOLIDAY_MENU'
-    WHEN '3' THEN 'HOLIDAY_OPERATION'
-    WHEN '4' THEN 'WEEKLY_STATS'
-    WHEN '5' THEN 'POSTING_SUCCESS'
-    WHEN '6' THEN 'POSTING_FAILED'
-    ELSE type::text
-    END,
-ALTER COLUMN status TYPE varchar(50)
-    USING CASE status::text
-      WHEN '0' THEN 'PENDING'
-      WHEN '1' THEN 'PROCESSING'
-      WHEN '2' THEN 'SENT'
-      WHEN '3' THEN 'FAILED'
-      ELSE status::text
-    END;
+        USING CASE type::text
+                  WHEN '0' THEN 'REMIND'
+                  WHEN '1' THEN 'WEATHER_MENU'
+                  WHEN '2' THEN 'HOLIDAY_MENU'
+                  WHEN '3' THEN 'HOLIDAY_OPERATION'
+                  WHEN '4' THEN 'WEEKLY_STATS'
+                  WHEN '5' THEN 'POSTING_SUCCESS'
+                  WHEN '6' THEN 'POSTING_FAILED'
+                  ELSE type::text
+        END,
+    ALTER COLUMN status TYPE varchar(50)
+        USING CASE status::text
+                  WHEN '0' THEN 'PENDING'
+                  WHEN '1' THEN 'PROCESSING'
+                  WHEN '2' THEN 'SENT'
+                  WHEN '3' THEN 'FAILED'
+                  ELSE status::text
+        END;
