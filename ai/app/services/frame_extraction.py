@@ -17,27 +17,14 @@ from app.logging import build_log_extra
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
-from app.perfectframe.video_processors import _import_cv2
 from app.schemas.sessions import ExtractFramesRequest
 from app.services.s3_support import build_s3_client, normalize_s3_key
 from app.services.sessions import STATUS_STARTED, STATUS_TEXT_GENERATED, session_key, upsert_content_session
 
 STATUS_FAIL = STATUS_TEXT_GENERATED
 STATUS_FRAME_EXTRACTED = "FRAME_EXTRACTED"
-DRAFT_TARGET_WIDTH = 1080
-DRAFT_TARGET_HEIGHT = 1440
 DRAFT_TOP_K = 3
 logger = logging.getLogger(__name__)
-
-
-def _resize_to_draft_target(frame: Image) -> Image:
-    cv2 = _import_cv2()
-    interp = cv2.INTER_AREA if frame.shape[0] >= DRAFT_TARGET_HEIGHT else cv2.INTER_CUBIC
-    return cv2.resize(
-        frame,
-        (DRAFT_TARGET_WIDTH, DRAFT_TARGET_HEIGHT),
-        interpolation=interp,
-    )
 
 
 @dataclass
@@ -70,12 +57,12 @@ class S3DraftUploader:
         if not self.is_configured:
             return None
 
-        filename = f"draft-{draft_index:03d}.jpg"
+        filename = f"draft-{draft_index:03d}.png"
         image_path = await asyncio.to_thread(
             OpenCVImage.save_image,
             frame,
             workdir,
-            ImageExtension.JPG,
+            ImageExtension.PNG,
             filename,
         )
         return await asyncio.to_thread(
@@ -86,13 +73,13 @@ class S3DraftUploader:
         )
 
     def _upload_file(self, session_id: str, image_path: Path, draft_index: int) -> str:
-        object_key = f"ai-drafts/{session_id}/draft-{draft_index:03d}.jpg"
+        object_key = f"ai-drafts/{session_id}/draft-{draft_index:03d}.png"
         client = build_s3_client()
         client.upload_file(
             str(image_path),
             self._settings.S3_BUCKET_NAME,
             object_key,
-            ExtraArgs={"ContentType": "image/jpeg"},
+            ExtraArgs={"ContentType": "image/png"},
         )
         return f"/{object_key}"
 
@@ -312,47 +299,10 @@ class FrameExtractionService:
                 ),
             )
 
-            debug_fields["debug:stage"] = f"resize_frame_{draft_index}"
-            resize_started_at = time.perf_counter()
-            logger.info(
-                "Resizing frame to draft target resolution.",
-                extra=build_log_extra(
-                    "frame_extraction.resize_frame.started",
-                    component="frame_extraction",
-                    stage="resize_frame",
-                    session_id=session_id,
-                    outcome="started",
-                    video_key=video_key,
-                    draft_index=draft_index,
-                    source_shape=source_shape,
-                    target_width=DRAFT_TARGET_WIDTH,
-                    target_height=DRAFT_TARGET_HEIGHT,
-                ),
-            )
-            frame = await asyncio.to_thread(_resize_to_draft_target, frame)
-            resized_shape = "x".join(str(dimension) for dimension in frame.shape)
-            debug_fields[f"debug:frame_shape:resized:{draft_index}"] = resized_shape
-            logger.info(
-                "Frame resize completed.",
-                extra=build_log_extra(
-                    "frame_extraction.resize_frame.completed",
-                    component="frame_extraction",
-                    stage="resize_frame",
-                    session_id=session_id,
-                    outcome="succeeded",
-                    video_key=video_key,
-                    draft_index=draft_index,
-                    resized_shape=resized_shape,
-                    target_width=DRAFT_TARGET_WIDTH,
-                    target_height=DRAFT_TARGET_HEIGHT,
-                    elapsed_ms=int((time.perf_counter() - resize_started_at) * 1000),
-                ),
-            )
-
             debug_fields["debug:stage"] = f"upload_frame_{draft_index}"
             upload_started_at = time.perf_counter()
             logger.info(
-                "Uploading extracted frame as draft.",
+                "Uploading extracted source frame as draft.",
                 extra=build_log_extra(
                     "frame_extraction.upload_frame.started",
                     component="frame_extraction",
@@ -361,7 +311,7 @@ class FrameExtractionService:
                     outcome="started",
                     video_key=video_key,
                     draft_index=draft_index,
-                    frame_shape=resized_shape,
+                    frame_shape=source_shape,
                 ),
             )
             uploaded_path = await self.uploader.upload_frame(
@@ -401,6 +351,7 @@ class FrameExtractionService:
                     video_key=video_key,
                     draft_index=draft_index,
                     draft_path=uploaded_path,
+                    frame_shape=source_shape,
                     elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
                 ),
             )

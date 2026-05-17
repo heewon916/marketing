@@ -68,7 +68,7 @@ class StubDraftUploader:
     is_configured = True
 
     async def upload_frame(self, session_id: str, frame, workdir: Path, draft_index: int = 1) -> str:
-        return f"/ai-drafts/{session_id}/draft-{draft_index:03d}.jpg"
+        return f"/ai-drafts/{session_id}/draft-{draft_index:03d}.png"
 
 
 class StubFrameExtractor:
@@ -86,7 +86,7 @@ class StubDraftDownloader:
         destination.parent.mkdir(parents=True, exist_ok=True)
         image = np.full((16, 16, 3), 120, dtype=np.uint8)
         image[:, :8, 1] = 220
-        cv2.imwrite(str(destination), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        cv2.imwrite(str(destination), image)
 
 
 class StubFinalUploader:
@@ -222,11 +222,9 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
     assert 'frame_score="5.000000"' in output
     assert 'frame_score="4.000000"' in output
     assert 'frame_score="3.000000"' in output
-    assert output.count('event="frame_extraction.resize_frame.started"') == 3
-    assert output.count('event="frame_extraction.resize_frame.completed"') == 3
-    assert 'resized_shape="1440x1080x3"' in output
     assert output.count('event="frame_extraction.upload_frame.started"') == 3
     assert output.count('event="frame_extraction.upload_frame.completed"') == 3
+    assert 'frame_shape="8x8x3"' in output
     assert 'event="frame_extraction.cleanup_tempdir"' in output
 
 
@@ -255,7 +253,7 @@ async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     with capture_app_logs() as stream:
         result = await service.edit_and_upload(
             session_id="final-log-session",
-            drafts=["/ai-drafts/final-log-session/draft-001.jpg"],
+            drafts=["/ai-drafts/final-log-session/draft-001.png"],
             context=FinalEditSessionContext(
                 caption="연말 케이크 소개",
                 keywords=["케이크"],

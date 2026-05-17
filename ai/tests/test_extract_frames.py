@@ -25,7 +25,7 @@ def test_extract_frames_returns_success_and_persists_result(
     fake_service = FakeFrameExtractionService(
         ExtractFramesResult(
             status="FRAME_EXTRACTED",
-            drafts=["/ai-drafts/session-123/draft-001.jpg"],
+            drafts=["/ai-drafts/session-123/draft-001.png"],
         )
     )
     app.state.frame_extraction_service = fake_service
@@ -43,12 +43,12 @@ def test_extract_frames_returns_success_and_persists_result(
     body = response.json()
     assert body["session_id"] == session_id
     assert body["status"] == "FRAME_EXTRACTED"
-    assert body["drafts"] == ["/ai-drafts/session-123/draft-001.jpg"]
+    assert body["drafts"] == ["/ai-drafts/session-123/draft-001.png"]
     assert fake_service.calls == [(session_id, payload["video"])]
 
     saved = fake_redis_sync.hgetall(session_key(session_id))
     assert saved["status"] == "FRAME_EXTRACTED"
-    assert saved["draft:1"] == "/ai-drafts/session-123/draft-001.jpg"
+    assert saved["draft:1"] == "/ai-drafts/session-123/draft-001.png"
     assert saved["video"] == payload["video"]
 
 
@@ -61,7 +61,7 @@ def test_extract_frames_preserves_existing_final_keywords(
     fake_service = FakeFrameExtractionService(
         ExtractFramesResult(
             status="FRAME_EXTRACTED",
-            drafts=["/ai-drafts/session-123/draft-001.jpg"],
+            drafts=["/ai-drafts/session-123/draft-001.png"],
         )
     )
     app.state.frame_extraction_service = fake_service

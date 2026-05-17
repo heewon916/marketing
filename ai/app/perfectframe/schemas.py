@@ -33,6 +33,7 @@ class ImageExtension(FileExtension):
     """Supported image file extensions."""
 
     JPG = ".jpg"
+    PNG = ".png"
 
 
 class VideoExtension(FileExtension):
@@ -57,7 +58,7 @@ class ExtractorConfig(BaseModel):
     batch_size: int = Field(default=100, ge=1)
     comparing_group_size: int = Field(default=5, ge=1)
     top_images_percent: float = 90.0
-    images_output_format: ImageExtension = ImageExtension.JPG
+    images_output_format: ImageExtension = ImageExtension.PNG
     input_size: ImageResolution = ImageResolution(224, 224)
     weights_directory: Path | str = Path.home() / ".cache" / "huggingface"
     weights_filename: str = "weights.onnx"
