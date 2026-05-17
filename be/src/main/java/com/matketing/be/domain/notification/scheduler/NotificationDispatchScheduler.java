@@ -14,8 +14,11 @@ public class NotificationDispatchScheduler {
 
     private final NotificationDispatchService notificationDispatchService;
 
-    // 로컬 테스트용 cron: @Scheduled(cron = "0 * * * * *", zone = "Asia/Seoul") // 매분, 운영에서도 사용
-    @Scheduled(cron = "0 * * * * *", zone = "Asia/Seoul")
+    // 기존: 매 1분 실행 (로컬 및 운영)
+    // @Scheduled(cron = "0 * * * * *", zone = "Asia/Seoul")
+    
+    // 변경: 매 5분 실행 (로그 축소 및 리소스 최적화)
+    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul")
     public void dispatchDueNotifications() {
         try {
             log.info("[NotificationDispatchScheduler] Starting to dispatch due notifications...");
