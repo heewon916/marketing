@@ -2,14 +2,8 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- 도메인 요구사항에 맞게 ENUM 값 수정 필요
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'category_type') THEN
-        CREATE TYPE category_type AS ENUM ('주점', '제과점', '카페', '식당');
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'owner_persona_type') THEN
-        CREATE TYPE owner_persona_type AS ENUM ('aesthetic', 'friendly', 'professional', 'trendy', 'other');
-    END IF;
-END $$;
+CREATE TYPE category_type AS ENUM ('주점', '제과점', '카페', '식당');
+CREATE TYPE owner_persona_type AS ENUM ('aesthetic', 'friendly', 'professional', 'trendy', 'other');
 
 -- ==============================================================================
 -- 최상위 독립 테이블 (참조를 당하는 테이블)
@@ -19,7 +13,7 @@ END $$;
 --  USERS
 --  Instagram 인증 사용자와 서비스 계정의 기본 정보를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "users" (
+CREATE TABLE "users" (
                          "id"                   UUID           NOT NULL,
                          "instagram_user_id"    VARCHAR(100)   NOT NULL,
                          "instagram_username"   VARCHAR(100)   NULL,
@@ -37,7 +31,7 @@ CREATE TABLE IF NOT EXISTS "users" (
 --  AI 추천/검색에서 사용할 표준 키워드와 임베딩을 저장한다.
 -- =============================================================
 
-CREATE TABLE IF NOT EXISTS "canonical_keywords" (
+CREATE TABLE "canonical_keywords" (
                                       "id"             BIGINT         NOT NULL,
                                       "code"           VARCHAR(100)   NULL,
                                       "display_name"   VARCHAR(200)   NOT NULL,
@@ -53,7 +47,7 @@ COMMENT ON COLUMN "canonical_keywords"."embedding" IS '표준 키워드 임베�
 --  AI 이미지 추천에 사용할 레퍼런스 이미지 메타데이터와 임베딩을 저장한다.
 -- =============================================================
 
-CREATE TABLE IF NOT EXISTS "reference_images" (
+CREATE TABLE "reference_images" (
                                     "id"                        BIGINT         NOT NULL,
                                     "sort_order"                SMALLINT       NULL,
                                     "s3_key"                    VARCHAR(200)   NOT NULL,
@@ -95,7 +89,7 @@ COMMENT ON COLUMN "reference_images"."lighting_params" IS '표준 키:
 --  AI 문구 추천에 사용할 레퍼런스 캡션과 임베딩을 저장한다.
 -- =============================================================
 
-CREATE TABLE IF NOT EXISTS "reference_captions" (
+CREATE TABLE "reference_captions" (
                                       "id"                BIGINT         NOT NULL,
                                       "caption_content"   TEXT           NOT NULL,
                                       "embedding"         VECTOR(384)   NOT NULL,
@@ -106,7 +100,7 @@ CREATE TABLE IF NOT EXISTS "reference_captions" (
 --  HOLIDAYS
 --  마케팅 콘텐츠 생성 시 참고할 공휴일/기념일 정보를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "holidays" (
+CREATE TABLE "holidays" (
                             "id"             UUID           NOT NULL,
                             "holiday_date"   DATE           NOT NULL,
                             "name"           VARCHAR(200)   NOT NULL,
@@ -122,7 +116,7 @@ CREATE TABLE IF NOT EXISTS "holidays" (
 --  STORES
 --  사용자 소유 매장의 기본 정보와 운영 정보를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "stores" (
+CREATE TABLE "stores" (
                           "id"                UUID                 NOT NULL,
                           "user_id"           UUID                 NOT NULL,
                           "merchant_id"       VARCHAR(20)          NULL,
@@ -145,7 +139,7 @@ COMMENT ON COLUMN "stores"."operating_hours" IS '영업시간';
 --  API_TOKEN_LOGS
 --  Instagram API 토큰 갱신 이력을 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "api_token_logs" (
+CREATE TABLE "api_token_logs" (
                                   "id"               UUID          NOT NULL,
                                   "user_id"          UUID          NOT NULL,
                                   "old_expires_at"   TIMESTAMPTZ   NULL,
@@ -160,7 +154,7 @@ CREATE TABLE IF NOT EXISTS "api_token_logs" (
 --  DEVICE_TOKENS
 --  사용자별 FCM 디바이스 토큰과 활성 상태를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "device_tokens" (
+CREATE TABLE "device_tokens" (
                                  "id"           UUID          NOT NULL,
                                  "user_id"      UUID          NOT NULL,
                                  "token"        TEXT          NOT NULL,
@@ -178,7 +172,7 @@ CREATE TABLE IF NOT EXISTS "device_tokens" (
 --  REFERENCE
 --  레퍼런스 캡션과 이미지의 게시물 단위 연결 정보를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "reference" (
+CREATE TABLE "reference" (
                              "id"              BIGINT               NOT NULL,
                              "caption_id"      BIGINT               NOT NULL,
                              "image_id"        BIGINT               NOT NULL,
@@ -202,7 +196,7 @@ CREATE TABLE IF NOT EXISTS "reference" (
 --  REFERENCE_IMAGE_KEYWORDS
 --  레퍼런스 이미지와 표준 키워드의 다대다 매핑을 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "reference_image_keywords" (
+CREATE TABLE "reference_image_keywords" (
                                             "reference_image_id"     BIGINT   NOT NULL,
                                             "canonical_keyword_id"   BIGINT   NOT NULL,
     -- 식별 관계: 두 FK의 조합을 PK로 설정하여 N:M 매핑 테이블의 무결성 보장
@@ -217,7 +211,7 @@ CREATE TABLE IF NOT EXISTS "reference_image_keywords" (
 --  REFERENCE_CAPTION_KEYWORDS
 --  레퍼런스 캡션과 표준 키워드의 다대다 매핑을 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "reference_caption_keywords" (
+CREATE TABLE "reference_caption_keywords" (
                                               "reference_caption_id"   BIGINT   NOT NULL,
                                               "canonical_keyword_id"   BIGINT   NOT NULL,
     -- 식별 관계 적용
@@ -236,7 +230,7 @@ CREATE TABLE IF NOT EXISTS "reference_caption_keywords" (
 --  STORE_HOURS
 --  매장별 요일 영업 시작/종료 시간을 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "store_hours" (
+CREATE TABLE "store_hours" (
                                "store_id"          UUID   NOT NULL,
                                "monday_open"       TIME   NULL,
                                "tuesday_open"      TIME   NULL,
@@ -262,7 +256,7 @@ CREATE TABLE IF NOT EXISTS "store_hours" (
 --  UPLOAD_HISTORY
 --  매장별 콘텐츠 업로드 이력을 날짜/요일 기준으로 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "upload_history" (
+CREATE TABLE "upload_history" (
                                   "id"              UUID          NOT NULL,
                                   "store_id"        UUID          NOT NULL,
                                   "uploaded_at"     TIMESTAMPTZ   NOT NULL,
@@ -278,17 +272,17 @@ CREATE TABLE IF NOT EXISTS "upload_history" (
 --  ACCOUNT_WEEKLY_METRICS
 --  매장 계정의 주간 성과 지표와 목표 달성 정보를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "account_weekly_metrics" (
-                                           "id"                   UUID            NOT NULL,
-                                           "store_id"             UUID            NOT NULL,
-                                           "week_start"           DATE            NULL,
-                                           "total_reach"          INTEGER         NULL,
-                                           "total_saves"          INTEGER         NULL,
-                                           "total_shares"         INTEGER         NULL,
-                                           "target_post_count"    INTEGER         NULL,
-                                           "actual_post_count"    INTEGER         NULL,
-                                           "achievement_rate"     DECIMAL(5, 2)   NULL,
-                                           "visit_intent_score"   DECIMAL(5, 2)   NULL,
+CREATE TABLE "account_weekly_metrics" (
+                                          "id"                   UUID            NOT NULL,
+                                          "store_id"             UUID            NOT NULL,
+                                          "week_start"           DATE            NULL,
+                                          "total_reach"          INTEGER         NULL,
+                                          "total_saves"          INTEGER         NULL,
+                                          "total_shares"         INTEGER         NULL,
+                                          "target_post_count"    INTEGER         NULL,
+                                          "actual_post_count"    INTEGER         NULL,
+                                          "achievement_rate"     DECIMAL(5, 2)   NULL,
+                                          "visit_intent_score"   DECIMAL(5, 2)   NULL,
                                           "created_at"           TIMESTAMPTZ     NULL,
                                           "is_deleted"           BOOLEAN         NULL,
                                           CONSTRAINT "PK_ACCOUNT_WEEKLY_METRICS" PRIMARY KEY ("id"),
@@ -301,7 +295,7 @@ CREATE TABLE IF NOT EXISTS "account_weekly_metrics" (
 --  UPLOAD_PATTERNS
 --  매장별 업로드 패턴과 예측 업로드 시간을 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "upload_patterns" (
+CREATE TABLE "upload_patterns" (
                                    "id"               UUID          NOT NULL,
                                    "store_id"         UUID          NOT NULL,
                                    "day_of_week"      SMALLINT      NOT NULL,
@@ -317,7 +311,7 @@ CREATE TABLE IF NOT EXISTS "upload_patterns" (
 --  MENUS
 --  매장 메뉴 정보와 날씨/공휴일 태그, 메뉴 임베딩을 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "menus" (
+CREATE TABLE "menus" (
                          "id"             UUID           NOT NULL,
                          "store_id"       UUID           NOT NULL,
                          "name"           VARCHAR(200)   NOT NULL,
@@ -336,14 +330,14 @@ CREATE TABLE IF NOT EXISTS "menus" (
 --  NOTIFICATIONS
 --  매장별 예약/즉시 알림의 상태와 발송 결과를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "notifications" (
+CREATE TABLE "notifications" (
                                  "id"               UUID          NOT NULL,
                                  "store_id"         UUID          NOT NULL,
                                  "notification"     TEXT          NOT NULL,
                                  "scheduled_at"     TIMESTAMPTZ   NOT NULL,
                                  "created_at"       TIMESTAMPTZ   NOT NULL,
-                                   "type"             VARCHAR(50)   NOT NULL,
-                                   "status"           VARCHAR(50)   NOT NULL,
+                                 "type"             VARCHAR(50)   NOT NULL,
+                                 "status"           VARCHAR(50)   NOT NULL,
                                  "sent_at"          TIMESTAMPTZ   NULL,
                                  "updated_at"       TIMESTAMPTZ   NOT NULL,
                                  "retry_count"      INTEGER       NOT NULL,
@@ -359,8 +353,8 @@ CREATE TABLE IF NOT EXISTS "notifications" (
 --  CONTENTS
 --  생성/발행된 콘텐츠 본문과 Instagram 게시 정보를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "contents" (
-                            "id"                    BIGINT         NOT NULL,
+CREATE TABLE "contents" (
+                            "id"                    BIGINT         GENERATED BY DEFAULT AS IDENTITY NOT NULL,
                             "store_id"              UUID           NOT NULL,
                             "session_id"            UUID           NULL,
                             "caption"               TEXT           NULL,
@@ -383,7 +377,7 @@ CREATE TABLE IF NOT EXISTS "contents" (
 --  CONTENTS_IMAGES
 --  콘텐츠에 연결된 이미지 S3 객체 키를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "contents_images" (
+CREATE TABLE "contents_images" (
                                    "id"            UUID           NOT NULL,
                                    "contents_id"   BIGINT         NOT NULL,
                                    "s3_key"        VARCHAR(200)   NOT NULL,
@@ -396,7 +390,7 @@ CREATE TABLE IF NOT EXISTS "contents_images" (
 --  VIDEO_RECORDINGS
 --  콘텐츠에 연결된 영상 녹화 파일의 S3 객체 키를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "video_recordings" (
+CREATE TABLE "video_recordings" (
                                     "id"            UUID           NOT NULL,
                                     "contents_id"   BIGINT         NOT NULL,
                                     "s3_key"        VARCHAR(200)   NOT NULL,
@@ -409,17 +403,17 @@ CREATE TABLE IF NOT EXISTS "video_recordings" (
 --  INSTAGRAM_METRICS
 --  Instagram 게시물별 도달/저장/공유/좋아요 지표를 저장한다.
 -- =============================================================
-CREATE TABLE IF NOT EXISTS "instagram_metrics" (
-                                       "id"                   UUID           NOT NULL,
-                                       "contents_id"          BIGINT         NULL,
-                                       "store_id"             UUID           NOT NULL,
-                                       "instagram_media_id"   VARCHAR(100)   NOT NULL,
-                                       "week_start"           DATE           NULL,
-                                       "week_end"             DATE           NULL,
-                                       "reaches"              INTEGER        NULL,
-                                       "saves"                INTEGER        NULL,
-                                       "shares"               INTEGER        NULL,
-                                       "likes"                INTEGER        NULL,
+CREATE TABLE "instagram_metrics" (
+                                     "id"                   UUID           NOT NULL,
+                                     "contents_id"          BIGINT         NULL,
+                                     "store_id"             UUID           NOT NULL,
+                                     "instagram_media_id"   VARCHAR(100)   NOT NULL,
+                                     "week_start"           DATE           NULL,
+                                     "week_end"             DATE           NULL,
+                                     "reaches"              INTEGER        NULL,
+                                     "saves"                INTEGER        NULL,
+                                     "shares"               INTEGER        NULL,
+                                     "likes"                INTEGER        NULL,
                                      "created_at"           TIMESTAMPTZ    NULL,
                                      CONSTRAINT "PK_INSTAGRAM_METRICS" PRIMARY KEY ("id"),
                                      CONSTRAINT "FK_contents_TO_instagram_metrics"
@@ -434,49 +428,49 @@ CREATE TABLE IF NOT EXISTS "instagram_metrics" (
 -- ==============================================================================
 
 -- Foreign Key 인덱스 (JOIN 성능 확보)
-CREATE INDEX IF NOT EXISTS idx_stores_user_id ON "stores" ("user_id");
-CREATE INDEX IF NOT EXISTS idx_api_token_logs_user_id ON "api_token_logs" ("user_id");
-CREATE INDEX IF NOT EXISTS idx_device_tokens_user_id ON "device_tokens" ("user_id");
+CREATE INDEX idx_stores_user_id ON "stores" ("user_id");
+CREATE INDEX idx_api_token_logs_user_id ON "api_token_logs" ("user_id");
+CREATE INDEX idx_device_tokens_user_id ON "device_tokens" ("user_id");
 
-CREATE INDEX IF NOT EXISTS idx_upload_history_store_id ON "upload_history" ("store_id");
-CREATE INDEX IF NOT EXISTS idx_account_weekly_metrics_store_id ON "account_weekly_metrics" ("store_id");
-CREATE INDEX IF NOT EXISTS idx_upload_patterns_store_id ON "upload_patterns" ("store_id");
-CREATE INDEX IF NOT EXISTS idx_menus_store_id ON "menus" ("store_id");
-CREATE INDEX IF NOT EXISTS idx_notifications_store_id ON "notifications" ("store_id");
-CREATE INDEX IF NOT EXISTS idx_notifications_reference_id ON "notifications" ("reference_id");
-CREATE INDEX IF NOT EXISTS idx_notifications_status_scheduled_at ON "notifications" ("status", "scheduled_at");
-CREATE INDEX IF NOT EXISTS idx_contents_store_id ON "contents" ("store_id");
+CREATE INDEX idx_upload_history_store_id ON "upload_history" ("store_id");
+CREATE INDEX idx_account_weekly_metrics_store_id ON "account_weekly_metrics" ("store_id");
+CREATE INDEX idx_upload_patterns_store_id ON "upload_patterns" ("store_id");
+CREATE INDEX idx_menus_store_id ON "menus" ("store_id");
+CREATE INDEX idx_notifications_store_id ON "notifications" ("store_id");
+CREATE INDEX idx_notifications_reference_id ON "notifications" ("reference_id");
+CREATE INDEX idx_notifications_status_scheduled_at ON "notifications" ("status", "scheduled_at");
+CREATE INDEX idx_contents_store_id ON "contents" ("store_id");
 
-CREATE INDEX IF NOT EXISTS idx_contents_images_contents_id ON "contents_images" ("contents_id");
-CREATE INDEX IF NOT EXISTS idx_video_recordings_contents_id ON "video_recordings" ("contents_id");
-CREATE INDEX IF NOT EXISTS idx_instagram_metrics_contents_id ON "instagram_metrics" ("contents_id");
-CREATE INDEX IF NOT EXISTS idx_instagram_metrics_store_id ON "instagram_metrics" ("store_id");
+CREATE INDEX idx_contents_images_contents_id ON "contents_images" ("contents_id");
+CREATE INDEX idx_video_recordings_contents_id ON "video_recordings" ("contents_id");
+CREATE INDEX idx_instagram_metrics_contents_id ON "instagram_metrics" ("contents_id");
+CREATE INDEX idx_instagram_metrics_store_id ON "instagram_metrics" ("store_id");
 
-CREATE INDEX IF NOT EXISTS idx_reference_caption_id ON "reference" ("caption_id");
-CREATE INDEX IF NOT EXISTS idx_reference_image_id ON "reference" ("image_id");
+CREATE INDEX idx_reference_caption_id ON "reference" ("caption_id");
+CREATE INDEX idx_reference_image_id ON "reference" ("image_id");
 
 -- JSONB 인덱스 (JSON Key/Value 검색 성능 확보를 위한 GIN 인덱스)
-CREATE INDEX IF NOT EXISTS idx_stores_operating_hours_gin ON "stores" USING GIN ("operating_hours");
-CREATE INDEX IF NOT EXISTS idx_menus_weather_tags_gin ON "menus" USING GIN ("weather_tags");
-CREATE INDEX IF NOT EXISTS idx_menus_holiday_tags_gin ON "menus" USING GIN ("holiday_tags");
+CREATE INDEX idx_stores_operating_hours_gin ON "stores" USING GIN ("operating_hours");
+CREATE INDEX idx_menus_weather_tags_gin ON "menus" USING GIN ("weather_tags");
+CREATE INDEX idx_menus_holiday_tags_gin ON "menus" USING GIN ("holiday_tags");
 
 ALTER TABLE notifications
     ALTER COLUMN type TYPE varchar(50)
-    USING CASE type::text
-    WHEN '0' THEN 'REMIND'
-    WHEN '1' THEN 'WEATHER_MENU'
-    WHEN '2' THEN 'HOLIDAY_MENU'
-    WHEN '3' THEN 'HOLIDAY_OPERATION'
-    WHEN '4' THEN 'WEEKLY_STATS'
-    WHEN '5' THEN 'POSTING_SUCCESS'
-    WHEN '6' THEN 'POSTING_FAILED'
-    ELSE type::text
-    END,
-ALTER COLUMN status TYPE varchar(50)
-    USING CASE status::text
-      WHEN '0' THEN 'PENDING'
-      WHEN '1' THEN 'PROCESSING'
-      WHEN '2' THEN 'SENT'
-      WHEN '3' THEN 'FAILED'
-      ELSE status::text
-    END;
+        USING CASE type::text
+                  WHEN '0' THEN 'REMIND'
+                  WHEN '1' THEN 'WEATHER_MENU'
+                  WHEN '2' THEN 'HOLIDAY_MENU'
+                  WHEN '3' THEN 'HOLIDAY_OPERATION'
+                  WHEN '4' THEN 'WEEKLY_STATS'
+                  WHEN '5' THEN 'POSTING_SUCCESS'
+                  WHEN '6' THEN 'POSTING_FAILED'
+                  ELSE type::text
+        END,
+    ALTER COLUMN status TYPE varchar(50)
+        USING CASE status::text
+                  WHEN '0' THEN 'PENDING'
+                  WHEN '1' THEN 'PROCESSING'
+                  WHEN '2' THEN 'SENT'
+                  WHEN '3' THEN 'FAILED'
+                  ELSE status::text
+        END;
