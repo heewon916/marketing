@@ -42,11 +42,11 @@ DEFAULT_NIMA_WEIGHTS_URL = (
     "https://huggingface.co/BKDDFS/nima_weights/resolve/main/weights.onnx"
 )
 DEFAULT_REALESRGAN_WEIGHTS_PATH = (
-    ROOT_DIR / "models" / "realesrgan" / "RealESRGAN_x4plus.pth"
+    ROOT_DIR / "models" / "realesrgan" / "RealESRGAN_x2plus.pth"
 )
 DEFAULT_REALESRGAN_WEIGHTS_URL = (
-    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/"
-    "RealESRGAN_x4plus.pth"
+    "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.1/"
+    "RealESRGAN_x2plus.pth"
 )
 
 

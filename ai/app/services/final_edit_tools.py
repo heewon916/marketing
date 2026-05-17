@@ -47,7 +47,7 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     FinalEditToolSpec(
         name="upscale",
         description="이미지를 업스케일한다.",
-        params_schema={"scale": "2 또는 4"},
+        params_schema={"scale": "2 only"},
     ),
     FinalEditToolSpec(
         name="denoise",
@@ -166,8 +166,7 @@ def _scale_gap_to_unit_interval(
 
 def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[str, Any]:
     if tool_name == "upscale":
-        scale = params.get("scale", 2)
-        return {"scale": 4 if str(scale).strip() == "4" else 2}
+        return {"scale": 2}
     if tool_name == "denoise":
         return {"strength": _clamp_float(params.get("strength"), 0.5, 0.0, 1.0)}
     if tool_name == "color_grading":
@@ -216,8 +215,7 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
 
 
 def _tool_upscale(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
-    scale = cast(int, params["scale"])
-    return get_realesrgan_upscaler().upscale(image, scale)
+    return get_realesrgan_upscaler().upscale(image, 2)
 
 
 def _tool_denoise(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:

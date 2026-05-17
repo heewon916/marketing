@@ -94,15 +94,27 @@ class FinalEditPlanningError(RuntimeError):
 def build_upscale_only_plan(
     image_index: int,
     *,
+    owner_persona: str = DEFAULT_OWNER_PERSONA,
     content: str = "draft image",
-    strategy: str = "Apply mandatory Real-ESRGAN upscale after final edit fallback.",
+    strategy: str = "Apply minimum color grading before mandatory Real-ESRGAN upscale.",
 ) -> ImageEditPlan:
+    resolved_persona, resolved_target, _used_fallback, target_kind = (
+        resolve_owner_persona_target(owner_persona)
+    )
+    color_grading_params = (
+        {}
+        if target_kind == TARGET_PROFILE_KIND_TONE
+        else dict(resolved_target)
+    )
     return ImageEditPlan(
         image_index=image_index,
         content=content,
         strategy=strategy,
-        tools=["upscale"],
-        params={"upscale": {"scale": 2}},
+        tools=["color_grading", "upscale"],
+        params={
+            "color_grading": color_grading_params,
+            "upscale": {"scale": 2},
+        },
     )
 
 
@@ -133,9 +145,7 @@ def normalize_image_edit_plan(plan: ImageEditPlan) -> ImageEditPlan:
     normalized_params: dict[str, dict[str, Any]] = {}
     for tool_name in ordered_tools:
         if tool_name == "upscale":
-            normalized_params[tool_name] = {
-                "scale": plan.params.get(tool_name, {}).get("scale", 2)
-            }
+            normalized_params[tool_name] = {"scale": 2}
             continue
         normalized_params[tool_name] = dict(plan.params.get(tool_name, {}))
 
@@ -314,9 +324,11 @@ def build_final_edit_prompt(
         "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
         "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
         "10. If denoise is used, it must appear before any filter tool.\n"
-        "11. Upscale must be included for every image, and it must appear after every filter tool.\n"
-        "12. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
-        "13. Output only a JSON array.\n\n"
+        "11. Upscale must be included for every image, it is 2x only, and it must appear after every filter tool.\n"
+        "12. Do not place upscale on an image unless at least one filter tool precedes it.\n"
+        "13. Denoise alone is not enough to justify upscale; insert a filter before upscale.\n"
+        "14. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
+        "15. Output only a JSON array.\n\n"
         f"{_few_shot_example()}"
     )
 

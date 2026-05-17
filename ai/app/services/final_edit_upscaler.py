@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import logging
 from pathlib import Path
+import sys
 import threading
 from typing import Any
 
@@ -9,7 +11,7 @@ import httpx
 import numpy as np
 
 from app.core.config import DEFAULT_REALESRGAN_WEIGHTS_PATH, settings
-from app.services.final_edit_runtime import FinalEditUnavailableError, import_cv2
+from app.services.final_edit_runtime import FinalEditUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,8 @@ _DEFAULT_TILE_PAD = 10
 _DEFAULT_PRE_PAD = 0
 _upscaler_lock = threading.Lock()
 _shared_upscaler: "RealEsrganUpscaler | None" = None
+_TORCHVISION_LEGACY_TENSOR_MODULE = "torchvision.transforms.functional_tensor"
+_TORCHVISION_FALLBACK_TENSOR_MODULE = "torchvision.transforms._functional_tensor"
 
 
 def _import_torch() -> Any:
@@ -32,8 +36,32 @@ def _import_torch() -> Any:
     return torch
 
 
+def _ensure_torchvision_transform_compat() -> None:
+    if _TORCHVISION_LEGACY_TENSOR_MODULE in sys.modules:
+        return
+
+    try:
+        importlib.import_module(_TORCHVISION_LEGACY_TENSOR_MODULE)
+        return
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        compatibility_module = importlib.import_module(
+            _TORCHVISION_FALLBACK_TENSOR_MODULE
+        )
+    except ModuleNotFoundError as exc:
+        raise FinalEditUnavailableError(
+            "Torchvision tensor transform compatibility is unavailable "
+            "for Real-ESRGAN."
+        ) from exc
+
+    sys.modules[_TORCHVISION_LEGACY_TENSOR_MODULE] = compatibility_module
+
+
 def _import_realesrgan_components() -> tuple[type[Any], type[Any]]:
     try:
+        _ensure_torchvision_transform_compat()
         from basicsr.archs.rrdbnet_arch import RRDBNet
         from realesrgan import RealESRGANer
     except (ImportError, ModuleNotFoundError) as exc:
@@ -95,10 +123,10 @@ class RealEsrganUpscaler:
             num_feat=64,
             num_block=23,
             num_grow_ch=32,
-            scale=4,
+            scale=2,
         )
         self._upsampler = realesrganer_class(
-            scale=4,
+            scale=2,
             model_path=str(weights_path),
             model=model,
             tile=_DEFAULT_TILE_SIZE,
@@ -113,17 +141,9 @@ class RealEsrganUpscaler:
         return self._weights_path
 
     def upscale(self, image: np.ndarray, scale: int) -> np.ndarray:
-        cv2 = import_cv2()
         normalized_input = np.ascontiguousarray(image)
-        output, _ = self._upsampler.enhance(normalized_input, outscale=4)
-        if scale == 4:
-            return output
-        height, width = image.shape[:2]
-        return cv2.resize(
-            output,
-            (width * scale, height * scale),
-            interpolation=cv2.INTER_LANCZOS4,
-        )
+        output, _ = self._upsampler.enhance(normalized_input, outscale=2)
+        return output
 
 
 def build_realesrgan_upscaler(weights_path: Path | None = None) -> RealEsrganUpscaler:

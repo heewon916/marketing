@@ -120,11 +120,11 @@ def test_tool_registry_upscale_changes_shape() -> None:
 
     result = registry.execute("upscale", image, {"scale": 4})
 
-    assert result.shape == (32, 32, 3)
+    assert result.shape == (16, 16, 3)
 
 
-def test_normalize_tool_params_upscale_preserves_supported_scale() -> None:
-    assert normalize_tool_params("upscale", {"scale": 4}) == {"scale": 4}
+def test_normalize_tool_params_upscale_forces_two_x() -> None:
+    assert normalize_tool_params("upscale", {"scale": 4}) == {"scale": 2}
 
 
 def test_tool_registry_background_blur_preserves_shape() -> None:

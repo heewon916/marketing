@@ -98,6 +98,8 @@ def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     assert "minimum adjustment needed" in prompt
     assert "color_grading" in prompt
     assert "Upscale must be included for every image" in prompt
+    assert "it is 2x only" in prompt
+    assert "Denoise alone is not enough to justify upscale" in prompt
     assert "all 3 input images" in prompt
     assert "image_index from 0 to 2" in prompt
 
@@ -154,7 +156,7 @@ def test_normalize_image_edit_plan_enforces_execution_order() -> None:
     )
 
     assert normalized.tools == ["denoise", "sharpen", "color_grading", "upscale"]
-    assert normalized.params["upscale"] == {"scale": 4}
+    assert normalized.params["upscale"] == {"scale": 2}
 
 
 def test_normalize_image_edit_plan_appends_default_upscale() -> None:
@@ -179,8 +181,16 @@ def test_build_upscale_only_plan_uses_default_two_x_scale() -> None:
     plan = build_upscale_only_plan(1)
 
     assert plan.image_index == 1
-    assert plan.tools == ["upscale"]
+    assert plan.tools == ["color_grading", "upscale"]
+    assert plan.params["color_grading"] == {}
     assert plan.params["upscale"] == {"scale": 2}
+
+
+def test_build_upscale_only_plan_uses_persona_preset_for_non_aesthetic() -> None:
+    plan = build_upscale_only_plan(1, owner_persona="friendly")
+
+    assert plan.tools == ["color_grading", "upscale"]
+    assert plan.params["color_grading"]["temperature"] == "warm"
 
 
 def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:
