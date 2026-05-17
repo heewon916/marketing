@@ -93,7 +93,7 @@ class StubFinalUploader:
     is_configured = True
 
     async def upload_final(self, session_id: str, image_path: Path, final_index: int) -> str:
-        return f"/ai-finals/{session_id}/final-{final_index:03d}.jpg"
+        return f"/ai-finals/{session_id}/final-{final_index:03d}.png"
 
     async def delete_final(self, uploaded_path: str) -> None:
         return None

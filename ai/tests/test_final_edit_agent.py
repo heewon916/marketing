@@ -19,7 +19,7 @@ from tests.utils.session_support import FakeUpscaler
 def _write_test_image(path: Path, shape: tuple[int, int, int] = (16, 16, 3)) -> None:
     image = np.full(shape, 120, dtype=np.uint8)
     image[:, : shape[1] // 2, 2] = 220
-    cv2.imwrite(str(path), image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+    cv2.imwrite(str(path), image)
 
 
 @pytest.fixture(autouse=True)
@@ -165,7 +165,7 @@ def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> Non
 async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
     tmp_path: Path,
 ) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     agent = FinalEditAgent(FinalEditToolRegistry())
     state = FinalEditImageState(
@@ -206,7 +206,7 @@ async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
 async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
     tmp_path: Path,
 ) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     agent = FinalEditAgent(FinalEditToolRegistry())
     planned_params = {
@@ -244,7 +244,7 @@ async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
 
 @pytest.mark.asyncio
 async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     agent = FinalEditAgent(FinalEditToolRegistry())
     state = FinalEditImageState(
@@ -274,7 +274,7 @@ async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_final_edit_agent_falls_back_when_tool_fails(tmp_path: Path) -> None:
-    image_path = tmp_path / "draft.jpg"
+    image_path = tmp_path / "draft.png"
     _write_test_image(image_path)
     registry = FinalEditToolRegistry()
     original_execute = registry.execute

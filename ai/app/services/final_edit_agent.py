@@ -170,8 +170,8 @@ class FinalEditAgent:
 
         cv2 = import_cv2()
         state.working_dir.mkdir(parents=True, exist_ok=True)
-        output_path = state.working_dir / f"edited-{state.plan.image_index:03d}.jpg"
-        cv2.imwrite(str(output_path), state.current_image, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        output_path = state.working_dir / f"edited-{state.plan.image_index:03d}.png"
+        cv2.imwrite(str(output_path), state.current_image)
         state.output_path = output_path
         state.metadata["output_source"] = "edited"
         state.metadata["final_output_shape"] = self._shape_to_string(state.current_image)
