@@ -1,13 +1,17 @@
 import pytest
 
 from app.services.final_edit_planner import (
+    TARGET_PROFILE_KIND_TONE,
     FinalEditPlannerClient,
     FinalEditPlanningError,
     FinalEditSessionContext,
     build_final_edit_prompt,
     load_final_edit_session_context,
     parse_image_edit_plans,
+    resolve_owner_persona_target,
+    resolve_owner_persona_preset,
 )
+from app.services.final_edit_tools import AESTHETIC_TARGET_TONE_PROFILE
 from app.services.sessions import session_key
 
 
@@ -39,6 +43,7 @@ async def test_load_final_edit_session_context_uses_draft_keywords(
     await fake_redis_async.hset(
         session_key("sess-1"),
         mapping={
+            "owner_persona": "friendly",
             "caption": "포근한 디저트 소개",
             "draft_keyword:2": "따뜻한 분위기",
             "draft_keyword:1": "시그니처 케이크",
@@ -48,6 +53,7 @@ async def test_load_final_edit_session_context_uses_draft_keywords(
 
     context = await load_final_edit_session_context(fake_redis_async, "sess-1")
 
+    assert context.owner_persona == "friendly"
     assert context.caption == "포근한 디저트 소개"
     assert context.keywords == ["시그니처 케이크", "따뜻한 분위기"]
 
@@ -67,23 +73,64 @@ async def test_load_final_edit_session_context_falls_back_to_final_keywords(
 
     context = await load_final_edit_session_context(fake_redis_async, "sess-2")
 
+    assert context.owner_persona == "aesthetic"
     assert context.keywords == ["케이크", "테이블"]
 
 
 def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     prompt = build_final_edit_prompt(
         FinalEditSessionContext(
+            owner_persona="friendly",
             caption="포근한 케이크 소개",
             keywords=["시그니처 케이크", "크림 디저트"],
         ),
         3,
     )
 
+    assert "[owner_persona] friendly" in prompt
+    assert "[target_preset_persona] friendly" in prompt
     assert "[caption] 포근한 케이크 소개" in prompt
     assert "[keywords] 시그니처 케이크, 크림 디저트" in prompt
+    assert "\"contrast\"" in prompt
+    assert "minimum adjustment needed" in prompt
     assert "color_grading" in prompt
     assert "all 3 input images" in prompt
     assert "image_index from 0 to 2" in prompt
+
+
+def test_build_final_edit_prompt_uses_aesthetic_tone_profile() -> None:
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="aesthetic",
+            caption="분위기 설명",
+            keywords=["케이크"],
+        ),
+        1,
+    )
+
+    assert "[target_profile_kind] tone_profile" in prompt
+    assert "\"brightness\"" in prompt
+    assert "\"tolerance\"" in prompt
+    assert "\"target\": 81.69" in prompt
+
+
+def test_resolve_owner_persona_preset_falls_back_to_aesthetic() -> None:
+    persona, preset, used_fallback = resolve_owner_persona_preset("unknown")
+
+    assert persona == "aesthetic"
+    assert used_fallback is True
+    assert preset == AESTHETIC_TARGET_TONE_PROFILE
+
+
+def test_resolve_owner_persona_target_marks_aesthetic_as_tone_profile() -> None:
+    persona, target, used_fallback, target_kind = resolve_owner_persona_target(
+        "aesthetic"
+    )
+
+    assert persona == "aesthetic"
+    assert used_fallback is False
+    assert target == AESTHETIC_TARGET_TONE_PROFILE
+    assert target_kind == TARGET_PROFILE_KIND_TONE
 
 
 def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:
@@ -109,17 +156,26 @@ async def test_final_edit_planner_client_builds_validated_plans() -> None:
 
     async def fake_request_plan(image_paths, context):
         assert image_paths == ["a.jpg", "b.jpg"]
+        assert context.owner_persona == "friendly"
         assert context.caption == "포근한 디저트 소개"
         return """
         [
           {
             "image_index": 0,
             "content": "시그니처 케이크가 보인다.",
-            "strategy": "노이즈를 줄이고 밝기를 높인다.",
+            "strategy": "현재 톤이 목표 프리셋보다 더 밝고 선명해서 색과 하이라이트를 살짝 낮춘다.",
             "tools": ["denoise", "color_grading"],
             "params": {
               "denoise": {"strength": 0.4},
-              "color_grading": {"temperature": "warm", "saturation": 0.1, "brightness": 0.1}
+              "color_grading": {
+                "contrast": -8,
+                "highlights": -10,
+                "shadows": 6,
+                "vibrance": -4,
+                "saturation": -6,
+                "temperature": "warm",
+                "tone_curve_shadow_lift": 4
+              }
             }
           }
         ]
@@ -129,7 +185,11 @@ async def test_final_edit_planner_client_builds_validated_plans() -> None:
 
     plans = await client.build_plans(
         ["a.jpg", "b.jpg"],
-        FinalEditSessionContext(caption="포근한 디저트 소개", keywords=["케이크"]),
+        FinalEditSessionContext(
+            owner_persona="friendly",
+            caption="포근한 디저트 소개",
+            keywords=["케이크"],
+        ),
     )
 
     assert len(plans) == 1
