@@ -8,6 +8,8 @@ import com.matketing.be.global.exception.BusinessException;
 import com.matketing.be.global.exception.ErrorCode;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -58,13 +60,14 @@ public class LlamaIntentClient {
                                     new ChatMessage("system", SYSTEM_PROMPT),
                                     new ChatMessage("user", utterance)
                             ),
+                            Map.of("type", "json_object"),
                             false,
                             96,
-                            0.1
+                            0.0
                     ))
                     .retrieve()
                     .body(ChatCompletionResponse.class);
-            return parseIntent(response);
+            return parseIntent(response, utterance);
         } catch (RestClientException exception) {
             log.warn("llama.intent.request-failed", exception);
             throw new BusinessException(ErrorCode.AI_SERVER_FAILED, exception);
@@ -74,7 +77,7 @@ public class LlamaIntentClient {
         }
     }
 
-    private LlamaIntentResponse parseIntent(ChatCompletionResponse response) throws JsonProcessingException {
+    private LlamaIntentResponse parseIntent(ChatCompletionResponse response, String utterance) throws JsonProcessingException {
         String content = response != null
                 && response.choices() != null
                 && !response.choices().isEmpty()
@@ -83,10 +86,11 @@ public class LlamaIntentClient {
                 : null;
 
         if (content == null || content.isBlank()) {
-            throw new BusinessException(ErrorCode.AI_SERVER_FAILED);
+            log.warn("llama.intent.empty-response");
+            return fallbackIntent(utterance);
         }
 
-        String json = extractJsonObject(content);
+        String json = extractJsonObject(content, utterance);
         LlamaIntentResponse intent = objectMapper.readValue(json, LlamaIntentResponse.class);
         if (!intent.isCreatePost() && (intent.reply() == null || intent.reply().isBlank())) {
             return new LlamaIntentResponse(false, "괜찮아요. 잠시 숨 고르고 천천히 이야기해 주세요.");
@@ -94,18 +98,46 @@ public class LlamaIntentClient {
         return intent;
     }
 
-    private String extractJsonObject(String content) {
+    private String extractJsonObject(String content, String utterance) {
         int start = content.indexOf('{');
         int end = content.lastIndexOf('}');
         if (start < 0 || end <= start) {
-            throw new BusinessException(ErrorCode.AI_SERVER_FAILED);
+            log.warn("llama.intent.non-json-response: contentPreview={}", preview(content));
+            return objectToJson(fallbackIntent(utterance));
         }
         return content.substring(start, end + 1);
+    }
+
+    private LlamaIntentResponse fallbackIntent(String utterance) {
+        String normalized = utterance == null ? "" : utterance.toLowerCase(Locale.ROOT);
+        boolean createPost = List.of(
+                "인스타", "instagram", "게시물", "피드", "캡션", "caption", "릴스", "reels",
+                "홍보", "포스팅", "post", "올려", "올릴", "만들", "작성", "소개"
+        ).stream().anyMatch(normalized::contains);
+
+        if (createPost) {
+            return new LlamaIntentResponse(true, "");
+        }
+        return new LlamaIntentResponse(false, "괜찮아요. 오늘 많이 지치셨다면 잠깐 쉬어가셔도 좋아요.");
+    }
+
+    private String objectToJson(LlamaIntentResponse response) {
+        try {
+            return objectMapper.writeValueAsString(response);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.AI_SERVER_FAILED, exception);
+        }
+    }
+
+    private String preview(String content) {
+        String compact = content.replaceAll("\\s+", " ").trim();
+        return compact.length() <= 200 ? compact : compact.substring(0, 200);
     }
 
     private record ChatCompletionRequest(
             String model,
             List<ChatMessage> messages,
+            Map<String, String> response_format,
             boolean stream,
             Integer max_tokens,
             Double temperature
