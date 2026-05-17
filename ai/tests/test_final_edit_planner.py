@@ -39,6 +39,7 @@ async def test_load_final_edit_session_context_uses_draft_keywords(
     await fake_redis_async.hset(
         session_key("sess-1"),
         mapping={
+            "owner_persona": "friendly",
             "caption": "포근한 디저트 소개",
             "draft_keyword:2": "따뜻한 분위기",
             "draft_keyword:1": "시그니처 케이크",
@@ -48,6 +49,7 @@ async def test_load_final_edit_session_context_uses_draft_keywords(
 
     context = await load_final_edit_session_context(fake_redis_async, "sess-1")
 
+    assert context.owner_persona == "friendly"
     assert context.caption == "포근한 디저트 소개"
     assert context.keywords == ["시그니처 케이크", "따뜻한 분위기"]
 
@@ -67,6 +69,7 @@ async def test_load_final_edit_session_context_falls_back_to_final_keywords(
 
     context = await load_final_edit_session_context(fake_redis_async, "sess-2")
 
+    assert context.owner_persona == "aesthetic"
     assert context.keywords == ["케이크", "테이블"]
 
 

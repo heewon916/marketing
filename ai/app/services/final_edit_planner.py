@@ -24,7 +24,8 @@ _JSON_ARRAY_PATTERN = re.compile(r"\[[\s\S]*\]")
 
 @dataclass(frozen=True)
 class FinalEditSessionContext:
-    caption: str
+    owner_persona: str = "aesthetic"
+    caption: str = ""
     keywords: list[str] = field(default_factory=list)
 
 
@@ -83,6 +84,9 @@ async def load_final_edit_session_context(
         _normalize_redis_value(key): _normalize_redis_value(value)
         for key, value in payload.items()
     }
+    owner_persona = normalized_payload.get("owner_persona", "").strip().lower()
+    if not owner_persona:
+        owner_persona = "aesthetic"
     caption = normalized_payload.get("caption", "").strip()
     keywords = _sorted_prefixed_values(normalized_payload, "draft_keyword:")
     if not keywords:
@@ -90,7 +94,11 @@ async def load_final_edit_session_context(
             _humanize_final_keyword(value)
             for value in _sorted_prefixed_values(normalized_payload, "final_keyword:")
         ]
-    return FinalEditSessionContext(caption=caption, keywords=keywords)
+    return FinalEditSessionContext(
+        owner_persona=owner_persona,
+        caption=caption,
+        keywords=keywords,
+    )
 
 
 def _tool_catalog_text() -> str:
