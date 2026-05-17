@@ -106,7 +106,7 @@ export const convertApiCloseTimeToDisplayTime = (closeTime) => {
 
   const [hour, minute] = closeTime.split(':').map(Number);
 
-  if (hour < 24) {
+  if (hour < 24 || (hour === 24 && minute === 0)) {
     return closeTime;
   }
 

@@ -16,12 +16,12 @@ export default function AccountInfoEdit({
 }) {
   const [searchKeyword, setSearchKeyword] = useState(formData.address ?? '');
 
-  const [storeLocation, setStoreLocation] = useState({
-    storeName: formData.businessName ?? '',
-    address: formData.address ?? '',
-    latitude: formData.latitude ?? null,
-    longitude: formData.longitude ?? null,
-  });
+const storeLocation = {
+  storeName: formData.businessName ?? '',
+  address: formData.address ?? '',
+  latitude: formData.latitude ?? null,
+  longitude: formData.longitude ?? null,
+};
 
   const [places, setPlaces] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -75,13 +75,12 @@ export default function AccountInfoEdit({
 
   const handleSelectPlace = (place) => {
     const nextStoreLocation = {
-      storeName: place.place_name,
+      storeName: formData.businessName,
       address: place.road_address_name || place.address_name,
       latitude: Number(place.y),
       longitude: Number(place.x),
     };
 
-    setStoreLocation(nextStoreLocation);
     setSearchKeyword(nextStoreLocation.address);
     setPlaces([]);
     setIsSearching(false);
@@ -97,17 +96,22 @@ export default function AccountInfoEdit({
   return (
     <CardShell className="flex flex-col px-7 py-8">
       <div className="flex flex-col">
-        <label className={`${accountInfoCardStyles.section} flex flex-col gap-2`}>
+        {/* 상호명 */}
+        <div className={`${accountInfoCardStyles.section} flex flex-col gap-2`}>
           <span className={accountInfoCardStyles.label}>상호명</span>
 
-          <input
-            value={formData.businessName}
-            onChange={(event) => updateField('businessName', event.target.value)}
-            className="h-12 rounded-xl border border-gray-200 bg-white px-4 text-[18px] font-semibold text-accent-100 outline-none placeholder:font-medium placeholder:text-gray-400 focus:border-primary-100"
-            placeholder="상호명을 입력해주세요"
-          />
-        </label>
+          <div className="flex h-12 items-center rounded-xl border border-gray-100 bg-gray-50 px-4">
+            <span className="text-[18px] font-semibold text-gray-500">
+              {formData.businessName || '상호명 없음'}
+            </span>
+          </div>
 
+          <p className="text-[13px] font-medium text-gray-400">
+            상호명은 온보딩 이후 수정할 수 없습니다.
+          </p>
+        </div>
+
+        {/* 업종 */}
         <div className={`${accountInfoCardStyles.section} flex flex-col gap-3`}>
           <span className={accountInfoCardStyles.label}>업종</span>
 
@@ -130,6 +134,7 @@ export default function AccountInfoEdit({
           </div>
         </div>
 
+        {/* 위치 */}
         <div className={`${accountInfoCardStyles.section} flex flex-col gap-3`}>
           <span className={accountInfoCardStyles.label}>위치</span>
 
@@ -176,6 +181,7 @@ export default function AccountInfoEdit({
         </div>
       </div>
 
+      {/* 하단 버튼 */}
       <div className="mt-6 flex justify-center gap-3">
         <Button
           size="sm"

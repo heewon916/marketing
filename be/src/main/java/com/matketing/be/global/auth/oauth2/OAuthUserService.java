@@ -49,6 +49,21 @@ public class OAuthUserService extends DefaultOAuth2UserService {
             }
         }
 
+        // 초기 로그인 시 프로필 정보(특히 프로필 사진) 자동으로 가져오기
+        try {
+            Map<String, Object> profile = instagramApiClient.getUserProfile(finalAccessToken);
+            if (profile != null) {
+                if (profile.get("username") != null) {
+                    instagramUsername = profile.get("username").toString();
+                }
+                if (profile.get("profile_picture_url") != null) {
+                    profileImageUrl = profile.get("profile_picture_url").toString();
+                }
+            }
+        } catch (Exception e) {
+            // 프로필 정보를 가져오는데 실패하더라도 로그인 프로세스는 정상 진행되도록 예외 무시
+        }
+
         // DB 확인 후 신규 유저 등록 또는 기존 유저 업데이트
         saveOrUpdate(instagramUserId, instagramUsername, profileImageUrl, finalAccessToken, tokenExpiresAt);
 
@@ -61,7 +76,11 @@ public class OAuthUserService extends DefaultOAuth2UserService {
 
     private User saveOrUpdate(String instagramUserId, String instagramUsername, String profileImageUrl, String accessToken, OffsetDateTime tokenExpiresAt) {
         User user = userRepository.findByInstagramUserId(instagramUserId)
-                .map(entity -> entity.update(instagramUsername, accessToken, tokenExpiresAt)) // 기존 유저면 정보 업데이트
+                .map(entity -> {
+                    entity.update(instagramUsername, accessToken, tokenExpiresAt);
+                    entity.updateProfile(instagramUsername, profileImageUrl);
+                    return entity;
+                }) // 기존 유저면 정보 업데이트
                 .orElse(User.builder()
                         .instagramUserId(instagramUserId)
                         .instagramUsername(instagramUsername)

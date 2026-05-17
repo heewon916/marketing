@@ -44,6 +44,9 @@ public class User {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<com.matketing.be.domain.store.entity.Store> stores = new java.util.ArrayList<>();
+
     @Builder
     public User(String instagramUserId, String instagramUsername, String profileImageUrl, String accessToken, OffsetDateTime tokenExpiresAt) {
         this.instagramUserId = instagramUserId;

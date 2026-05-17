@@ -909,6 +909,20 @@ async def get_place_detail(place_id: str):
                 ready_selectors=TAB_READY_SELECTORS["information"],
             )
             
+            # --- 메뉴 크롤링 추가 ---
+            await asyncio.sleep(random.uniform(0.4, 0.8))
+            menus = []
+            try:
+                menu_text, menu_cards = await fetch_menu_tab_data(
+                    page,
+                    f"{place_url}/{TAB_CONFIG['menu']}",
+                    timeout_ms=timeout_ms,
+                )
+                menus = build_menus_with_candidates(menu_text, menu_cards)
+            except Exception as e:
+                logger.warning(f"Failed to fetch menus for {place_id}: {e}")
+            # -----------------------
+            
             business_hours = (
                 structured_business_hours
                 if has_any_business_hours_value(structured_business_hours)
@@ -921,7 +935,8 @@ async def get_place_detail(place_id: str):
                 "status": "success", 
                 "data": {
                     "place_id": place_id,
-                    "business_hours": business_hours
+                    "business_hours": business_hours,
+                    "menus": menus
                 }
             }
     except Exception as e:

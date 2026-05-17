@@ -24,8 +24,9 @@ public class Store {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "user_id", nullable = false)
-    private UUID userId; // User 엔티티와 연관관계 매핑 필요 시 변경
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private com.matketing.be.domain.user.entity.User user;
 
     @Column(name = "merchant_id", length = 20)
     private String merchantId;
@@ -64,9 +65,17 @@ public class Store {
     @Column(name = "updated_at")
     private OffsetDateTime updatedAt;
 
+    @OneToMany(mappedBy = "store", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<Menu> menus = new java.util.ArrayList<>();
+
+    // User 엔티티의 ID를 반환하는 편의 메서드 (기존 코드 호환성 유지)
+    public UUID getUserId() {
+        return this.user != null ? this.user.getId() : null;
+    }
+
     @Builder
-    public Store(UUID userId, String merchantId, String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
-        this.userId = userId;
+    public Store(com.matketing.be.domain.user.entity.User user, String merchantId, String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+        this.user = user;
         this.merchantId = merchantId;
         this.storeName = storeName;
         this.category = category;
@@ -77,10 +86,13 @@ public class Store {
         this.operatingHours = operatingHours;
     }
 
-    public void updateAllDetails(String merchantId, String storeName, CategoryEnumType category, OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
+    public void updateSyncInfo(String merchantId, String storeName, CategoryEnumType category) {
         if (merchantId != null) this.merchantId = merchantId;
         if (storeName != null) this.storeName = storeName;
         if (category != null) this.category = category;
+    }
+
+    public void updateDetails(OwnerPersonaEnumType ownerPersona, String address, BigDecimal latitude, BigDecimal longitude, String operatingHours) {
         if (ownerPersona != null) this.ownerPersona = ownerPersona;
         if (address != null) this.address = address;
         if (latitude != null) this.latitude = latitude;

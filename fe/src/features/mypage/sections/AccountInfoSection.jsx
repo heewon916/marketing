@@ -62,8 +62,6 @@ export default function AccountInfoSection({
     try {
       setIsSaving(true);
 
-      console.log('내정보 수정 요청:', requestBody);
-
       await mypageApi.updateMyInfo(requestBody);
 
       if (onRefresh) {
@@ -165,7 +163,7 @@ export default function AccountInfoSection({
         ) : (
           <CardShell as="div" className="flex flex-col px-7 py-8">
             <dl className="flex flex-col">
-              <InfoItem label="상호명" value={businessName} />
+              <InfoItem label="상호명" value={businessName || '상호명 없음'} />
               <InfoItem label="업종" value={category || '업종 없음'} />
               <InfoItem label="위치" value={address || '주소 없음'} />
             </dl>
