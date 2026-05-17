@@ -1,14 +1,17 @@
 import pytest
 
 from app.services.final_edit_planner import (
+    TARGET_PROFILE_KIND_TONE,
     FinalEditPlannerClient,
     FinalEditPlanningError,
     FinalEditSessionContext,
     build_final_edit_prompt,
     load_final_edit_session_context,
     parse_image_edit_plans,
+    resolve_owner_persona_target,
     resolve_owner_persona_preset,
 )
+from app.services.final_edit_tools import AESTHETIC_TARGET_TONE_PROFILE
 from app.services.sessions import session_key
 
 
@@ -95,12 +98,39 @@ def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     assert "image_index from 0 to 2" in prompt
 
 
+def test_build_final_edit_prompt_uses_aesthetic_tone_profile() -> None:
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="aesthetic",
+            caption="분위기 설명",
+            keywords=["케이크"],
+        ),
+        1,
+    )
+
+    assert "[target_profile_kind] tone_profile" in prompt
+    assert "\"brightness\"" in prompt
+    assert "\"tolerance\"" in prompt
+    assert "\"target\": 81.69" in prompt
+
+
 def test_resolve_owner_persona_preset_falls_back_to_aesthetic() -> None:
     persona, preset, used_fallback = resolve_owner_persona_preset("unknown")
 
     assert persona == "aesthetic"
     assert used_fallback is True
-    assert preset["temperature"] == "cool"
+    assert preset == AESTHETIC_TARGET_TONE_PROFILE
+
+
+def test_resolve_owner_persona_target_marks_aesthetic_as_tone_profile() -> None:
+    persona, target, used_fallback, target_kind = resolve_owner_persona_target(
+        "aesthetic"
+    )
+
+    assert persona == "aesthetic"
+    assert used_fallback is False
+    assert target == AESTHETIC_TARGET_TONE_PROFILE
+    assert target_kind == TARGET_PROFILE_KIND_TONE
 
 
 def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:

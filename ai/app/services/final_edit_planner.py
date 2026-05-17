@@ -12,6 +12,7 @@ from redis.asyncio import Redis
 
 from app.core.config import LlamaModelClientSettings, settings
 from app.services.final_edit_tools import (
+    AESTHETIC_TARGET_TONE_PROFILE,
     SUPPORTED_TOOL_SPECS,
     ToolName,
     supported_tool_names,
@@ -22,15 +23,6 @@ from app.services.sessions import session_key
 _JSON_ARRAY_PATTERN = re.compile(r"\[[\s\S]*\]")
 DEFAULT_OWNER_PERSONA = "aesthetic"
 PERSONA_TARGET_PRESETS: dict[str, dict[str, Any]] = {
-    "aesthetic": {
-        "contrast": -18,
-        "highlights": -12,
-        "shadows": 20,
-        "vibrance": -25,
-        "saturation": -18,
-        "temperature": "cool",
-        "tone_curve_shadow_lift": 12,
-    },
     "friendly": {
         "contrast": -8,
         "highlights": -6,
@@ -68,6 +60,8 @@ PERSONA_TARGET_PRESETS: dict[str, dict[str, Any]] = {
         "tone_curve_shadow_lift": 6,
     },
 }
+TARGET_PROFILE_KIND_TONE = "tone_profile"
+TARGET_PROFILE_KIND_PRESET = "style_preset"
 
 
 @dataclass(frozen=True)
@@ -126,11 +120,32 @@ def _humanize_final_keyword(value: str) -> str:
 def resolve_owner_persona_preset(
     owner_persona: str,
 ) -> tuple[str, dict[str, Any], bool]:
+    resolved_persona, resolved_target, used_fallback, _target_kind = (
+        resolve_owner_persona_target(owner_persona)
+    )
+    return resolved_persona, resolved_target, used_fallback
+
+
+def resolve_owner_persona_target(
+    owner_persona: str,
+) -> tuple[str, dict[str, Any], bool, str]:
     normalized_owner_persona = owner_persona.strip().lower()
+    if normalized_owner_persona == DEFAULT_OWNER_PERSONA:
+        return (
+            DEFAULT_OWNER_PERSONA,
+            dict(AESTHETIC_TARGET_TONE_PROFILE),
+            False,
+            TARGET_PROFILE_KIND_TONE,
+        )
     preset = PERSONA_TARGET_PRESETS.get(normalized_owner_persona)
     if preset is not None:
-        return normalized_owner_persona, dict(preset), False
-    return DEFAULT_OWNER_PERSONA, dict(PERSONA_TARGET_PRESETS[DEFAULT_OWNER_PERSONA]), True
+        return normalized_owner_persona, dict(preset), False, TARGET_PROFILE_KIND_PRESET
+    return (
+        DEFAULT_OWNER_PERSONA,
+        dict(AESTHETIC_TARGET_TONE_PROFILE),
+        True,
+        TARGET_PROFILE_KIND_TONE,
+    )
 
 
 async def load_final_edit_session_context(
@@ -171,7 +186,7 @@ def _tool_catalog_text() -> str:
 
 
 def _target_preset_text(context: FinalEditSessionContext) -> str:
-    preset_persona, preset, preset_fallback = resolve_owner_persona_preset(
+    preset_persona, preset, preset_fallback, target_kind = resolve_owner_persona_target(
         context.owner_persona
     )
     preset_json = json.dumps(preset, ensure_ascii=False)
@@ -179,6 +194,7 @@ def _target_preset_text(context: FinalEditSessionContext) -> str:
         f"[owner_persona] {context.owner_persona or DEFAULT_OWNER_PERSONA}\n"
         f"[target_preset_persona] {preset_persona}\n"
         f"[target_preset_fallback] {'true' if preset_fallback else 'false'}\n"
+        f"[target_profile_kind] {target_kind}\n"
         f"[target_preset] {preset_json}"
     )
 
@@ -229,9 +245,10 @@ def build_final_edit_prompt(
         "4. Use only supported tools.\n"
         "5. Do not copy the target preset blindly. Estimate the gap between the current image and the target tone, then apply only the minimum adjustment needed for that image.\n"
         "6. Summarize the gap analysis briefly in strategy.\n"
-        "7. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
-        "8. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
-        "9. Output only a JSON array.\n\n"
+        "7. If owner_persona is aesthetic, use the target_preset as a tone profile with target and tolerance values, and reason about the current image's gap from those metrics.\n"
+        "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
+        "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
+        "10. Output only a JSON array.\n\n"
         f"{_few_shot_example()}"
     )
 

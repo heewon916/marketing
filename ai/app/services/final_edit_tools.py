@@ -15,6 +15,16 @@ ToolName = Literal[
     "background_blur",
 ]
 
+AESTHETIC_TARGET_TONE_PROFILE: dict[str, dict[str, float]] = {
+    "brightness": {"target": 81.69, "tolerance": 40.71},
+    "contrast": {"target": 47.52, "tolerance": 13.68},
+    "black_point": {"target": 18.88, "tolerance": 21.76},
+    "white_point": {"target": 163.12, "tolerance": 44.14},
+    "temperature": {"target": 13.58, "tolerance": 11.81},
+    "tint": {"target": 5.23, "tolerance": 6.26},
+    "saturation": {"target": 106.89, "tolerance": 32.23},
+}
+
 
 @dataclass(frozen=True)
 class FinalEditToolSpec:
