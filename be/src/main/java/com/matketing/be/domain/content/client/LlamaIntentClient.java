@@ -35,10 +35,13 @@ public class LlamaIntentClient {
     public LlamaIntentClient(
             RestClient.Builder builder,
             ObjectMapper objectMapper,
-            @Value("${spring.ai.ollama.base-url}") String baseUrl,
-            @Value("${spring.ai.ollama.chat.model:local-model}") String model,
+            @Value("${spring.ai.ollama.base-url:${OLLAMA_BASE_URL:}}") String baseUrl,
+            @Value("${spring.ai.ollama.chat.model:${OLLAMA_MODEL:local-model}}") String model,
             @Value("${llama.intent.timeout-seconds:120}") long timeoutSeconds
     ) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalStateException("OLLAMA_BASE_URL is required for llama intent classification.");
+        }
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(timeoutSeconds));
         requestFactory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
