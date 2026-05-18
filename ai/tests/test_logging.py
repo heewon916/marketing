@@ -228,6 +228,48 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
     assert 'event="frame_extraction.cleanup_tempdir"' in output
 
 
+@pytest.mark.asyncio
+async def test_frame_extraction_logs_video_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    service = FrameExtractionService(
+        extractor_config=ExtractorConfig(input_directory=tmp_path, output_directory=tmp_path),
+        extractor=StubFrameExtractor(),
+        downloader=StubVideoDownloader(),
+        uploader=StubDraftUploader(),
+        temp_root=tmp_path,
+    )
+
+    monkeypatch.setattr(
+        service,
+        "_inspect_downloaded_video",
+        lambda path: {
+            "video_extension": ".webm",
+            "video_size_bytes": 7340032,
+            "video_size_mb": 7.0,
+            "video_metadata_status": "ok",
+            "video_resolution": "3840x2160",
+            "video_width": 3840,
+            "video_height": 2160,
+            "video_fps": 59.94,
+            "video_frame_count": 1800,
+        },
+    )
+
+    with capture_app_logs() as stream:
+        await service.extract_and_upload(
+            session_id="frame-meta-session",
+            video_key="/inputs/frame-meta.webm",
+        )
+
+    output = stream.getvalue()
+    assert 'video_extension=".webm"' in output
+    assert "video_size_bytes=7340032" in output
+    assert "video_size_mb=7.0" in output
+    assert 'video_resolution="3840x2160"' in output
+    assert "video_fps=59.94" in output
+    assert "video_frame_count=1800" in output
+    assert 'video_metadata_status="ok"' in output
+
+
 def test_resolve_download_video_path_preserves_known_extension(tmp_path: Path) -> None:
     path = FrameExtractionService._resolve_download_video_path(
         tmp_path,
