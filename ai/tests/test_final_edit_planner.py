@@ -127,6 +127,34 @@ def test_build_final_edit_prompt_uses_aesthetic_tone_profile() -> None:
     )
 
 
+def test_build_final_edit_prompt_marks_food_or_beverage_focus() -> None:
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="friendly",
+            caption="signature cake and coffee on a cafe table",
+            keywords=["dessert", "menu"],
+        ),
+        1,
+    )
+
+    assert "[content_focus_hint] likely_food_or_beverage" in prompt
+    assert "prefer an Instagram-friendly hero shot" in prompt
+    assert "tighter close-up" in prompt
+
+
+def test_build_final_edit_prompt_marks_general_scene_when_food_hint_missing() -> None:
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="friendly",
+            caption="store entrance with plants",
+            keywords=["signage", "door"],
+        ),
+        1,
+    )
+
+    assert "[content_focus_hint] general_scene" in prompt
+
+
 def test_resolve_owner_persona_preset_falls_back_to_aesthetic() -> None:
     persona, preset, used_fallback = resolve_owner_persona_preset("unknown")
 

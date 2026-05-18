@@ -7,8 +7,8 @@ from dotenv import load_dotenv
 import os
 
 
-SOURCE_FILE = Path(r"C:\Users\SSAFY\Downloads\15sec.webm")
-S3_OBJECT_KEY = "inputs/c4a8931c-8e80-46f6-acf3-b58351ec8543/draft.webm"
+SOURCE_FILE = Path(r"C:\Users\SSAFY\Downloads\test.webm")
+S3_OBJECT_KEY = "inputs/c4a8931c-8e80-46f6-acf3-b58351ec8543/test.webm"
 
 
 def _load_required_env(var_name: str) -> str:
