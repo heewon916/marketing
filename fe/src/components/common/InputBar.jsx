@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { TiMicrophone } from "react-icons/ti";
 import { requestSpeechToText } from "@/features/home/api/HomeApi";
+import { showToast } from "@/utils/toast";
 
 function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
   const textareaRef = useRef(null);
@@ -13,15 +14,7 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [hasScrollbar, setHasScrollbar] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const errorTimerRef = useRef(null);
-
-  const showError = (message) => {
-    setErrorMessage(message);
-    clearTimeout(errorTimerRef.current);
-    errorTimerRef.current = setTimeout(() => setErrorMessage(""), 5000);
-  };
 
   const MAX_HEIGHT = 200;
 
@@ -49,7 +42,6 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
       mediaRecorderRef.current?.stream
         ?.getTracks()
         .forEach((track) => track.stop());
-      clearTimeout(errorTimerRef.current);
       clearTimeout(recordingTimerRef.current);
     };
   }, []);
@@ -80,10 +72,8 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
                 handleResizeHeight();
               });
             }
-          } catch (error) {
-            showError(
-              error.message || "음성 인식에 실패했어요. 다시 녹음해 주세요.",
-            );
+          } catch {
+            showToast("음성 인식에 실패했어요. 다시 녹음해 주세요.", 'error');
           } finally {
             stream.getTracks().forEach((track) => track.stop());
           }
@@ -102,11 +92,11 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
           mediaRecorderRef.current.stop();
           setIsRecording(false);
           onRecordingChange?.(false);
-          showError("음성 입력은 최대 58초까지 가능합니다.");
+          showToast("음성 입력은 최대 58초까지 가능합니다.", 'error');
         }
       }, 58000);
     } catch {
-      showError("마이크 접근 권한이 필요합니다.");
+      showToast("마이크 접근 권한이 필요합니다.", 'error');
     }
   };
 
@@ -149,8 +139,8 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
       requestAnimationFrame(() => {
         handleResizeHeight();
       });
-    } catch (error) {
-      showError(error.message || "요청 처리 중 문제가 발생했습니다.");
+    } catch {
+      showToast("요청 처리 중 문제가 발생했습니다.", 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -165,13 +155,6 @@ function InputBar({ onTyping, disabled = false, onRecordingChange, onSubmit }) {
 
   return (
     <div className="w-full px-4 pb-6">
-      {/* 에러 메시지 */}
-      {errorMessage && (
-        <div className="mb-2 flex items-center gap-1.5 rounded-2xl bg-red-50 px-4 py-2 text-base text-red-500">
-          <span className="material-icons text-base">warning</span>
-          {errorMessage}
-        </div>
-      )}
       {/* 컨테이너 */}
       <div
         className={`relative w-full min-h-16 border rounded-4xl flex items-end p-2 transition-all duration-200 ${

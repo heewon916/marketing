@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerFcmToken } from '@/features/notification/api/FcmApi';
+
 
 const AUTH_ERROR_MESSAGE = {
   LOGIN_FAILED: {
@@ -95,7 +95,6 @@ function InstagramCallbackPage() {
         })
       );
 
-      void registerFcmToken({ requestPermission: true });
 
       const isClosed = closePopup();
 

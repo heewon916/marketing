@@ -17,9 +17,7 @@ def run_probe(timeout_seconds: float) -> dict:
         "max_tokens": service.max_tokens,
     }
 
-    purpose = list(service._pipelines.keys())[0]
     request = CaptionGenerationRequest(
-        purpose=purpose,
         keywords=["동절기 메뉴"],
         owner_persona="aesthetic",
         utterance="마늘 치킨 메뉴 홍보 문구 부탁해요",
@@ -27,7 +25,7 @@ def run_probe(timeout_seconds: float) -> dict:
         reference_captions=[],
         menu_candidates=[],
     )
-    prompt = service._get_pipeline(request.purpose).build_prompt(request)
+    prompt = service._pipeline.build_prompt(request)
     full_payload = service._build_request_payload(
         prompt,
         include_response_format=True,

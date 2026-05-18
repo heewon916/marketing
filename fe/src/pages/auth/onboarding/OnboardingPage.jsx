@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Modal from '@/components/common/Modal.jsx';
-import Button from '@/components/common/Button.jsx';
 
 import StartStep from '@/features/auth/onboarding/steps/StartStep.jsx';
 import InstagramConnectStep from '@/features/auth/onboarding/steps/InstagramConnectStep.jsx';
@@ -330,24 +329,12 @@ function OnboardingPage() {
         onClose={handleCloseAuthNoticeModal}
         showClose={false}
         closeOnBackdrop={false}
-      >
-        <div className="text-center">
-          <h3 className="text-xl font-bold text-gray-900">
-            {authNotice?.title}
-          </h3>
-
-          <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
-            {authNotice?.description}
-          </p>
-
-          <Button
-            onClick={handleCloseAuthNoticeModal}
-            className="mt-8 w-full font-bold"
-          >
-            확인
-          </Button>
-        </div>
-      </Modal>
+        title={authNotice?.title}
+        titleColor={authNotice?.titleColor}
+        description={authNotice?.description}
+        confirmText="확인"
+        onConfirm={handleCloseAuthNoticeModal}
+      />
     </>
   );
 }

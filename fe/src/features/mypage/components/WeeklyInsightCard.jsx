@@ -7,33 +7,11 @@ const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
 const DESCRIPTION_CONTENT = {
   reach: {
     title: '가게 노출수',
-    content: (
-      <span className="flex flex-col gap-1">
-        <span>지난주 인스타그램 계정의 도달 수예요.</span>
-        <span>
-          수치가 높을수록 더 많은 사람에게
-          <br />
-          가게를 알린 거예요.
-        </span>
-      </span>
-    ),
+    content: `지난주 인스타그램 계정의 도달 수예요.\n수치가 높을수록 더 많은 사람에게\n가게를 알린 거예요.`,
   },
   visitIntent: {
     title: '방문 관심도',
-    content: (
-      <span className="flex flex-col gap-1">
-        <span>
-          게시물을 본 사람들이
-          <br />
-          가게에 관심을 보인 정도예요.
-        </span>
-        <span>
-          저장, 좋아요, 도달 수를 반영해
-          <br />
-          계산해요.
-        </span>
-      </span>
-    ),
+    content: `게시물을 본 사람들이\n가게에 관심을 보인 정도예요.\n저장, 좋아요, 도달 수를 반영해\n계산해요.`,
   },
 };
 
@@ -123,6 +101,7 @@ function InsightMetricItem({
         <h3 className="text-[20px] font-semibold tracking-tight text-accent-100">
           {title}
         </h3>
+
         <button
           type="button"
           onClick={() => onDescriptionOpen(descriptionKey)}
@@ -138,9 +117,7 @@ function InsightMetricItem({
       {/* 수치 데이터 */}
       <div className="mt-3 flex items-baseline justify-center gap-1">
         {valuePrefix && (
-          <span
-            className={`text-[18px] font-bold ${valueColorClassName}`}
-          >
+          <span className={`text-[18px] font-bold ${valueColorClassName}`}>
             {valuePrefix}
           </span>
         )}
@@ -220,27 +197,13 @@ export default function WeeklyInsightCard({
         </div>
       </CardShell>
 
-      {/* 모달 */}
-      {description && (
-        <Modal
-          isOpen={Boolean(selectedDescription)}
-          onClose={() => setSelectedDescription(null)}
-        >
-          <div className="flex flex-col items-center text-center p-2">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-surface-100 text-primary-100">
-              <span className="material-icons text-[24px]">info</span>
-            </div>
-
-            <h3 className="text-[24px] font-extrabold leading-snug text-accent-100">
-              {description.title}
-            </h3>
-
-            <div className="mt-4 text-[17px] font-medium leading-relaxed text-gray-500">
-              {description.content}
-            </div>
-          </div>
-        </Modal>
-      )}
+      <Modal
+        isOpen={Boolean(selectedDescription)}
+        onClose={() => setSelectedDescription(null)}
+        title={description?.title}
+        description={description?.content}
+        titleColor="primary"
+      />
     </>
   );
 }

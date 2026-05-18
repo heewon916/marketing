@@ -1,6 +1,6 @@
 -- 1. 확장 모듈 및 사용자 정의 타입 생성 (사전 필수 작업)
 CREATE EXTENSION IF NOT EXISTS vector;
-
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 -- 도메인 요구사항에 맞게 ENUM 값 수정 필요
 CREATE TYPE category_type AS ENUM ('주점', '제과점', '카페', '식당');
 CREATE TYPE owner_persona_type AS ENUM ('aesthetic', 'friendly', 'professional', 'trendy', 'other');

@@ -41,6 +41,7 @@ function InstagramConnectStep({ onNext }) {
             authNotice: {
               title: '이미 가입된 계정이에요',
               description: '홈 화면으로 이동할게요.',
+              titleColor: 'primary',
             },
             redirectTo: '/home',
           },
@@ -50,7 +51,18 @@ function InstagramConnectStep({ onNext }) {
 
       onNext();
     } catch (error) {
-      alert(error?.message || '인스타그램 연동에 실패했습니다.');
+      console.error('인스타그램 연동 실패:', error);
+
+      navigate('/auth/onboarding', {
+        replace: true,
+        state: {
+          authNotice: {
+            title: '로그인에 실패했어요',
+            description: '로그인을 다시 시도해 주세요.',
+            titleColor: 'primary',
+          },
+        },
+      });
     } finally {
       setIsConnecting(false);
     }

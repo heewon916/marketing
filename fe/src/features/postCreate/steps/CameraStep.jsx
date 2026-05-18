@@ -8,8 +8,6 @@ const VIDEO_TYPES = [
 
 const MAX_RECORD_SECONDS = 60
 const TARGET_ASPECT_RATIO = 3 / 4
-const MAX_CANVAS_LONG_SIDE = 4096
-const OUTPUT_FPS = 60
 
 export default function CameraStep({ onRecorded, onClose }) {
   const videoRef = useRef(null)
@@ -202,13 +200,9 @@ export default function CameraStep({ onRecorded, onClose }) {
               ? {
                   deviceId: { exact: preferredRearCameraId },
                   facingMode: { ideal: "environment" },
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
                 }
               : {
                   facingMode: { ideal: "environment" },
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
                 },
             audio: true,
           })
@@ -216,8 +210,6 @@ export default function CameraStep({ onRecorded, onClose }) {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
             },
             audio: true,
           })
@@ -236,25 +228,6 @@ export default function CameraStep({ onRecorded, onClose }) {
 
         console.log("[Camera] selected settings:", settings)
         console.log("[Camera] selected capabilities:", capabilities)
-
-        // 선택된 카메라가 그래도 너무 넓게 보일 경우, 지원하면 살짝 줌 적용
-        const zoomCapability = capabilities?.zoom
-
-        if (videoTrack && zoomCapability) {
-          try {
-            const targetZoom = 1.3
-            const initialZoom = Math.min(
-              Math.max(targetZoom, zoomCapability.min),
-              zoomCapability.max
-            )
-
-            await videoTrack.applyConstraints({
-              advanced: [{ zoom: initialZoom }],
-            })
-          } catch {
-            // 일부 브라우저/기기는 zoom capability가 있어도 applyConstraints가 실패할 수 있음
-          }
-        }
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream
@@ -353,14 +326,6 @@ export default function CameraStep({ onRecorded, onClose }) {
         outputHeight = Math.round(sourceWidth / TARGET_ASPECT_RATIO)
       }
 
-      const longSide = Math.max(outputWidth, outputHeight)
-
-      if (longSide > MAX_CANVAS_LONG_SIDE) {
-        const scale = MAX_CANVAS_LONG_SIDE / longSide
-        outputWidth = Math.round(outputWidth * scale)
-        outputHeight = Math.round(outputHeight * scale)
-      }
-
       if (outputWidth % 2 !== 0) {
         outputWidth -= 1
       }
@@ -456,7 +421,7 @@ export default function CameraStep({ onRecorded, onClose }) {
       chunksRef.current = []
       setRemainingSeconds(MAX_RECORD_SECONDS)
 
-      const canvasStream = canvasRef.current.captureStream(OUTPUT_FPS)
+      const canvasStream = canvasRef.current.captureStream()
       canvasStreamRef.current = canvasStream
 
       const recordingStream = new MediaStream()
@@ -498,11 +463,9 @@ export default function CameraStep({ onRecorded, onClose }) {
         if (shouldEmitRecordingRef.current && blob.size > 0) {
           const downloadUrl = URL.createObjectURL(file)
           const anchor = document.createElement("a")
-
           anchor.href = downloadUrl
           anchor.download = file.name
           anchor.click()
-
           URL.revokeObjectURL(downloadUrl)
 
           onRecorded?.(file)
