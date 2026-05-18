@@ -9,7 +9,6 @@ const VIDEO_TYPES = [
 const MAX_RECORD_SECONDS = 60
 const TARGET_ASPECT_RATIO = 3 / 4
 const MAX_CANVAS_LONG_SIDE = 4096
-const OUTPUT_FPS = 60
 
 export default function CameraStep({ onRecorded, onClose }) {
   const videoRef = useRef(null)
@@ -202,13 +201,9 @@ export default function CameraStep({ onRecorded, onClose }) {
               ? {
                   deviceId: { exact: preferredRearCameraId },
                   facingMode: { ideal: "environment" },
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
                 }
               : {
                   facingMode: { ideal: "environment" },
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
                 },
             audio: true,
           })
@@ -216,8 +211,6 @@ export default function CameraStep({ onRecorded, onClose }) {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
             },
             audio: true,
           })
@@ -456,7 +449,7 @@ export default function CameraStep({ onRecorded, onClose }) {
       chunksRef.current = []
       setRemainingSeconds(MAX_RECORD_SECONDS)
 
-      const canvasStream = canvasRef.current.captureStream(OUTPUT_FPS)
+      const canvasStream = canvasRef.current.captureStream()
       canvasStreamRef.current = canvasStream
 
       const recordingStream = new MediaStream()
@@ -496,6 +489,13 @@ export default function CameraStep({ onRecorded, onClose }) {
         setRemainingSeconds(MAX_RECORD_SECONDS)
 
         if (shouldEmitRecordingRef.current && blob.size > 0) {
+          const downloadUrl = URL.createObjectURL(file)
+          const anchor = document.createElement("a")
+          anchor.href = downloadUrl
+          anchor.download = file.name
+          anchor.click()
+          URL.revokeObjectURL(downloadUrl)
+
           onRecorded?.(file)
         }
       }
