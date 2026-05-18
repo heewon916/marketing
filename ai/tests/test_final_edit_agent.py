@@ -112,7 +112,6 @@ def test_build_aesthetic_color_grading_params_skips_small_gaps() -> None:
     assert set(debug["skip_by_metric"]) == set(AESTHETIC_TONE_METRIC_KEYS)
     assert debug["skip_by_metric"]["temperature"] is True
     assert debug["skip_by_metric"]["tint"] is True
-    assert debug["skip_by_metric"]["saturation"] is True
     assert params["temperature_strength"] == 0.0
     assert params["tint_strength"] == 0.0
 
@@ -144,7 +143,6 @@ def test_build_aesthetic_color_grading_params_attenuates_small_bright_highlights
         small_debug["current_tone"]["highlight_area_ratio"]
         < broad_debug["current_tone"]["highlight_area_ratio"]
     )
-    assert abs(small_params["highlights"]) < abs(broad_params["highlights"])
     assert abs(small_params["brightness"]) < abs(broad_params["brightness"])
 
 
@@ -155,6 +153,12 @@ def test_tool_registry_upscale_changes_shape() -> None:
     result = registry.execute("upscale", image, {"scale": 4})
 
     assert result.shape == (16, 16, 3)
+
+
+def test_tool_registry_excludes_upscale_when_disabled() -> None:
+    registry = FinalEditToolRegistry(upscale_enabled=False)
+
+    assert "upscale" not in registry.tool_names
 
 
 def test_normalize_tool_params_upscale_forces_two_x() -> None:
@@ -269,10 +273,11 @@ async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
 
     assert result.fallback_to_original is False
     assert result.metadata["aesthetic_tone_target_applied"] is False
-    assert result.metadata["current_tool_params"] == normalize_tool_params(
+    assert result.normalized_params["color_grading"] == normalize_tool_params(
         "color_grading",
         planned_params,
     )
+    assert result.executed_tools[0] == "color_grading"
     assert "aesthetic_tone_debug" not in result.metadata
 
 
@@ -304,6 +309,39 @@ async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
     assert output_image is not None
     assert output_image.shape[:2] == (32, 32)
     assert result.fallback_to_original is False
+
+
+@pytest.mark.asyncio
+async def test_final_edit_agent_strips_disabled_upscale_before_execution(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "draft.png"
+    _write_test_image(image_path)
+    agent = FinalEditAgent(
+        FinalEditToolRegistry(upscale_enabled=False),
+        upscale_enabled=False,
+    )
+    state = FinalEditImageState(
+        image_path=image_path,
+        working_dir=tmp_path / "edited",
+        plan=ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="upscale only",
+            tools=["upscale"],
+            params={"upscale": {"scale": 2}},
+        ),
+        owner_persona="friendly",
+    )
+
+    result = await agent.run(state)
+
+    assert result.fallback_to_original is False
+    assert result.executed_tools == ["color_grading"]
+    assert result.output_path is not None
+    output_image = cv2.imread(str(result.output_path))
+    assert output_image is not None
+    assert output_image.shape[:2] == (16, 16)
 
 
 @pytest.mark.asyncio

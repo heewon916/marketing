@@ -5,6 +5,7 @@ from typing import Any, Literal, cast
 
 import numpy as np
 
+from app.core.config import settings
 from app.services.final_edit_runtime import import_cv2
 from app.services.final_edit_upscaler import get_realesrgan_upscaler
 
@@ -89,8 +90,22 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
 )
 
 
-def supported_tool_names() -> tuple[ToolName, ...]:
-    return tuple(spec.name for spec in SUPPORTED_TOOL_SPECS)
+def _resolve_upscale_enabled(upscale_enabled: bool | None) -> bool:
+    if upscale_enabled is None:
+        return settings.FINAL_EDIT_ENABLE_UPSCALE
+    return upscale_enabled
+
+
+def supported_tool_specs(
+    upscale_enabled: bool | None = None,
+) -> tuple[FinalEditToolSpec, ...]:
+    if _resolve_upscale_enabled(upscale_enabled):
+        return SUPPORTED_TOOL_SPECS
+    return tuple(spec for spec in SUPPORTED_TOOL_SPECS if spec.name != "upscale")
+
+
+def supported_tool_names(upscale_enabled: bool | None = None) -> tuple[ToolName, ...]:
+    return tuple(spec.name for spec in supported_tool_specs(upscale_enabled))
 
 
 def _clamp_float(value: Any, default: float, minimum: float, maximum: float) -> float:
@@ -483,15 +498,17 @@ def _tool_background_blur(image: np.ndarray, params: dict[str, Any]) -> np.ndarr
 class FinalEditToolRegistry:
     """Registry for final-edit tool execution."""
 
-    def __init__(self) -> None:
-        self._tool_names = supported_tool_names()
+    def __init__(self, upscale_enabled: bool | None = None) -> None:
+        self._upscale_enabled = _resolve_upscale_enabled(upscale_enabled)
+        self._tool_names = supported_tool_names(self._upscale_enabled)
         self._tool_functions = {
-            "upscale": _tool_upscale,
             "denoise": _tool_denoise,
             "color_grading": _tool_color_grading,
             "sharpen": _tool_sharpen,
             "background_blur": _tool_background_blur,
         }
+        if self._upscale_enabled:
+            self._tool_functions["upscale"] = _tool_upscale
 
     @property
     def tool_names(self) -> tuple[ToolName, ...]:
@@ -503,5 +520,7 @@ class FinalEditToolRegistry:
         image: np.ndarray,
         params: dict[str, Any],
     ) -> np.ndarray:
+        if tool_name not in self._tool_functions:
+            raise ValueError(f"Unsupported tool: {tool_name}")
         normalized_params = normalize_tool_params(tool_name, params)
         return self._tool_functions[tool_name](image, normalized_params)

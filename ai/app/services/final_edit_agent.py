@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from langgraph.graph import END, START, StateGraph
 import numpy as np
 
-from app.services.final_edit_planner import DEFAULT_OWNER_PERSONA, ImageEditPlan
+from app.core.config import settings
+from app.services.final_edit_planner import (
+    DEFAULT_OWNER_PERSONA,
+    ImageEditPlan,
+    normalize_image_edit_plan,
+)
 from app.services.final_edit_runtime import import_cv2
 from app.services.final_edit_tools import (
     build_aesthetic_color_grading_params,
@@ -43,9 +48,15 @@ class FinalEditAgent:
         self,
         tool_registry: FinalEditToolRegistry,
         tool_event_sink: Callable[[str, FinalEditImageState, str], None] | None = None,
+        upscale_enabled: bool | None = None,
     ) -> None:
         self.tool_registry = tool_registry
         self.tool_event_sink = tool_event_sink
+        self.upscale_enabled = (
+            settings.FINAL_EDIT_ENABLE_UPSCALE
+            if upscale_enabled is None
+            else upscale_enabled
+        )
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -90,6 +101,11 @@ class FinalEditAgent:
 
     def _validate_plan(self, state: FinalEditImageState) -> FinalEditImageState:
         try:
+            state.plan = normalize_image_edit_plan(
+                state.plan,
+                upscale_enabled=self.upscale_enabled,
+                owner_persona=state.owner_persona,
+            )
             state.normalized_params = {
                 tool_name: normalize_tool_params(
                     tool_name,
