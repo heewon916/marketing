@@ -161,4 +161,10 @@ public class InternalNotificationController {
     public ResponseEntity<NotificationBatchCreateResponse> createWeeklyStatsBatch() {
         return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.WEEKLY_STATS));
     }
+
+    // 인스타그램 업로드 리마인드 알림을 생성한다.
+    @PostMapping("/post-promotion-reminder")
+    public ResponseEntity<NotificationBatchCreateResponse> createPostPromotionReminderBatch() {
+        return ResponseEntity.ok(notificationBatchCreateService.createBatch(NotificationType.POST_PROMOTION_REMINDER));
+    }
 }
