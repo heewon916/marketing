@@ -542,7 +542,7 @@ public class ContentService {
     public ContentVideoResponseDto processVideo(UUID sessionId, String storeId, MultipartFile videoFile) {
         try {
             validateVideoFile(videoFile);
-            String videoKey = "/inputs/" + sessionId + "/draft.mp4";
+            String videoKey = "/inputs/" + sessionId + "/draft.webm";
 
             log.info("[VideoUpload] uploading original video to S3. key={}", videoKey);
             s3VideoClient.uploadVideo(videoKey, videoFile);
