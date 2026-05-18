@@ -496,15 +496,6 @@ export default function CameraStep({ onRecorded, onClose }) {
         setRemainingSeconds(MAX_RECORD_SECONDS)
 
         if (shouldEmitRecordingRef.current && blob.size > 0) {
-          const downloadUrl = URL.createObjectURL(file)
-          const anchor = document.createElement("a")
-
-          anchor.href = downloadUrl
-          anchor.download = file.name
-          anchor.click()
-
-          URL.revokeObjectURL(downloadUrl)
-
           onRecorded?.(file)
         }
       }
