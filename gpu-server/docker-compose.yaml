@@ -1,0 +1,122 @@
+# ============================================================
+# g5.2xlarge (A10G 24GB) — 전체 AI 서비스
+#
+# VRAM 예산 (24GB):
+#   exaone-32b  (llama.cpp, ngl 12): ~6GB
+#   keyword     (llama.cpp, ngl 99): ~5GB
+#   vlm         (vLLM, AWQ):         ~7GB
+#   여유:                             ~6GB
+# ============================================================
+
+services:
+
+  # ── EXAONE 4.0 32B — caption + chat 통합 ──
+  # llama.cpp 사용 (32B는 부분 GPU 오프로드 필수)
+  # 시스템 프롬프트만 다르게 보내서 caption/chat 겸용
+  exaone-32b:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: exaone-32b
+    ports:
+      - "${EXAONE_32B_PORT:-8000}:8080"
+    volumes:
+      - ${MODEL_DIR}/exaone-4.0-32b-q4_k_m:/models
+    command: >
+      -m /models/model.gguf
+      --port 8080
+      --host 0.0.0.0
+      -ngl ${EXAONE_32B_NGL:-12}
+      -fa on
+      -c ${EXAONE_32B_CTX:-2048}
+      -b 512
+      -ub 512
+      --api-key ${INTERNAL_API_KEY}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ── EXAONE 3.5 7.8B — 키워드 추출 ──
+  # llama.cpp 사용 (GGUF 모델 활용, 전체 GPU 오프로드)
+  keyword-server:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: keyword-server
+    ports:
+      - "${KEYWORD_PORT:-8002}:8080"
+    volumes:
+      - ${MODEL_DIR}/exaone-3.5-7.8b-q4_k_m:/models
+    command: >
+      -m /models/model.gguf
+      --port 8080
+      --host 0.0.0.0
+      -ngl 99
+      -fa on
+      -c ${KEYWORD_CTX:-4096}
+      -b 512
+      -ub 512
+      --api-key ${INTERNAL_API_KEY}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # ── Qwen2.5-VL 7B — 사진 분석 + 편집 전략 수립 ──
+  # vLLM 사용 (멀티모달 안정성 + JSON 구조화 출력)
+  vlm-server:
+    image: vllm/vllm-openai:latest
+    container_name: vlm-server
+    ports:
+      - "${VLM_PORT:-8001}:8000"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    command: >
+      --model ${VLM_MODEL:-Qwen/Qwen2.5-VL-7B-Instruct-AWQ}
+      --max-model-len ${VLM_CTX:-8192}
+      --gpu-memory-utilization 0.30
+      --enforce-eager
+      --api-key ${INTERNAL_API_KEY}
+      --host 0.0.0.0
+      --port 8000
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  # ── Redis (Celery 브로커 + 캐시) ──
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  huggingface-cache:
+  redis-data:
