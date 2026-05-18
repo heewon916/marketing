@@ -63,6 +63,7 @@ PERSONA_TARGET_PRESETS: dict[str, dict[str, Any]] = {
 TARGET_PROFILE_KIND_TONE = "tone_profile"
 TARGET_PROFILE_KIND_PRESET = "style_preset"
 _TOOL_ORDER_GROUPS: dict[ToolName, int] = {
+    "crop": -1,
     "denoise": 0,
     "color_grading": 1,
     "sharpen": 1,
@@ -303,9 +304,13 @@ Example output:
   {
     "image_index": 0,
     "content": "A signature cake placed on a bright cafe table.",
-    "strategy": "The image is brighter and more saturated than the target aesthetic preset, so denoise first, gently lower highlights, mute color, lift shadows only enough to approach the preset, and upscale last.",
-    "tools": ["denoise", "color_grading", "sharpen", "upscale"],
+    "strategy": "The subject is slightly small in the frame, so crop conservatively around the cake first, then denoise, gently lower highlights, mute color, lift shadows only enough to approach the preset, and upscale last.",
+    "tools": ["crop", "denoise", "color_grading", "sharpen", "upscale"],
     "params": {
+      "crop": {
+        "subject_boxes": [[120, 90, 740, 980]],
+        "keep_edges": ["bottom"]
+      },
       "denoise": {"strength": 0.5},
       "color_grading": {
         "contrast": -10,
@@ -328,9 +333,13 @@ Example output:
   {
     "image_index": 0,
     "content": "A signature cake placed on a bright cafe table.",
-    "strategy": "The image is brighter and more saturated than the target aesthetic preset, so denoise first, gently lower highlights, mute color, and lift shadows only enough to approach the preset.",
-    "tools": ["denoise", "color_grading", "sharpen"],
+    "strategy": "The subject is slightly small in the frame, so crop conservatively around the cake first, then denoise, gently lower highlights, mute color, and lift shadows only enough to approach the preset.",
+    "tools": ["crop", "denoise", "color_grading", "sharpen"],
     "params": {
+      "crop": {
+        "subject_boxes": [[120, 90, 740, 980]],
+        "keep_edges": ["bottom"]
+      },
       "denoise": {"strength": 0.5},
       "color_grading": {
         "contrast": -10,
@@ -368,18 +377,21 @@ def build_final_edit_prompt(
         "5. Do not copy the target preset blindly. Estimate the gap between the current image and the target tone, then apply only the minimum adjustment needed for that image.\n"
         "6. Summarize the gap analysis briefly in strategy.\n"
         "7. If owner_persona is aesthetic, use the target_preset as a tone profile with target and tolerance values, and reason about the current image's gap from those metrics.\n"
-        "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
-        "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
-        "10. If denoise is used, it must appear before any filter tool.\n"
+        "8. Use crop only when it clearly improves Instagram composition. Crop conservatively, preserve the main subject, and skip crop if the gain is weak or risky.\n"
+        "9. If crop is used, provide 1 to 3 subject_boxes as pixel coordinates [[x1,y1,x2,y2], ...]. Use keep_edges only when an edge must remain visible.\n"
+        "10. For portrait images, prefer Instagram-friendly composition near 3:4. Do not force landscape images into portrait crops.\n"
+        "11. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
+        "12. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
+        "13. If denoise is used, it must appear before any filter tool.\n"
         + (
-            "11. Upscale must be included for every image, it is 2x only, and it must appear exactly once as the last tool.\n"
-            "12. Do not place upscale on an image unless at least one filter tool precedes it.\n"
-            "13. Denoise alone is not enough to justify upscale; insert a filter before upscale.\n"
+            "14. Upscale must be included for every image, it is 2x only, and it must appear exactly once as the last tool.\n"
+            "15. Do not place upscale on an image unless at least one filter tool precedes it.\n"
+            "16. Denoise alone is not enough to justify upscale; insert a filter before upscale.\n"
             if settings.FINAL_EDIT_ENABLE_UPSCALE
-            else "11. Upscale is temporarily disabled. Do not use the upscale tool.\n"
+            else "14. Upscale is temporarily disabled. Do not use the upscale tool.\n"
         )
-        + "14. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
-        + "15. Output only a JSON array.\n\n"
+        + "17. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
+        + "18. Output only a JSON array.\n\n"
         f"{_few_shot_example()}"
     )
 
@@ -466,6 +478,12 @@ def parse_image_edit_plans(
                 raise FinalEditPlanningError(
                     f"params for tool '{tool_name}' must be an object."
                 )
+            if tool_name == "crop":
+                subject_boxes = tool_params.get("subject_boxes")
+                if not isinstance(subject_boxes, list) or not subject_boxes:
+                    raise FinalEditPlanningError(
+                        "crop params must include a non-empty subject_boxes list."
+                    )
             normalized_params[tool_name] = tool_params
 
         content = str(item["content"]).strip()

@@ -95,6 +95,37 @@ def _read_image_dimensions(image_path: Path) -> tuple[int | None, int | None]:
     return width, height
 
 
+def _classify_layout_orientation(width: int | None, height: int | None) -> str | None:
+    if width is None or height is None:
+        return None
+    if width == height:
+        return "square"
+    if height > width:
+        return "portrait"
+    return "landscape"
+
+
+def _attach_crop_context(
+    plan: ImageEditPlan,
+    *,
+    anchor_orientation: str | None,
+) -> ImageEditPlan:
+    if "crop" not in plan.tools:
+        return plan
+    merged_params = {tool_name: dict(tool_params) for tool_name, tool_params in plan.params.items()}
+    crop_params = dict(merged_params.get("crop", {}))
+    if anchor_orientation:
+        crop_params["anchor_orientation"] = anchor_orientation
+    merged_params["crop"] = crop_params
+    return ImageEditPlan(
+        image_index=plan.image_index,
+        content=plan.content,
+        strategy=plan.strategy,
+        tools=list(plan.tools),
+        params=merged_params,
+    )
+
+
 def _json_debug_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
@@ -499,6 +530,8 @@ class FinalEditService:
         from app.services.final_edit_agent import FinalEditImageState
 
         edited_paths: list[Path] = []
+        anchor_width, anchor_height = _read_image_dimensions(downloaded_drafts[0])
+        anchor_orientation = _classify_layout_orientation(anchor_width, anchor_height)
         for image_index, draft_path in enumerate(downloaded_drafts):
             plan = plans_by_index.get(image_index)
             if plan is None:
@@ -531,6 +564,10 @@ class FinalEditService:
                 upscale_enabled=self.upscale_enabled,
                 owner_persona=context.owner_persona,
             )
+            plan = _attach_crop_context(
+                plan,
+                anchor_orientation=anchor_orientation,
+            )
 
             debug_fields[f"debug:tool_count:{image_index + 1}"] = str(len(plan.tools))
             debug_fields[f"debug:tools:{image_index + 1}"] = ",".join(plan.tools)
@@ -551,6 +588,17 @@ class FinalEditService:
             )
             debug_fields[f"debug:upload_source_kind:{image_index + 1}"] = output_source
             debug_fields[f"debug:output_path:{image_index + 1}"] = str(output_path)
+            debug_fields[f"debug:crop_applied:{image_index + 1}"] = str(
+                bool(image_state.metadata.get("crop_applied"))
+            ).lower()
+            if image_state.metadata.get("crop_reason") is not None:
+                debug_fields[f"debug:crop_reason:{image_index + 1}"] = str(
+                    image_state.metadata.get("crop_reason")
+                )
+            if image_state.metadata.get("crop_output_ratio") is not None:
+                debug_fields[f"debug:crop_output_ratio:{image_index + 1}"] = str(
+                    image_state.metadata.get("crop_output_ratio")
+                )
             tone_debug = image_state.metadata.get("aesthetic_tone_debug")
             debug_fields[f"debug:aesthetic_tone_applied:{image_index + 1}"] = str(
                 bool(image_state.metadata.get("aesthetic_tone_target_applied"))

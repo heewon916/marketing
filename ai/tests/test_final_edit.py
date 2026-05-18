@@ -500,6 +500,55 @@ def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(
     assert "edited-000.png" in uploader.source_paths[0]
 
 
+def test_final_edit_service_applies_crop_and_records_debug_fields(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="cake",
+                    strategy="crop first",
+                    tools=["crop", "color_grading"],
+                    params={
+                        "crop": {
+                            "subject_boxes": [[4, 4, 12, 12]],
+                            "keep_edges": [],
+                        },
+                        "color_grading": {"contrast": -4},
+                    },
+                )
+            ]
+        ),
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-crop-debug-1",
+            drafts=["/ai-drafts/session-crop-debug-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="dessert cake",
+                keywords=["cake"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:tools:1"] == "crop,color_grading,upscale"
+    assert result.debug_fields["debug:executed_tools:1"] == "crop,color_grading,upscale"
+    assert result.debug_fields["debug:crop_applied:1"] == "true"
+    assert result.debug_fields["debug:crop_reason:1"] == "applied"
+    assert float(result.debug_fields["debug:crop_output_ratio:1"]) == pytest.approx(1.0)
+
+
 def test_final_edit_service_reorders_tools_before_execution(
     tmp_path: Path,
     service_loop,
