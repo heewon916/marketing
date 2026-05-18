@@ -17,7 +17,7 @@ from app.logging import build_log_extra
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
-from app.perfectframe.video_processors import _import_cv2
+from app.perfectframe.video_processors import OpenCVVideo, _import_cv2
 from app.schemas.sessions import ExtractFramesRequest
 from app.services.s3_support import build_s3_client, normalize_s3_key
 from app.services.sessions import STATUS_STARTED, STATUS_TEXT_GENERATED, session_key, upsert_content_session
@@ -312,6 +312,11 @@ class FrameExtractionService:
                     video_key=video_key,
                     video_path=str(video_path),
                     top_k=DRAFT_TOP_K,
+                    **{
+                        key: value
+                        for key, value in OpenCVVideo.last_scan_metadata.items()
+                        if value is not None
+                    },
                     elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
                 ),
             )
@@ -330,6 +335,11 @@ class FrameExtractionService:
                 video_key=video_key,
                 extracted_count=len(extracted),
                 top_k=DRAFT_TOP_K,
+                **{
+                    key: value
+                    for key, value in OpenCVVideo.last_scan_metadata.items()
+                    if value is not None
+                },
                 elapsed_ms=int((time.perf_counter() - extract_started_at) * 1000),
             ),
         )
