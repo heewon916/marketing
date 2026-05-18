@@ -14,6 +14,8 @@ export default function Modal({
   onConfirm,
   onCancel,
   variant = 'default',
+
+  descriptionClassName = 'text-gray-500',
 }) {
   if (!isOpen) return null;
 
@@ -74,14 +76,16 @@ export default function Modal({
           <div className="text-center">
             {title && (
               <h2
-                className={`text-[22px] font-bold leading-snug ${titleColorClass}`}
+                className={`text-[22px] font-bold leading-snug whitespace-pre-line ${titleColorClass}`}
               >
                 {title}
               </h2>
             )}
 
             {description && (
-              <p className="mt-4 whitespace-pre-line text-[17px] font-medium leading-relaxed text-gray-500">
+              <p
+                className={`mt-4 whitespace-pre-line text-[17px] font-medium leading-relaxed ${descriptionClassName}`}
+              >
                 {description}
               </p>
             )}
