@@ -41,14 +41,22 @@ def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
 
     assert service._normalize_keyword("\uba39\uace0 \uc0b4\uc544\uc57c\uc9c0") == ""
     assert service._normalize_keyword("\uc81c\ucca0\uc774\uc57c") == ""
+    assert service._normalize_keyword("\ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4") == ""
 
 
-def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
+def test_keyword_extraction_service_rejects_generic_promotion_keywords() -> None:
+    service = KeywordExtractionService()
+
+    assert service._normalize_keyword("\ud64d\ubcf4") == ""
+    assert service._normalize_keyword("\ucd94\ucc9c") == ""
+    assert service._normalize_keyword("\ubd84\uc704\uae30") == ""
+
+
+def test_keyword_extraction_service_parses_keywords_only() -> None:
     service = KeywordExtractionService()
 
     result = service._parse_extraction_result(
         "{"
-        '"purpose": "\\uba54\\ub274 \\ud64d\\ubcf4", '
         '"keywords": ['
         '"\\ubc24\\ud638\\ubc15", '
         '"\\uc81c\\ucca0 \\uc74c\\uc2dd", '
@@ -57,21 +65,21 @@ def test_keyword_extraction_service_parses_purpose_and_keywords() -> None:
         "}"
     )
 
-    assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"]
     assert result.final_keywords == []
 
 
-def test_keyword_extraction_service_rejects_invalid_purpose() -> None:
+def test_keyword_extraction_service_ignores_extra_fields() -> None:
     service = KeywordExtractionService()
 
-    with pytest.raises(KeywordExtractionUnavailableError, match="invalid purpose"):
-        service._parse_extraction_result(
-            '{'
-            '"purpose": "\\uae30\\ud0c0", '
-            '"keywords": ["\\ub9c9\\uac78\\ub9ac"]'
-            "}"
-        )
+    result = service._parse_extraction_result(
+        '{'
+        '"purpose": "\\uae30\\ud0c0", '
+        '"keywords": ["\\ub9c9\\uac78\\ub9ac"]'
+        "}"
+    )
+
+    assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
 
 
 def test_keyword_extraction_service_raises_when_disabled() -> None:
@@ -95,7 +103,7 @@ def test_keyword_extraction_service_calls_remote_server_successfully(
         calls.append(include_response_format)
         return _make_chat_response(
             200,
-            content='{"purpose":"\\uba54\\ub274 \\ud64d\\ubcf4","keywords":["\\ub9c9\\uac78\\ub9ac"]}',
+            content='{"keywords":["\\ub9c9\\uac78\\ub9ac"]}',
         )
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
@@ -107,7 +115,6 @@ def test_keyword_extraction_service_calls_remote_server_successfully(
     )
 
     assert calls == [True]
-    assert result.purpose == "\uba54\ub274 \ud64d\ubcf4"
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
 
 
@@ -130,7 +137,7 @@ def test_keyword_extraction_service_retries_without_response_format(
             )
         return _make_chat_response(
             200,
-            content='{"purpose":"\\uba54\\ub274 \\ud64d\\ubcf4","keywords":["\\ud30c\\uc804"]}',
+            content='{"keywords":["\\ud30c\\uc804"]}',
         )
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)

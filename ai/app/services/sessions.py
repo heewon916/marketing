@@ -1,39 +1,28 @@
 import asyncio
 from dataclasses import dataclass
 import logging
-from typing import Any
 
 from redis.asyncio import Redis
 
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
 from app.schemas.sessions import ProcessUtteranceRequest
-from app.services.canonical_keyword_resolver import (
-    CanonicalKeywordResolution,
-    CanonicalKeywordResolverService,
-)
 from app.services.caption_generation import (
     CaptionGenerationRequest,
     CaptionGenerationService,
     CaptionGenerationUnavailableError,
 )
-from app.services.content_purpose import ContentPurpose
+from app.services.content_purpose import ContentPurpose, MENU_PROMOTION_PURPOSE
 from app.services.keyword_extraction import KeywordExtractionService
 from app.services.menu_promotion_context import (
-    MenuPromotionContext,
+    MatchedMenuContext,
     MenuPromotionContextService,
-)
-from app.services.reference_caption_retriever import (
-    ReferenceCaptionRetrieverService,
-    RetrievedReferenceCaption,
 )
 from app.services.session_store import RedisSessionStore, session_key
 from app.services.weather_tags import evaluate_weather_tags
 
 STATUS_STARTED = "STARTED"
 STATUS_TEXT_GENERATED = "TEXT_GENERATED"
-MENU_PROMOTION_PURPOSE = "\uba54\ub274 \ud64d\ubcf4"
-DAILY_SHARE_PURPOSE = "\uc77c\uc0c1 \uacf5\uc720"
 
 HEALTH_CHECK_FALLBACK_SOURCE = "health_check_fallback"
 HEALTH_CHECK_FAILURE_GUIDE_TEXT = (
@@ -64,32 +53,13 @@ class TextGenerationOutcome:
     guide_text: str
     stored_caption: str
     fallback_source: str | None
-    selected_menu_name: str | None
 
 
 @dataclass
 class CaptionPreparation:
-    purpose: ContentPurpose
     draft_keywords: list[str]
     final_keywords: list[str]
-    canonical_resolution: CanonicalKeywordResolution
     caption_request: CaptionGenerationRequest
-
-
-def resolve_caption_keywords(
-    draft_keywords: list[str],
-    canonical_resolution: CanonicalKeywordResolution,
-) -> list[str]:
-    if not canonical_resolution.matches:
-        return draft_keywords
-
-    caption_keywords: list[str] = []
-    for match in canonical_resolution.matches:
-        if match.matched and match.display_name:
-            caption_keywords.append(match.display_name)
-        else:
-            caption_keywords.append(match.draft_keyword)
-    return caption_keywords or draft_keywords
 
 
 async def upsert_content_session(
@@ -117,21 +87,6 @@ async def upsert_content_session(
 
 def _session_store(redis: Redis) -> RedisSessionStore:
     return RedisSessionStore(redis)
-
-
-def _build_reference_caption_log_details(
-    references: list[RetrievedReferenceCaption],
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "id": reference.caption_id,
-            "score": (
-                round(reference.score, 4) if reference.score is not None else None
-            ),
-            "content": reference.caption_content,
-        }
-        for reference in references
-    ]
 
 
 async def _persist_process_utterance_started(
@@ -168,8 +123,7 @@ async def _persist_process_utterance_started(
 def _build_keyword_state(
     extraction_result,
     session_id: str,
-) -> tuple[ContentPurpose, list[str]]:
-    purpose = extraction_result.purpose
+) -> list[str]:
     draft_keywords = list(extraction_result.draft_keywords)
 
     logger.info(
@@ -180,61 +134,52 @@ def _build_keyword_state(
             stage="keyword_extraction",
             session_id=session_id,
             outcome="succeeded",
-            purpose=purpose,
+            purpose=MENU_PROMOTION_PURPOSE,
             draft_keyword_count=len(draft_keywords),
             draft_keywords_preview=", ".join(draft_keywords[:3]),
         ),
     )
 
-    return purpose, draft_keywords
+    return draft_keywords
 
 
 def _build_final_keyword_state(
     draft_keywords: list[str],
-    resolution: CanonicalKeywordResolution,
     session_id: str,
 ) -> list[str]:
-    final_keywords = list(resolution.final_keywords or draft_keywords)
+    final_keywords = list(draft_keywords)
     logger.info(
-        "Canonical keyword resolution finished.",
+        "Final keyword state fixed to draft keywords for menu promotion.",
         extra=build_log_extra(
-            "session.process_utterance.canonical_resolution.completed",
+            "session.process_utterance.final_keyword_state.completed",
             component="session",
-            stage="canonical_resolution",
+            stage="final_keyword_state",
             session_id=session_id,
             outcome="succeeded",
             draft_keyword_count=len(draft_keywords),
             draft_keywords_preview=", ".join(draft_keywords[:3]),
             final_keyword_count=len(final_keywords),
             final_keywords_preview=", ".join(final_keywords[:3]),
-            canonical_match_count=resolution.match_count,
-            canonical_fallback_count=resolution.fallback_count,
         ),
     )
     return final_keywords
 
 
 def _build_process_utterance_debug_fields(
-    purpose: ContentPurpose,
-    canonical_resolution: CanonicalKeywordResolution,
-    menu_promotion_context: MenuPromotionContext | None = None,
-    selected_menu_name: str | None = None,
+    matched_menu_context: MatchedMenuContext | None = None,
 ) -> dict[str, str]:
     debug_fields = {
-        "debug:purpose": purpose,
-        "debug:canonical_match_count": str(canonical_resolution.match_count),
-        "debug:canonical_fallback_count": str(canonical_resolution.fallback_count),
+        "debug:purpose": MENU_PROMOTION_PURPOSE,
     }
-    if menu_promotion_context is not None:
-        debug_fields["debug:menu_candidate_source"] = menu_promotion_context.source
-        debug_fields["debug:menu_candidate_count"] = str(
-            len(menu_promotion_context.candidates)
+    if matched_menu_context is not None:
+        debug_fields["debug:menu_match_source"] = matched_menu_context.match_source
+        debug_fields["debug:menu_candidate_count"] = (
+            "1" if matched_menu_context.matched else "0"
         )
-        debug_fields["debug:weather_matched_menu_count"] = str(
-            menu_promotion_context.weather_matched_count
-        )
-    if selected_menu_name is not None:
-        debug_fields["debug:selected_menu_name"] = selected_menu_name
+        if matched_menu_context.matched_keyword is not None:
+            debug_fields["debug:matched_keyword"] = matched_menu_context.matched_keyword
+        if matched_menu_context.menu_name is not None:
+            debug_fields["debug:matched_menu_name"] = matched_menu_context.menu_name
     return debug_fields
 
 
@@ -307,6 +252,7 @@ async def _build_health_check_fallback_result(
         ),
     )
     debug_fields = {
+        "debug:purpose": MENU_PROMOTION_PURPOSE,
         "debug:text_generation_fallback_source": HEALTH_CHECK_FALLBACK_SOURCE,
         "debug:health_check_keyword_ok": "true" if keyword_ok else "false",
         "debug:health_check_caption_ok": "true" if caption_ok else "false",
@@ -326,7 +272,7 @@ async def _build_health_check_fallback_result(
     )
     return ProcessUtteranceResult(
         status=STATUS_TEXT_GENERATED,
-        purpose=DAILY_SHARE_PURPOSE,
+        purpose=MENU_PROMOTION_PURPOSE,
         weather_tags=weather_tags,
         draft_keywords=[],
         final_keywords=[],
@@ -379,130 +325,59 @@ async def _prepare_caption_request(
     payload: ProcessUtteranceRequest,
     weather_tags: list[str],
     keyword_service: KeywordExtractionService,
-    canonical_keyword_resolver: CanonicalKeywordResolverService,
 ) -> CaptionPreparation:
     _log_keyword_extraction_start(session_id, payload, weather_tags)
     extraction_result = await keyword_service.extract_keywords(payload.utterance)
-    purpose, draft_keywords = _build_keyword_state(
+    draft_keywords = _build_keyword_state(
         extraction_result=extraction_result,
         session_id=session_id,
     )
-    canonical_resolution = await canonical_keyword_resolver.resolve_keywords(
-        draft_keywords
-    )
     final_keywords = _build_final_keyword_state(
         draft_keywords=draft_keywords,
-        resolution=canonical_resolution,
         session_id=session_id,
     )
     caption_request = CaptionGenerationRequest(
-        purpose=purpose,
-        keywords=resolve_caption_keywords(draft_keywords, canonical_resolution),
+        draft_keywords=list(draft_keywords),
         owner_persona=payload.owner_persona,
+        today=payload.date.isoformat(),
         utterance=payload.utterance,
         weather_tags=weather_tags,
-        fallback_keywords=list(draft_keywords),
     )
     return CaptionPreparation(
-        purpose=purpose,
         draft_keywords=draft_keywords,
         final_keywords=final_keywords,
-        canonical_resolution=canonical_resolution,
         caption_request=caption_request,
     )
 
 
-async def _attach_menu_candidates(
+async def _attach_matched_menu(
     session_id: str,
     payload: ProcessUtteranceRequest,
-    weather_tags: list[str],
-    purpose: ContentPurpose,
     caption_request: CaptionGenerationRequest,
     menu_promotion_context_service: MenuPromotionContextService,
-) -> MenuPromotionContext | None:
-    if purpose != MENU_PROMOTION_PURPOSE:
-        return None
-
-    menu_promotion_context = await menu_promotion_context_service.fetch_context(
+) -> MatchedMenuContext:
+    matched_menu_context = await menu_promotion_context_service.match_menu(
         store_id=payload.store_id,
-        weather_tags=weather_tags,
+        draft_keywords=caption_request.draft_keywords,
     )
-    caption_request.menu_candidates = list(menu_promotion_context.candidates)
+    if matched_menu_context.matched:
+        caption_request.menu_name = matched_menu_context.menu_name
+        caption_request.menu_description = matched_menu_context.menu_description
+        caption_request.matched_keyword = matched_menu_context.matched_keyword
     logger.info(
-        "Menu promotion context retrieval completed.",
+        "Matched menu retrieval completed.",
         extra=build_log_extra(
-            "session.process_utterance.menu_promotion_context.completed",
+            "session.process_utterance.menu_match.completed",
             component="session",
-            stage="menu_promotion_context",
+            stage="menu_match",
             session_id=session_id,
-            outcome=(
-                "succeeded" if menu_promotion_context.candidates else "skipped"
-            ),
-            menu_candidate_source=menu_promotion_context.source,
-            menu_candidate_count=len(menu_promotion_context.candidates),
-            weather_matched_menu_count=menu_promotion_context.weather_matched_count,
+            outcome="succeeded" if matched_menu_context.matched else "skipped",
+            menu_match_source=matched_menu_context.match_source,
+            matched_keyword=matched_menu_context.matched_keyword,
+            matched_menu_name=matched_menu_context.menu_name,
         ),
     )
-    return menu_promotion_context
-
-
-async def _attach_reference_captions(
-    session_id: str,
-    payload: ProcessUtteranceRequest,
-    canonical_resolution: CanonicalKeywordResolution,
-    caption_request: CaptionGenerationRequest,
-    reference_caption_retriever: ReferenceCaptionRetrieverService,
-) -> None:
-    try:
-        reference_caption_result = await reference_caption_retriever.retrieve(
-            owner_persona=payload.owner_persona,
-            utterance=payload.utterance,
-            canonical_matches=canonical_resolution.matches,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Reference caption retrieval failed; continuing without caption RAG.",
-            exc_info=True,
-            extra=build_log_extra(
-                "session.process_utterance.reference_caption_retrieval.completed",
-                component="session",
-                stage="reference_caption_retrieval",
-                session_id=session_id,
-                outcome="failed",
-                error_type=exc.__class__.__name__,
-            ),
-        )
-        return
-
-    if reference_caption_result.captions:
-        caption_request.reference_captions = reference_caption_result.captions
-    logger.info(
-        "Reference caption retrieval completed.",
-        extra=build_log_extra(
-            "session.process_utterance.reference_caption_retrieval.completed",
-            component="session",
-            stage="reference_caption_retrieval",
-            session_id=session_id,
-            outcome=(
-                "succeeded" if reference_caption_result.captions else "skipped"
-            ),
-            reference_caption_candidate_count=reference_caption_result.candidate_count,
-            reference_caption_selected_count=len(reference_caption_result.captions),
-            reference_caption_selected_ids=",".join(
-                str(caption_id)
-                for caption_id in reference_caption_result.selected_caption_ids
-            )
-            or None,
-            reference_caption_selected_details=(
-                _build_reference_caption_log_details(
-                    reference_caption_result.references
-                )
-                if reference_caption_result.references
-                else None
-            ),
-            reference_caption_fallback_reason=reference_caption_result.fallback_reason,
-        ),
-    )
+    return matched_menu_context
 
 
 def _fallback_text_generation_outcome(
@@ -519,18 +394,16 @@ def _fallback_text_generation_outcome(
         guide_text=fallback_result.result.guide_text,
         stored_caption=fallback_result.result.stored_caption,
         fallback_source=fallback_result.fallback_source,
-        selected_menu_name=fallback_result.result.selected_menu_name,
     )
 
 
 async def _generate_text_outcome(
     session_id: str,
-    purpose: ContentPurpose,
     weather_tags: list[str],
     caption_request: CaptionGenerationRequest,
     caption_service: CaptionGenerationService,
 ) -> TextGenerationOutcome:
-    if not caption_request.keywords:
+    if not caption_request.draft_keywords:
         outcome = _fallback_text_generation_outcome(
             caption_service,
             caption_request,
@@ -545,8 +418,7 @@ async def _generate_text_outcome(
                 session_id=session_id,
                 outcome="fallback",
                 text_generation_source="default_guide",
-                purpose=purpose,
-                selected_menu_name=outcome.selected_menu_name,
+                purpose=MENU_PROMOTION_PURPOSE,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(outcome.draft_caption),
@@ -562,7 +434,6 @@ async def _generate_text_outcome(
             guide_text=result.guide_text,
             stored_caption=result.stored_caption,
             fallback_source=None,
-            selected_menu_name=result.selected_menu_name,
         )
         logger.info(
             "Built text generation result from caption model.",
@@ -573,8 +444,7 @@ async def _generate_text_outcome(
                 session_id=session_id,
                 outcome="succeeded",
                 text_generation_source="caption_model",
-                purpose=purpose,
-                selected_menu_name=outcome.selected_menu_name,
+                purpose=MENU_PROMOTION_PURPOSE,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(outcome.draft_caption),
@@ -600,8 +470,7 @@ async def _generate_text_outcome(
                 outcome="fallback",
                 text_generation_source="rule_based_fallback",
                 error_type=exc.__class__.__name__,
-                purpose=purpose,
-                selected_menu_name=outcome.selected_menu_name,
+                purpose=MENU_PROMOTION_PURPOSE,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(outcome.draft_caption),
@@ -617,8 +486,6 @@ async def process_utterance(
     redis: Redis,
     keyword_service: KeywordExtractionService,
     caption_service: CaptionGenerationService,
-    canonical_keyword_resolver: CanonicalKeywordResolverService,
-    reference_caption_retriever: ReferenceCaptionRetrieverService,
     menu_promotion_context_service: MenuPromotionContextService,
 ) -> ProcessUtteranceResult:
     store = _session_store(redis)
@@ -653,36 +520,22 @@ async def process_utterance(
         payload=payload,
         weather_tags=weather_tags,
         keyword_service=keyword_service,
-        canonical_keyword_resolver=canonical_keyword_resolver,
     )
-    menu_promotion_context = await _attach_menu_candidates(
+    matched_menu_context = await _attach_matched_menu(
         session_id=session_id,
         payload=payload,
-        weather_tags=weather_tags,
-        purpose=preparation.purpose,
         caption_request=preparation.caption_request,
         menu_promotion_context_service=menu_promotion_context_service,
     )
-    await _attach_reference_captions(
-        session_id=session_id,
-        payload=payload,
-        canonical_resolution=preparation.canonical_resolution,
-        caption_request=preparation.caption_request,
-        reference_caption_retriever=reference_caption_retriever,
-    )
     text_outcome = await _generate_text_outcome(
         session_id=session_id,
-        purpose=preparation.purpose,
         weather_tags=weather_tags,
         caption_request=preparation.caption_request,
         caption_service=caption_service,
     )
 
     debug_fields = _build_process_utterance_debug_fields(
-        purpose=preparation.purpose,
-        canonical_resolution=preparation.canonical_resolution,
-        menu_promotion_context=menu_promotion_context,
-        selected_menu_name=text_outcome.selected_menu_name,
+        matched_menu_context=matched_menu_context,
     )
     if text_outcome.fallback_source is not None:
         debug_fields["debug:text_generation_fallback_source"] = (
@@ -701,7 +554,7 @@ async def process_utterance(
 
     return ProcessUtteranceResult(
         status=STATUS_TEXT_GENERATED,
-        purpose=preparation.purpose,
+        purpose=MENU_PROMOTION_PURPOSE,
         weather_tags=weather_tags,
         draft_keywords=preparation.draft_keywords,
         final_keywords=preparation.final_keywords,

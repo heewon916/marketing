@@ -12,9 +12,8 @@ from app.services.sessions import (
 
 def test_runtime_korean_texts_do_not_contain_mojibake_patterns() -> None:
     service = CaptionGenerationService(base_url="http://caption-server:8002")
-    menu_prompt = service._get_pipeline("메뉴 홍보").build_prompt(
+    menu_prompt = service._pipeline.build_prompt(
         CaptionGenerationRequest(
-            purpose="메뉴 홍보",
             keywords=["해물파전"],
             owner_persona="warm",
             weather_tags=["PRECIP_RAIN"],

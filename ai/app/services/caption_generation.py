@@ -12,8 +12,7 @@ import httpx
 
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
-from app.services.content_purpose import ContentPurpose
-from app.services.menu_promotion_context import StoreMenuCandidate
+from app.services.content_purpose import MENU_PROMOTION_PURPOSE
 from app.services.remote_model_client import RemoteModelClient
 from app.services.weather_tags import (
     PRECIP_CLEAR,
@@ -32,93 +31,55 @@ from app.services.weather_tags import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_FALLBACK_GUIDE_TEXT = (
+    "사장님, 가게의 분위기와 메뉴가 잘 보이도록 화면을 가까이 담아보세요."
+)
+DEFAULT_FALLBACK_SUBJECT = "오늘의 대표 메뉴"
+
+MAX_PROMPT_CHARS = 3200
+MAX_UTTERANCE_CHARS = 280
+MAX_MENU_DESCRIPTION_CHARS = 320
+MAX_MENU_NAME_CHARS = 80
+MAX_KEYWORD_CHARS = 24
+MAX_MATCHED_KEYWORD_CHARS = 24
+
 _DEFAULT_SYSTEM_INSTRUCTION = (
-    "guide_text와 caption만 담은 JSON 객체 한 개만 한국어로 반환하세요."
+    "guide_text와 caption만 포함한 JSON 객체 하나만 반환하세요."
 )
 _STRICT_KOREAN_SYSTEM_INSTRUCTION = (
-    "guide_text와 caption만 담은 JSON 객체 한 개만 반환하세요. "
-    "guide_text와 caption은 반드시 자연스러운 한국어로만 작성하고, "
-    "영어 문장이나 영어 설명은 쓰지 마세요. "
-    "브랜드명, 메뉴명, 고유명사, 해시태그처럼 꼭 필요한 짧은 표기만 예외로 허용합니다."
+    "guide_text와 caption만 포함한 JSON 객체 하나만 반환하세요. "
+    "guide_text와 caption은 자연스러운 한국어 문장으로만 작성하고 영어 문장은 사용하지 마세요."
 )
 _STRICT_KOREAN_USER_SUFFIX = """
 
 중요:
-- guide_text와 caption은 반드시 한국어 문장으로 작성하세요.
-- 영어 문장, 영어 설명, 영어 위주의 표현은 금지합니다.
-- 브랜드명, 메뉴명, 고유명사처럼 꼭 필요한 짧은 영어만 제한적으로 허용합니다.
+- guide_text와 caption은 자연스러운 한국어 문장으로만 작성하세요.
+- 영어 문장과 영어 설명은 사용하지 마세요.
+- 브랜드명, 메뉴명, 고유명사는 필요한 경우에만 최소한으로 사용하세요.
 """
 
-_MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 메뉴 홍보를 위한 한국어 인스타그램 게시물 초안용 촬영 안내문과 캡션을 작성합니다.
+_MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 메뉴 홍보 게시물을 작성하는 한국어 마케팅 도우미입니다.
 
 규칙:
-- 오직 JSON 객체 텍스트만 반환하세요.
-- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "...", "selected_menu_name": "..."}}.
+- 출력은 JSON 객체 텍스트만 반환합니다.
+- 반드시 다음 스키마를 사용합니다: {{"guide_text": "...", "caption": "..."}}.
 - 게시물 목적은 "메뉴 홍보"입니다.
-- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1문장의 한국어 문장이어야 합니다.
-- "caption"은 감성적인 한국어 인스타그램 캡션이어야 합니다.
-- "selected_menu_name"에는 실제로 홍보할 메뉴명을 메뉴 후보 목록에서 정확히 하나 골라 그대로 적으세요.
-- 사용자 발화에 메뉴명이 없더라도 utterance, keywords, 메뉴 후보의 설명을 읽고 지금 홍보하기 좋은 메뉴를 찾으세요.
-- 선택한 메뉴를 사용자 발화에 등장하는 재료, 음식, 상황과 자연스럽게 엮어 caption을 작성하세요.
-- "guide_text"도 선택한 메뉴가 잘 보이도록 어떤 장면과 구도를 촬영할지 안내해야 합니다.
-- 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
-- 메뉴, 상품, 음료 또는 매장에서 실제로 판매하는 것만 홍보하세요.
-- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 주제를 중심으로 작성하고, keywords, weather_context, menu_candidates는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords, weather_context, menu_candidates만으로 작성하세요.
-
-이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
+- guide_text는 사진이나 영상에서 무엇을 더 잘 보이게 촬영하면 좋은지 알려주는 한국어 한 문장입니다.
+- caption은 메뉴 홍보용 한국어 인스타그램 캡션입니다.
+- 입력에 없는 메뉴나 재료를 지어내지 마세요.
+- 메뉴명과 메뉴 설명을 우선으로 활용하고, 사용자 발화와 draft_keywords를 자연스럽게 반영하세요.
+- 날씨와 날짜는 문맥에 맞을 때만 자연스럽게 녹여 쓰세요.
 
 입력:
 - owner_persona: {owner_persona}
+- today: {today}
 - weather_context: {weather_context}
 - utterance: {utterance}
-- keywords: {keywords}
+- draft_keywords: {draft_keywords}
+- matched_keyword: {matched_keyword}
+- menu_name: {menu_name}
+- menu_description: {menu_description}
 """
-
-_BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 영업 공지를 위한 한국어 인스타그램 게시물 초안용 촬영 안내문과 캡션을 작성합니다.
-
-규칙:
-- 오직 JSON 객체 텍스트만 반환하세요.
-- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
-- 게시물 목적은 "영업 공지"입니다.
-- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1문장의 한국어 문장이어야 합니다.
-- "caption"은 감성적인 한국어 인스타그램 캡션이어야 합니다.
-- 공지 내용은 명확하고 자연스럽게 전달하세요.
-- 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
-- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 공지 내용을 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
-
-이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
-
-입력:
-- owner_persona: {owner_persona}
-- weather_context: {weather_context}
-- utterance: {utterance}
-- keywords: {keywords}
-"""
-
-_DAILY_SHARE_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 일상 공유를 위한 한국어 인스타그램 게시물 초안용 촬영 안내문과 캡션을 작성합니다.
-
-규칙:
-- 오직 JSON 객체 텍스트만 반환하세요.
-- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
-- 게시물 목적은 "일상 공유"입니다.
-- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1문장의 한국어 문장이어야 합니다.
-- "caption"은 감성적인 한국어 인스타그램 캡션이어야 합니다.
-- 매장 분위기와 사장님의 일상이 자연스럽게 드러나게 작성하세요.
-- 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
-- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
-
-이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
-
-입력:
-- owner_persona: {owner_persona}
-- weather_context: {weather_context}
-- utterance: {utterance}
-- keywords: {keywords}
-"""
-
-DEFAULT_FALLBACK_GUIDE_TEXT = (
-    "사장님, 가게의 분위기와 메뉴가 잘 보이도록 화면을 촬영해보세요."
-)
 
 _PRIMARY_WEATHER_TAG_PRIORITY = (
     PRECIP_HEAVY_RAIN,
@@ -139,7 +100,7 @@ _SECONDARY_WEATHER_TAG_PRIORITY = (
 )
 
 _WEATHER_CONTEXT_BY_TAG = {
-    PRECIP_HEAVY_RAIN: "폭우가 쏟아지는 날",
+    PRECIP_HEAVY_RAIN: "폭우가 잦아지는 날",
     PRECIP_RAIN: "비가 내리는 날",
     PRECIP_CLEAR: "맑은 날",
     PRECIP_CLOUDY: "흐린 날",
@@ -180,8 +141,17 @@ def _select_weather_copy_tags(weather_tags: list[str]) -> list[str]:
 def _build_weather_context(weather_tags: list[str]) -> str:
     selected_tags = _select_weather_copy_tags(weather_tags)
     if not selected_tags:
-        return "날씨와 관련한 표현 없음"
+        return "날씨 정보 없음"
     return ", ".join(_WEATHER_CONTEXT_BY_TAG[tag] for tag in selected_tags)
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    text = value.strip()
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return text[:limit]
+    return f"{text[: limit - 3].rstrip()}..."
 
 
 class CaptionGenerationUnavailableError(RuntimeError):
@@ -196,7 +166,6 @@ class CaptionGenerationLanguageError(CaptionGenerationUnavailableError):
 class CaptionGenerationResult:
     guide_text: str
     draft_caption: str
-    selected_menu_name: str | None = None
 
     @property
     def stored_caption(self) -> str:
@@ -205,14 +174,14 @@ class CaptionGenerationResult:
 
 @dataclass
 class CaptionGenerationRequest:
-    purpose: ContentPurpose
-    keywords: list[str]
+    draft_keywords: list[str]
     owner_persona: str
+    today: str = ""
     utterance: str = ""
     weather_tags: list[str] = field(default_factory=list)
-    fallback_keywords: list[str] = field(default_factory=list)
-    reference_captions: list[str] = field(default_factory=list)
-    menu_candidates: list[StoreMenuCandidate] = field(default_factory=list)
+    menu_name: str | None = None
+    menu_description: str | None = None
+    matched_keyword: str | None = None
 
 
 @dataclass
@@ -222,159 +191,169 @@ class CaptionFallbackResult:
 
 
 class CaptionPipeline:
-    def __init__(self, purpose: ContentPurpose, prompt_template: str) -> None:
-        self.purpose = purpose
+    def __init__(self, prompt_template: str) -> None:
         self.prompt_template = prompt_template
 
     def build_prompt(self, request: CaptionGenerationRequest) -> str:
-        sections = [
-            self.prompt_template.format(
-                owner_persona=request.owner_persona.strip(),
-                weather_context=_build_weather_context(request.weather_tags),
-                utterance=request.utterance.strip() or "(없음)",
-                keywords=", ".join(request.keywords) if request.keywords else "(없음)",
-            )
-        ]
-        if self.purpose == "메뉴 홍보" and request.menu_candidates:
-            sections.append(self._build_menu_candidates_section(request.menu_candidates))
-        if request.reference_captions:
-            reference_lines = "\n".join(
-                f"{index}. {caption}"
-                for index, caption in enumerate(request.reference_captions, start=1)
-            )
-            sections.append(
-                "참고용 레퍼런스 캡션:\n"
-                f"{reference_lines}\n\n"
-                "레퍼런스는 문체와 분위기를 참고하기 위한 예시입니다.\n"
-                "문장을 그대로 복사하지 말고, 현재 입력에 맞는 새로운 문장으로 작성하세요."
-            )
-        return "\n\n".join(section for section in sections if section.strip())
+        owner_persona = request.owner_persona.strip() or "사장님 감성"
+        today = request.today.strip() or "오늘"
+        weather_context = _build_weather_context(request.weather_tags)
+        utterance = _truncate_text(request.utterance.strip() or "(없음)", MAX_UTTERANCE_CHARS)
+        draft_keywords = self._format_keywords(request.draft_keywords)
+        matched_keyword = _truncate_text(
+            request.matched_keyword or self._default_matched_keyword(request),
+            MAX_MATCHED_KEYWORD_CHARS,
+        ) or "(없음)"
+        menu_name = _truncate_text(
+            request.menu_name or DEFAULT_FALLBACK_SUBJECT,
+            MAX_MENU_NAME_CHARS,
+        )
+        menu_description = _truncate_text(
+            request.menu_description or "(없음)",
+            MAX_MENU_DESCRIPTION_CHARS,
+        )
+
+        prompt = self.prompt_template.format(
+            owner_persona=owner_persona,
+            today=today,
+            weather_context=weather_context,
+            utterance=utterance,
+            draft_keywords=draft_keywords,
+            matched_keyword=matched_keyword,
+            menu_name=menu_name,
+            menu_description=menu_description,
+        )
+        return self._shrink_prompt_if_needed(
+            request=request,
+            prompt=prompt,
+            owner_persona=owner_persona,
+            today=today,
+            weather_context=weather_context,
+            draft_keywords=draft_keywords,
+            matched_keyword=matched_keyword,
+            menu_name=menu_name,
+            menu_description=menu_description,
+            utterance=utterance,
+        )
 
     def build_fallback(
         self,
         request: CaptionGenerationRequest,
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
-        selected_menu_name = self._select_fallback_menu_name(request)
-        fallback_keywords = self._fallback_keywords(request)
-        draft_caption = self._build_fallback_caption(request, selected_menu_name)
+        subject = self._fallback_subject(request)
+        weather_context = _build_weather_context(request.weather_tags)
+        caption_prefix = weather_context if weather_context != "날씨 정보 없음" else "오늘"
         guide_text = (
-            self._build_fallback_guide_text(request, selected_menu_name)
-            if fallback_keywords or selected_menu_name
+            f"사장님, {subject}이 잘 보이도록 화면을 가까이 담아보세요."
+            if subject
             else DEFAULT_FALLBACK_GUIDE_TEXT
         )
-        effective_fallback_source = fallback_source
-        if (
-            not fallback_keywords
-            and selected_menu_name is None
-            and effective_fallback_source is None
-        ):
-            effective_fallback_source = "default_guide"
+        caption = f"{caption_prefix} {subject}를 자연스럽게 소개해보세요."
+        effective_fallback_source = fallback_source or "rule_based_fallback"
         return CaptionFallbackResult(
             result=CaptionGenerationResult(
                 guide_text=guide_text,
-                draft_caption=draft_caption,
-                selected_menu_name=selected_menu_name,
+                draft_caption=caption,
             ),
             fallback_source=effective_fallback_source,
         )
 
-    def _build_menu_candidates_section(
+    def _shrink_prompt_if_needed(
         self,
-        menu_candidates: list[StoreMenuCandidate],
+        *,
+        request: CaptionGenerationRequest,
+        prompt: str,
+        owner_persona: str,
+        today: str,
+        weather_context: str,
+        draft_keywords: str,
+        matched_keyword: str,
+        menu_name: str,
+        menu_description: str,
+        utterance: str,
     ) -> str:
-        candidate_lines = "\n".join(
-            self._format_menu_candidate(index, candidate)
-            for index, candidate in enumerate(menu_candidates, start=1)
+        current_prompt = prompt
+        current_description = menu_description
+        current_utterance = utterance
+
+        if len(current_prompt) <= MAX_PROMPT_CHARS:
+            return current_prompt
+
+        current_description = _truncate_text(
+            current_description,
+            min(160, len(current_description)),
         )
-        return (
-            "메뉴 후보 목록:\n"
-            f"{candidate_lines}\n\n"
-            "위 후보 중 하나를 선택해 selected_menu_name에 정확히 적고, "
-            "선택한 메뉴를 중심으로 guide_text와 caption을 작성하세요."
+        current_prompt = self.prompt_template.format(
+            owner_persona=owner_persona,
+            today=today,
+            weather_context=weather_context,
+            utterance=current_utterance,
+            draft_keywords=draft_keywords,
+            matched_keyword=matched_keyword,
+            menu_name=menu_name,
+            menu_description=current_description,
+        )
+        if len(current_prompt) <= MAX_PROMPT_CHARS:
+            return current_prompt
+
+        current_utterance = _truncate_text(
+            current_utterance,
+            min(160, len(current_utterance)),
+        )
+        current_prompt = self.prompt_template.format(
+            owner_persona=owner_persona,
+            today=today,
+            weather_context=weather_context,
+            utterance=current_utterance,
+            draft_keywords=draft_keywords,
+            matched_keyword=matched_keyword,
+            menu_name=menu_name,
+            menu_description=current_description,
+        )
+        if len(current_prompt) <= MAX_PROMPT_CHARS:
+            return current_prompt
+
+        compact_keywords = self._format_keywords(request.draft_keywords[:2])
+        return self.prompt_template.format(
+            owner_persona=owner_persona,
+            today=today,
+            weather_context=weather_context,
+            utterance=current_utterance,
+            draft_keywords=compact_keywords,
+            matched_keyword=matched_keyword,
+            menu_name=menu_name,
+            menu_description=_truncate_text(current_description, 120),
         )
 
     @staticmethod
-    def _format_menu_candidate(index: int, candidate: StoreMenuCandidate) -> str:
-        description = candidate.description or "설명 없음"
-        price = f"{candidate.price}원" if candidate.price is not None else "가격 미정"
-        matched_tags = (
-            ", ".join(candidate.matched_weather_tags)
-            if candidate.matched_weather_tags
-            else "없음"
-        )
-        return (
-            f"{index}. 메뉴명: {candidate.name} | 설명: {description} | "
-            f"가격: {price} | 일치한 weather_tags: {matched_tags}"
-        )
-
-    def _build_fallback_caption(
-        self,
-        request: CaptionGenerationRequest,
-        selected_menu_name: str | None,
-    ) -> str:
-        subject_phrase = self._build_fallback_subject_phrase(
-            request,
-            selected_menu_name,
-        )
-        weather_context = _build_weather_context(request.weather_tags)
-        if weather_context != "날씨와 관련한 표현 없음":
-            return (
-                f"{weather_context}에는 {subject_phrase} 어떠한지.."
-            )
-        return f"{subject_phrase}가 생각나는 날"
-
-    def _build_fallback_guide_text(
-        self,
-        request: CaptionGenerationRequest,
-        selected_menu_name: str | None,
-    ) -> str:
-        subject_phrase = self._build_fallback_subject_phrase(
-            request,
-            selected_menu_name,
-        )
-        return (
-            f"사장님, {subject_phrase}가 잘 보이도록 영상을 찍어주세요."
-        )
-
-    @staticmethod
-    def _select_fallback_menu_name(
-        request: CaptionGenerationRequest,
-    ) -> str | None:
-        if not request.menu_candidates:
-            return None
-        return request.menu_candidates[0].name
-
-    @staticmethod
-    def _build_fallback_subject_phrase(
-        request: CaptionGenerationRequest,
-        selected_menu_name: str | None,
-    ) -> str:
-        fallback_keywords = CaptionPipeline._fallback_keywords(request)
-        related_keywords = [
-            keyword
-            for keyword in fallback_keywords
-            if not selected_menu_name or keyword != selected_menu_name
+    def _format_keywords(keywords: list[str]) -> str:
+        normalized = [
+            _truncate_text(keyword.strip(), MAX_KEYWORD_CHARS)
+            for keyword in keywords
+            if keyword.strip()
         ]
-        if selected_menu_name and related_keywords:
-            return f"{selected_menu_name}와 {', '.join(related_keywords)}"
-        if selected_menu_name:
-            return selected_menu_name
-        if related_keywords:
-            return ", ".join(related_keywords)
-        return "오늘의 매장 메뉴"
+        return ", ".join(normalized[:3]) if normalized else "(없음)"
 
     @staticmethod
-    def _fallback_keywords(request: CaptionGenerationRequest) -> list[str]:
-        return request.fallback_keywords or request.keywords
+    def _default_matched_keyword(request: CaptionGenerationRequest) -> str:
+        return next((keyword for keyword in request.draft_keywords if keyword.strip()), "")
+
+    def _fallback_subject(self, request: CaptionGenerationRequest) -> str:
+        if request.menu_name:
+            related_keywords = [
+                keyword for keyword in request.draft_keywords if keyword != request.menu_name
+            ]
+            if related_keywords:
+                return f"{request.menu_name}와 {', '.join(related_keywords[:2])}"
+            return request.menu_name
+        if request.draft_keywords:
+            return ", ".join(request.draft_keywords[:2])
+        return ""
 
 
-def _build_caption_pipeline_registry() -> dict[ContentPurpose, CaptionPipeline]:
-    return {
-        "메뉴 홍보": CaptionPipeline("메뉴 홍보", _MENU_PROMOTION_PROMPT_TEMPLATE),
-        "영업 공지": CaptionPipeline("영업 공지", _BUSINESS_NOTICE_PROMPT_TEMPLATE),
-        "일상 공유": CaptionPipeline("일상 공유", _DAILY_SHARE_PROMPT_TEMPLATE),
-    }
+def _build_menu_promotion_pipeline() -> CaptionPipeline:
+    return CaptionPipeline(_MENU_PROMOTION_PROMPT_TEMPLATE)
 
 
 class CaptionGenerationService:
@@ -407,8 +386,8 @@ class CaptionGenerationService:
             timeout_seconds=self.timeout_seconds,
         )
         self._server_checked = False
-        self._response_format_supported: bool = True
-        self._pipelines = _build_caption_pipeline_registry()
+        self._response_format_supported = True
+        self._pipeline = _build_menu_promotion_pipeline()
 
     async def preload(self) -> None:
         await self._check_server_connection()
@@ -429,7 +408,7 @@ class CaptionGenerationService:
                 "Caption generation model is disabled."
             )
 
-        prompt = self._get_pipeline(request.purpose).build_prompt(request)
+        prompt = self._pipeline.build_prompt(request)
         started_at = time.perf_counter()
 
         logger.info(
@@ -443,20 +422,16 @@ class CaptionGenerationService:
                 caption_model_base_url=self.base_url,
                 caption_chat_endpoint=self.chat_endpoint,
                 caption_health_endpoint=self.health_endpoint,
-                caption_keyword_count=len(request.keywords),
-                caption_keywords_preview=", ".join(request.keywords[:3]),
-                caption_menu_candidate_count=len(request.menu_candidates),
-                owner_persona=request.owner_persona,
-                purpose=request.purpose,
+                caption_keyword_count=len(request.draft_keywords),
+                caption_keywords_preview=", ".join(request.draft_keywords[:3]),
+                caption_prompt_length=len(prompt),
+                menu_name=request.menu_name,
+                purpose=MENU_PROMOTION_PURPOSE,
             ),
         )
 
         try:
-            result = await self._generate_korean_result(
-                prompt,
-                purpose=request.purpose,
-                menu_candidates=request.menu_candidates,
-            )
+            result = await self._generate_korean_result(prompt)
         except TimeoutError as exc:
             raise CaptionGenerationUnavailableError(
                 "Caption generation timed out."
@@ -478,8 +453,7 @@ class CaptionGenerationService:
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
                 guide_text_length=len(result.guide_text),
                 draft_caption_length=len(result.draft_caption),
-                selected_menu_name=result.selected_menu_name,
-                purpose=request.purpose,
+                purpose=MENU_PROMOTION_PURPOSE,
             ),
         )
         return result
@@ -489,7 +463,7 @@ class CaptionGenerationService:
         request: CaptionGenerationRequest,
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
-        return self._get_pipeline(request.purpose).build_fallback(
+        return self._pipeline.build_fallback(
             request,
             fallback_source,
         )
@@ -499,18 +473,8 @@ class CaptionGenerationService:
         prompt: str,
         include_response_format: bool,
         *,
-        require_selected_menu: bool = False,
         strict_language: bool,
     ) -> dict[str, Any]:
-        properties: dict[str, Any] = {
-            "guide_text": {"type": "string"},
-            "caption": {"type": "string"},
-        }
-        required = ["guide_text", "caption"]
-        if require_selected_menu:
-            properties["selected_menu_name"] = {"type": "string"}
-            required.append("selected_menu_name")
-
         payload: dict[str, Any] = {
             "messages": [
                 {
@@ -536,35 +500,25 @@ class CaptionGenerationService:
                 "type": "json_object",
                 "schema": {
                     "type": "object",
-                    "properties": properties,
-                    "required": required,
+                    "properties": {
+                        "guide_text": {"type": "string"},
+                        "caption": {"type": "string"},
+                    },
+                    "required": ["guide_text", "caption"],
                 },
             }
         return payload
-
-    def _build_request_headers(self) -> dict[str, str]:
-        return self._remote_client.build_headers()
-
-    @property
-    def _chat_url(self) -> str:
-        return self._remote_client.chat_url
-
-    @property
-    def _health_url(self) -> str:
-        return self._remote_client.health_url
 
     async def _post_chat_completion(
         self,
         prompt: str,
         *,
         include_response_format: bool,
-        require_selected_menu: bool = False,
         strict_language: bool,
     ) -> httpx.Response:
         payload = self._build_request_payload(
             prompt,
             include_response_format,
-            require_selected_menu=require_selected_menu,
             strict_language=strict_language,
         )
         return await self._remote_client.post_chat_completion(payload)
@@ -612,28 +566,15 @@ class CaptionGenerationService:
         body = response.text.lower()
         if "response_format" not in body:
             return False
-        unsupported_markers = (
-            "unsupported",
-            "not supported",
-            "unknown",
-            "invalid",
+        return any(
+            marker in body
+            for marker in ("unsupported", "not supported", "unknown", "invalid")
         )
-        return any(marker in body for marker in unsupported_markers)
-
-    def _get_pipeline(self, purpose: ContentPurpose) -> CaptionPipeline:
-        pipeline = self._pipelines.get(purpose)
-        if pipeline is None:
-            raise CaptionGenerationUnavailableError(
-                f"Caption pipeline is not configured for purpose: {purpose}."
-            )
-        return pipeline
 
     async def _generate(
         self,
         prompt: str,
         *,
-        menu_candidates: list[StoreMenuCandidate],
-        purpose: ContentPurpose,
         strict_language: bool,
     ) -> str:
         if not self.base_url:
@@ -644,15 +585,10 @@ class CaptionGenerationService:
         response: httpx.Response | None = None
         first_unsupported_status: int | None = None
         try:
-            request_kwargs = {
-                "include_response_format": self._response_format_supported,
-                "strict_language": strict_language,
-            }
-            if menu_candidates:
-                request_kwargs["require_selected_menu"] = True
             response = await self._post_chat_completion(
                 prompt,
-                **request_kwargs,
+                include_response_format=self._response_format_supported,
+                strict_language=strict_language,
             )
             if (
                 self._response_format_supported
@@ -660,27 +596,10 @@ class CaptionGenerationService:
             ):
                 first_unsupported_status = response.status_code
                 self._response_format_supported = False
-                logger.warning(
-                    "Caption server reports response_format unsupported; "
-                    "disabling for subsequent requests.",
-                    extra=build_log_extra(
-                        "caption_generation.response_format.disabled",
-                        component="caption_generation",
-                        stage="generate",
-                        outcome="degraded",
-                        purpose=purpose,
-                        caption_http_status=first_unsupported_status,
-                    ),
-                )
-                retry_kwargs = {
-                    "include_response_format": False,
-                    "strict_language": strict_language,
-                }
-                if menu_candidates:
-                    retry_kwargs["require_selected_menu"] = True
                 response = await self._post_chat_completion(
                     prompt,
-                    **retry_kwargs,
+                    include_response_format=False,
+                    strict_language=strict_language,
                 )
             response.raise_for_status()
         except httpx.TimeoutException as exc:
@@ -709,14 +628,15 @@ class CaptionGenerationService:
                 component="caption_generation",
                 stage="generate",
                 outcome="succeeded",
-                purpose=purpose,
-                caption_menu_candidate_count=len(menu_candidates),
+                purpose=MENU_PROMOTION_PURPOSE,
                 caption_language_mode=(
                     "strict_korean_retry" if strict_language else "default"
                 ),
                 caption_model_base_url=self.base_url,
                 caption_chat_endpoint=self.chat_endpoint,
-                caption_http_status=response.status_code if response is not None else None,
+                caption_http_status=(
+                    response.status_code if response is not None else None
+                ),
                 raw_output_preview=preview_text(
                     raw_output,
                     settings.LOG_EVENT_PREVIEW_MAX_LEN,
@@ -728,21 +648,13 @@ class CaptionGenerationService:
     async def _generate_korean_result(
         self,
         prompt: str,
-        *,
-        menu_candidates: list[StoreMenuCandidate],
-        purpose: ContentPurpose,
     ) -> CaptionGenerationResult:
         raw_output = await self._generate(
             prompt,
-            menu_candidates=menu_candidates,
-            purpose=purpose,
             strict_language=False,
         )
         try:
-            return self._parse_generation_result(
-                raw_output,
-                menu_candidates=menu_candidates,
-            )
+            return self._parse_generation_result(raw_output)
         except CaptionGenerationLanguageError:
             logger.warning(
                 "Caption generation returned non-Korean text; retrying with stricter language guidance.",
@@ -751,7 +663,7 @@ class CaptionGenerationService:
                     component="caption_generation",
                     stage="language_validation",
                     outcome="retrying",
-                    purpose=purpose,
+                    purpose=MENU_PROMOTION_PURPOSE,
                     non_korean_detected=True,
                     language_retry_attempted=True,
                 ),
@@ -759,15 +671,10 @@ class CaptionGenerationService:
 
         raw_output = await self._generate(
             prompt,
-            menu_candidates=menu_candidates,
-            purpose=purpose,
             strict_language=True,
         )
         try:
-            return self._parse_generation_result(
-                raw_output,
-                menu_candidates=menu_candidates,
-            )
+            return self._parse_generation_result(raw_output)
         except CaptionGenerationLanguageError as exc:
             logger.warning(
                 "Caption generation retry still returned non-Korean text.",
@@ -776,7 +683,7 @@ class CaptionGenerationService:
                     component="caption_generation",
                     stage="language_validation",
                     outcome="failed",
-                    purpose=purpose,
+                    purpose=MENU_PROMOTION_PURPOSE,
                     non_korean_detected=True,
                     language_retry_attempted=True,
                     language_retry_failed=True,
@@ -796,8 +703,6 @@ class CaptionGenerationService:
     def _parse_generation_result(
         self,
         raw_output: str,
-        *,
-        menu_candidates: list[StoreMenuCandidate] | None = None,
     ) -> CaptionGenerationResult:
         try:
             payload = json.loads(self._extract_json_payload(raw_output))
@@ -813,29 +718,17 @@ class CaptionGenerationService:
 
         guide_text = self._normalize_text(payload.get("guide_text"))
         draft_caption = self._normalize_text(payload.get("caption"))
-        selected_menu_name = self._normalize_text(payload.get("selected_menu_name"))
 
         if not guide_text or not draft_caption:
             raise CaptionGenerationUnavailableError(
                 "Caption generation returned incomplete text fields."
             )
-        if menu_candidates and not selected_menu_name:
-            raise CaptionGenerationUnavailableError(
-                "Caption generation did not select a menu candidate."
-            )
-        if menu_candidates:
-            candidate_names = {candidate.name for candidate in menu_candidates}
-            if selected_menu_name not in candidate_names:
-                raise CaptionGenerationUnavailableError(
-                    "Caption generation selected a menu outside the provided candidates."
-                )
 
         self._validate_korean_output(guide_text, draft_caption)
 
         return CaptionGenerationResult(
             guide_text=guide_text,
             draft_caption=draft_caption,
-            selected_menu_name=selected_menu_name or None,
         )
 
     @staticmethod
