@@ -5,12 +5,14 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 import threading
+from typing import Any
 
 from fastapi import Request
-import tensorflow as tf
+import torch
+import torch.nn.functional as F
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from transformers import AutoTokenizer, TFAutoModel
+from transformers import AutoModel, AutoTokenizer
 
 from app.core.config import settings
 from app.db.postgres import get_session_factory
@@ -63,8 +65,8 @@ class CanonicalKeywordResolverService:
         self._embedding_dim = embedding_dim
         self._model_cache_dir = str(model_cache_dir) if model_cache_dir else None
         self._enabled = enabled
-        self._tokenizer = None
-        self._model = None
+        self._tokenizer: Any | None = None
+        self._model: Any | None = None
         self._lock = threading.Lock()
 
     async def preload(self) -> None:
@@ -197,11 +199,11 @@ class CanonicalKeywordResolverService:
                 self._model_name,
                 cache_dir=self._model_cache_dir,
             )
-            self._model = TFAutoModel.from_pretrained(
+            self._model = AutoModel.from_pretrained(
                 self._model_name,
                 cache_dir=self._model_cache_dir,
-                from_pt=True,
             )
+            self._model.eval()
 
     def _embed_texts(self, texts: list[str], prefix: str) -> list[list[float]]:
         self._ensure_model_loaded()
@@ -212,17 +214,19 @@ class CanonicalKeywordResolverService:
             [f"{prefix}: {text}" for text in texts],
             padding=True,
             truncation=True,
-            return_tensors="tf",
+            return_tensors="pt",
         )
-        outputs = self._model(**encoded, training=False)
-        hidden_state = outputs.last_hidden_state
-        attention_mask = tf.cast(encoded["attention_mask"], hidden_state.dtype)
-        attention_mask = tf.expand_dims(attention_mask, axis=-1)
-        pooled = tf.reduce_sum(hidden_state * attention_mask, axis=1)
-        token_counts = tf.reduce_sum(attention_mask, axis=1)
-        embeddings = pooled / tf.maximum(token_counts, tf.constant(1e-9, dtype=hidden_state.dtype))
-        embeddings = tf.math.l2_normalize(embeddings, axis=1)
-        vectors = embeddings.numpy().tolist()
+        with torch.inference_mode():
+            outputs = self._model(**encoded)
+            hidden_state = outputs.last_hidden_state
+            attention_mask = encoded["attention_mask"].unsqueeze(-1).to(
+                hidden_state.dtype
+            )
+            pooled = torch.sum(hidden_state * attention_mask, dim=1)
+            token_counts = torch.sum(attention_mask, dim=1).clamp(min=1e-9)
+            embeddings = pooled / token_counts
+            embeddings = F.normalize(embeddings, p=2, dim=1)
+        vectors = embeddings.cpu().tolist()
 
         for vector in vectors:
             if len(vector) != self._embedding_dim:
