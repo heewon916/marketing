@@ -555,6 +555,11 @@ class FinalEditService:
             debug_fields[f"debug:aesthetic_tone_applied:{image_index + 1}"] = str(
                 bool(image_state.metadata.get("aesthetic_tone_target_applied"))
             ).lower()
+            debug_fields[
+                f"debug:aesthetic_spotlight_protection:{image_index + 1}"
+            ] = str(
+                bool(image_state.metadata.get("aesthetic_spotlight_protection_applied"))
+            ).lower()
             if isinstance(tone_debug, dict):
                 debug_fields[f"debug:aesthetic_current_tone:{image_index + 1}"] = (
                     _json_debug_value(tone_debug.get("current_tone", {}))

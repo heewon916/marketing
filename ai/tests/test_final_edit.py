@@ -865,6 +865,7 @@ def test_final_edit_service_records_aesthetic_tone_debug_fields(
     assert result.status == "PHOTO_EDITED"
     assert result.debug_fields is not None
     assert result.debug_fields["debug:aesthetic_tone_applied:1"] == "true"
+    assert "debug:aesthetic_spotlight_protection:1" in result.debug_fields
     current_tone = json.loads(result.debug_fields["debug:aesthetic_current_tone:1"])
     target_tone = json.loads(result.debug_fields["debug:aesthetic_target_tone:1"])
     tolerance = json.loads(result.debug_fields["debug:aesthetic_tolerance:1"])

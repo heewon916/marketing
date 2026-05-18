@@ -40,6 +40,10 @@ _TRIMMED_BRIGHTNESS_UPPER_PERCENTILE = 90.0
 _HIGHLIGHT_PIXEL_THRESHOLD = 235.0
 _HIGHLIGHT_RATIO_LOW = 0.03
 _HIGHLIGHT_RATIO_MEDIUM = 0.08
+_SPOTLIGHT_BROAD_HIGHLIGHT_START = 0.62
+_SPOTLIGHT_BROAD_HIGHLIGHT_END = 0.90
+_SPOTLIGHT_SPECULAR_START = 0.82
+_SPOTLIGHT_SPECULAR_END = 0.98
 
 
 @dataclass(frozen=True)
@@ -207,9 +211,9 @@ def _attenuate_negative_highlights(
     if highlight_adjustment >= 0.0:
         return highlight_adjustment
     if highlight_area_ratio < _HIGHLIGHT_RATIO_LOW:
-        return round(highlight_adjustment * 0.25, 2)
+        return 0.0
     if highlight_area_ratio < _HIGHLIGHT_RATIO_MEDIUM:
-        return round(highlight_adjustment * 0.5, 2)
+        return round(highlight_adjustment * 0.35, 2)
     return highlight_adjustment
 
 
@@ -227,6 +231,13 @@ def _attenuate_combined_global_darkening(
     return brightness_adjustment
 
 
+def _smoothstep(edge0: float, edge1: float, values: np.ndarray) -> np.ndarray:
+    if edge1 <= edge0:
+        return np.where(values >= edge1, 1.0, 0.0).astype(np.float32)
+    scaled = np.clip((values - edge0) / (edge1 - edge0), 0.0, 1.0)
+    return (scaled * scaled * (3.0 - 2.0 * scaled)).astype(np.float32)
+
+
 def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[str, Any]:
     if tool_name == "upscale":
         return {"scale": 2}
@@ -239,7 +250,7 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
             if legacy_mode
             else _clamp_percent(params.get("saturation"), 0.0)
         )
-        return {
+        normalized = {
             "contrast": _clamp_percent(params.get("contrast"), 0.0),
             "highlights": _clamp_percent(params.get("highlights"), 0.0),
             "shadows": _clamp_percent(params.get("shadows"), 0.0),
@@ -265,6 +276,9 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
             ),
             "brightness": _clamp_float(params.get("brightness"), 0.0, -1.0, 1.0),
         }
+        if "spotlight_protection" in params:
+            normalized["spotlight_protection"] = bool(params["spotlight_protection"])
+        return normalized
     if tool_name == "sharpen":
         return {"strength": _clamp_float(params.get("strength"), 0.5, 0.0, 1.0)}
     if tool_name == "background_blur":
@@ -362,10 +376,7 @@ def build_aesthetic_color_grading_params(
                 40.0,
             )
         elif metric_name == "white_point":
-            applied_params["highlights"] = _attenuate_negative_highlights(
-                _scale_gap_to_percent(gap, tolerance, 45.0),
-                current_tone.get("highlight_area_ratio", 0.0),
-            )
+            applied_params["highlights"] = _scale_gap_to_percent(gap, tolerance, 45.0)
         elif metric_name == "temperature":
             applied_params["temperature"] = "warm" if gap >= 0.0 else "cool"
             applied_params["temperature_strength"] = _clamp_float(
@@ -391,6 +402,29 @@ def build_aesthetic_color_grading_params(
         current_tone.get("highlight_area_ratio", 0.0),
     )
 
+    spotlight_protection = False
+    highlight_area_ratio = current_tone.get("highlight_area_ratio", 0.0)
+    target_white_point = AESTHETIC_TARGET_TONE_PROFILE["white_point"]["target"]
+    if (
+        highlight_area_ratio < _HIGHLIGHT_RATIO_MEDIUM
+        and current_tone.get("white_point", 0.0) >= target_white_point
+        and cast(float, applied_params["brightness"]) < 0.0
+    ):
+        applied_params["brightness"] = 0.0
+        spotlight_protection = True
+
+    original_highlights = cast(float, applied_params["highlights"])
+    protected_highlights = _attenuate_negative_highlights(
+        original_highlights,
+        highlight_area_ratio,
+    )
+    if protected_highlights != original_highlights:
+        applied_params["highlights"] = protected_highlights
+        spotlight_protection = True
+
+    if spotlight_protection:
+        applied_params["spotlight_protection"] = True
+
     normalized_params = normalize_tool_params("color_grading", applied_params)
     debug_payload = {
         "current_tone": current_tone,
@@ -399,6 +433,7 @@ def build_aesthetic_color_grading_params(
         "skip_by_metric": skip_by_metric,
         "skip_threshold_by_metric": threshold_by_metric,
         "applied_params": normalized_params,
+        "spotlight_protection_applied": spotlight_protection,
     }
     return normalized_params, debug_payload
 
@@ -416,6 +451,7 @@ def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray
     saturation = cast(float, params["saturation"])
     tone_curve_shadow_lift = cast(float, params["tone_curve_shadow_lift"])
     brightness = cast(float, params["brightness"])
+    spotlight_protection = bool(params.get("spotlight_protection", False))
 
     result = image.astype(np.float32)
     if temperature_strength > 0.0:
@@ -446,15 +482,45 @@ def _tool_color_grading(image: np.ndarray, params: dict[str, Any]) -> np.ndarray
     normalized_luminance = np.clip(luminance / 255.0, 0.0, 1.0)
     highlight_mask = normalized_luminance**2
     shadow_mask = (1.0 - normalized_luminance) ** 2
+    specular_mask: np.ndarray | None = None
+    if spotlight_protection:
+        broad_highlight_mask = _smoothstep(
+            _SPOTLIGHT_BROAD_HIGHLIGHT_START,
+            _SPOTLIGHT_BROAD_HIGHLIGHT_END,
+            normalized_luminance,
+        ) ** 2
+        specular_mask = _smoothstep(
+            _SPOTLIGHT_SPECULAR_START,
+            _SPOTLIGHT_SPECULAR_END,
+            normalized_luminance,
+        ) ** 3
+    else:
+        broad_highlight_mask = highlight_mask
 
     if highlights != 0.0:
-        result += highlight_mask[:, :, None] * (highlights * 0.8)
+        if spotlight_protection and highlights < 0.0 and specular_mask is not None:
+            protected_highlight_mask = broad_highlight_mask * (1.0 - 0.85 * specular_mask)
+            result += protected_highlight_mask[:, :, None] * (highlights * 0.8)
+        else:
+            result += highlight_mask[:, :, None] * (highlights * 0.8)
 
     if shadows != 0.0:
         result += shadow_mask[:, :, None] * (shadows * 0.8)
 
     if tone_curve_shadow_lift != 0.0:
         result += shadow_mask[:, :, None] * (tone_curve_shadow_lift * 0.7)
+
+    if spotlight_protection and specular_mask is not None:
+        specular_boost = float(
+            np.clip(
+                max(0.0, -highlights) * 0.18
+                + max(0.0, -brightness * 255.0) * 0.12,
+                0.0,
+                18.0,
+            )
+        )
+        if specular_boost > 0.0:
+            result += specular_mask[:, :, None] * specular_boost
 
     if vibrance != 0.0 or saturation != 0.0:
         hsv = cv2.cvtColor(
