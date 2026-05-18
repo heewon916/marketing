@@ -444,8 +444,8 @@ class FinalEditService:
                     keyword_count=len(context.keywords),
                 ),
             )
-            try:
-                for image_index, draft_path in enumerate(downloaded_drafts):
+            for image_index, draft_path in enumerate(downloaded_drafts):
+                try:
                     plans = await self.planner_client.build_plans(
                         [str(draft_path)],
                         context,
@@ -467,61 +467,83 @@ class FinalEditService:
                         upscale_enabled=self.upscale_enabled,
                         owner_persona=context.owner_persona,
                     )
-            except Exception as exc:
-                planner_fallback = True
-                plans_by_index = {}
-                debug_fields["debug:planner_failure_type"] = exc.__class__.__name__
-                debug_fields["debug:planner_response_received"] = str(
-                    planner_response_received
-                ).lower()
-                logger.warning(
-                    "Final edit planner failed. Falling back to original drafts.",
-                    extra=build_log_extra(
-                        "final_edit.planner_fallback",
-                        component="final_edit",
-                        stage="plan",
-                        session_id=session_id,
-                        outcome="fallback",
-                        error_type=exc.__class__.__name__,
-                        planner_fallback_reason="planner_exception",
-                        caption_present=bool(context.caption),
-                        keyword_count=len(context.keywords),
-                        downloaded_draft_count=len(downloaded_drafts),
-                    ),
-                )
-            else:
-                debug_fields["debug:planner_response_received"] = str(
-                    planner_response_received
-                ).lower()
-                debug_fields["debug:planned_indexes"] = ",".join(
-                    str(image_index) for image_index in sorted(plans_by_index)
-                )
-                logger.info(
-                    "Planned final edit sequence.",
-                    extra=build_log_extra(
-                        "final_edit.plan.completed",
-                        component="final_edit",
-                        stage="plan",
-                        session_id=session_id,
-                        outcome="succeeded",
-                        planned_image_count=len(plans_by_index),
-                        planned_indexes=sorted(plans_by_index),
-                        planned_tools_by_image={
-                            str(image_index): plan.tools
-                            for image_index, plan in sorted(plans_by_index.items())
-                        },
-                        planned_strategy_preview_by_image={
-                            str(image_index): _preview_or_empty(plan.strategy)
-                            for image_index, plan in sorted(plans_by_index.items())
-                        },
-                        caption_preview=_preview_or_empty(context.caption),
-                        keyword_preview=_preview_keywords(context.keywords),
-                        planner_response_preview=_preview_or_empty(
-                            getattr(self.planner_client, "last_raw_output", "") or ""
+                except Exception as exc:
+                    planner_fallback = True
+                    planner_failure_message = str(exc)
+                    planner_failure_raw_preview = _preview_or_empty(
+                        getattr(self.planner_client, "last_raw_output", "") or ""
+                    )
+                    debug_fields["debug:planner_failure_type"] = exc.__class__.__name__
+                    debug_fields["debug:planner_failure_message"] = (
+                        planner_failure_message
+                    )
+                    debug_fields["debug:planner_failure_image_index"] = str(
+                        image_index
+                    )
+                    debug_fields["debug:planner_failure_raw_preview"] = (
+                        planner_failure_raw_preview
+                    )
+                    debug_fields[
+                        f"debug:planner_failure_type:{image_index + 1}"
+                    ] = exc.__class__.__name__
+                    debug_fields[
+                        f"debug:planner_failure_message:{image_index + 1}"
+                    ] = planner_failure_message
+                    debug_fields[
+                        f"debug:planner_failure_raw_preview:{image_index + 1}"
+                    ] = planner_failure_raw_preview
+                    logger.warning(
+                        "Final edit planner failed for one image. Falling back for that image only.",
+                        extra=build_log_extra(
+                            "final_edit.planner_fallback",
+                            component="final_edit",
+                            stage="plan",
+                            session_id=session_id,
+                            outcome="fallback",
+                            error_type=exc.__class__.__name__,
+                            planner_fallback_reason="planner_exception",
+                            planner_failure_message=planner_failure_message,
+                            planner_failure_image_index=image_index,
+                            planner_failure_raw_preview=planner_failure_raw_preview,
+                            caption_present=bool(context.caption),
+                            keyword_count=len(context.keywords),
+                            downloaded_draft_count=len(downloaded_drafts),
                         ),
-                        elapsed_ms=int((time.perf_counter() - plan_started_at) * 1000),
+                    )
+
+            debug_fields["debug:planner_response_received"] = str(
+                planner_response_received
+            ).lower()
+            debug_fields["debug:planned_indexes"] = ",".join(
+                str(image_index) for image_index in sorted(plans_by_index)
+            )
+            logger.info(
+                "Planned final edit sequence.",
+                extra=build_log_extra(
+                    "final_edit.plan.completed",
+                    component="final_edit",
+                    stage="plan",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    planned_image_count=len(plans_by_index),
+                    planned_indexes=sorted(plans_by_index),
+                    planned_tools_by_image={
+                        str(image_index): plan.tools
+                        for image_index, plan in sorted(plans_by_index.items())
+                    },
+                    planned_strategy_preview_by_image={
+                        str(image_index): _preview_or_empty(plan.strategy)
+                        for image_index, plan in sorted(plans_by_index.items())
+                    },
+                    caption_preview=_preview_or_empty(context.caption),
+                    keyword_preview=_preview_keywords(context.keywords),
+                    planner_response_preview=_preview_or_empty(
+                        getattr(self.planner_client, "last_raw_output", "") or ""
                     ),
-                )
+                    planner_partial_fallback=planner_fallback,
+                    elapsed_ms=int((time.perf_counter() - plan_started_at) * 1000),
+                ),
+            )
 
         debug_fields["debug:planner_fallback"] = str(planner_fallback).lower()
         debug_fields["debug:planned_image_count"] = str(len(plans_by_index))
