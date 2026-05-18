@@ -17,13 +17,13 @@ ToolName = Literal[
 ]
 
 AESTHETIC_TARGET_TONE_PROFILE: dict[str, dict[str, float]] = {
-    "brightness": {"target": 81.69, "tolerance": 40.71},
-    "contrast": {"target": 47.52, "tolerance": 13.68},
-    "black_point": {"target": 18.88, "tolerance": 21.76},
-    "white_point": {"target": 163.12, "tolerance": 44.14},
-    "temperature": {"target": 13.58, "tolerance": 11.81},
-    "tint": {"target": 5.23, "tolerance": 6.26},
-    "saturation": {"target": 106.89, "tolerance": 32.23},
+    "brightness": {"target": 82.2, "tolerance": 35.89},
+    "contrast": {"target": 53.12, "tolerance": 15.08},
+    "black_point": {"target": 13.17, "tolerance": 15.56},
+    "white_point": {"target": 176.67, "tolerance": 46.46},
+    "temperature": {"target": 11.33, "tolerance": 9.05},
+    "tint": {"target": 4.35, "tolerance": 4.74},
+    "saturation": {"target": 108.55, "tolerance": 26.86},
 }
 AESTHETIC_TONE_METRIC_KEYS: tuple[str, ...] = (
     "brightness",
