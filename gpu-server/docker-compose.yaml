@@ -29,7 +29,6 @@ services:
       -c ${EXAONE_32B_CTX:-2048}
       -b 512
       -ub 512
-      --api-key ${INTERNAL_API_KEY}
     deploy:
       resources:
         reservations:
@@ -57,7 +56,7 @@ services:
       -c ${KEYWORD_CTX:-4096}
       -b 512
       -ub 512
-      --api-key ${INTERNAL_API_KEY}
+      # --api-key ${INTERNAL_API_KEY}
     deploy:
       resources:
         reservations:
@@ -83,7 +82,6 @@ services:
       --max-model-len ${VLM_CTX:-8192}
       --gpu-memory-utilization 0.30
       --enforce-eager
-      --api-key ${INTERNAL_API_KEY}
       --host 0.0.0.0
       --port 8000
     deploy:
