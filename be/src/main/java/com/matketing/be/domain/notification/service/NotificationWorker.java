@@ -4,6 +4,8 @@ import com.matketing.be.domain.notification.entity.DeviceToken;
 import com.matketing.be.domain.notification.entity.Notification;
 import com.matketing.be.domain.notification.enums.NotificationStatus;
 import com.matketing.be.domain.notification.repository.DeviceTokenRepository;
+import com.matketing.be.domain.store.entity.Store;
+import com.matketing.be.domain.store.repository.StoreRepository;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +24,7 @@ public class NotificationWorker {
     private final NotificationCommandService notificationCommandService;
     private final DeviceTokenRepository deviceTokenRepository;
     private final FcmPushService fcmPushService;
+    private final StoreRepository storeRepository;
 
     // 주기적으로 Redis Queue에서 알림을 꺼내 FCM 발송을 처리한다.
     @Scheduled(fixedDelay = 1000)
@@ -50,8 +53,12 @@ public class NotificationWorker {
             String body = notification.getNotification();
             String webUrl = notification.getWebUrl();
 
-            // TODO: 추후 store_id -> store owner user_id 조회로 교체
-            UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000000");
+            Store store = storeRepository.findById(notification.getStoreId()).orElse(null);
+            if (store == null || store.getUserId() == null) {
+                notificationCommandService.markFailed(id, "Store or store owner not found");
+                return;
+            }
+            UUID userId = store.getUserId();
 
             List<DeviceToken> tokens = deviceTokenRepository.findByUserIdAndIsActiveTrue(userId);
             if (tokens == null || tokens.isEmpty()) {
