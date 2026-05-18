@@ -41,6 +41,15 @@ def test_keyword_extraction_service_rejects_sentence_like_keywords() -> None:
 
     assert service._normalize_keyword("\uba39\uace0 \uc0b4\uc544\uc57c\uc9c0") == ""
     assert service._normalize_keyword("\uc81c\ucca0\uc774\uc57c") == ""
+    assert service._normalize_keyword("\ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4") == ""
+
+
+def test_keyword_extraction_service_rejects_generic_promotion_keywords() -> None:
+    service = KeywordExtractionService()
+
+    assert service._normalize_keyword("\ud64d\ubcf4") == ""
+    assert service._normalize_keyword("\ucd94\ucc9c") == ""
+    assert service._normalize_keyword("\ubd84\uc704\uae30") == ""
 
 
 def test_keyword_extraction_service_parses_keywords_only() -> None:

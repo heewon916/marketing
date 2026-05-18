@@ -349,7 +349,7 @@ class CaptionPipeline:
             return request.menu_name
         if request.draft_keywords:
             return ", ".join(request.draft_keywords[:2])
-        return DEFAULT_FALLBACK_SUBJECT
+        return ""
 
 
 def _build_menu_promotion_pipeline() -> CaptionPipeline:

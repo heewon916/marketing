@@ -24,10 +24,7 @@ from app.services.final_edit_agent import FinalEditImageState
 from app.services.final_edit_planner import ImageEditPlan
 from app.services.frame_extraction import ExtractFramesResult
 from app.services.keyword_extraction import KeywordExtractionResult
-from app.services.menu_promotion_context import MenuPromotionContext
-from app.services.reference_caption_retriever import (
-    ReferenceCaptionRetrievalResult,
-)
+from app.services.menu_promotion_context import MatchedMenuContext
 from app.services.weather_tags import (
     PRECIP_CLEAR,
     PRECIP_CLOUDY,
@@ -283,11 +280,13 @@ class FakeCaptionGenerationService:
     ) -> CaptionGenerationResult:
         self.calls.append(
             {
-                "keywords": list(request.keywords),
+                "draft_keywords": list(request.draft_keywords),
                 "owner_persona": request.owner_persona,
+                "today": request.today,
                 "weather_tags": list(request.weather_tags),
-                "reference_captions": list(request.reference_captions),
-                "menu_candidates": list(request.menu_candidates),
+                "menu_name": request.menu_name,
+                "menu_description": request.menu_description,
+                "matched_keyword": request.matched_keyword,
             }
         )
         if self.error is not None:
@@ -301,19 +300,18 @@ class FakeCaptionGenerationService:
     ) -> CaptionFallbackResult:
         self.fallback_calls.append(
             {
-                "keywords": list(request.keywords),
-                "fallback_keywords": list(request.fallback_keywords),
+                "draft_keywords": list(request.draft_keywords),
                 "owner_persona": request.owner_persona,
+                "today": request.today,
                 "weather_tags": list(request.weather_tags),
-                "reference_captions": list(request.reference_captions),
-                "menu_candidates": list(request.menu_candidates),
+                "menu_name": request.menu_name,
+                "menu_description": request.menu_description,
+                "matched_keyword": request.matched_keyword,
                 "fallback_source": fallback_source,
             }
         )
-        fallback_keywords = request.fallback_keywords or request.keywords
-        keyword_phrase = (
-            ", ".join(fallback_keywords) if fallback_keywords else "\uc624\ub298 \ub9e4\uc7a5"
-        )
+        fallback_keywords = list(request.draft_keywords)
+        keyword_phrase = request.menu_name or ", ".join(fallback_keywords) or "\uc624\ub298 \ub9e4\uc7a5"
         weather_context = _weather_context_for_tests(request.weather_tags)
         caption = (
             f"{weather_context or request.owner_persona} \ubd84\uc704\uae30\uc5d0 {request.owner_persona} \ubb34\ub4dc\ub85c "
@@ -321,73 +319,39 @@ class FakeCaptionGenerationService:
         )
         guide_text = (
             DEFAULT_FALLBACK_GUIDE_TEXT
-            if not fallback_keywords
-            else f"\uc0ac\uc7a5\ub2d8, {', '.join(fallback_keywords)}\uc774 \ub354 \ubcf4\uc774\ub3c4\ub85d \uc601\uc0c1\uc744 \ucd2c\uc601\ud574\ubcf4\uc138\uc694."
+            if not fallback_keywords and not request.menu_name
+            else f"\uc0ac\uc7a5\ub2d8, {keyword_phrase}\uc774 \ub354 \ubcf4\uc774\ub3c4\ub85d \uc601\uc0c1\uc744 \ucd2c\uc601\ud574\ubcf4\uc138\uc694."
         )
         effective_fallback_source = fallback_source
-        if not fallback_keywords and effective_fallback_source is None:
+        if not fallback_keywords and not request.menu_name and effective_fallback_source is None:
             effective_fallback_source = "default_guide"
         return CaptionFallbackResult(
             result=CaptionGenerationResult(
                 guide_text=guide_text,
                 draft_caption=caption,
-                selected_menu_name=(
-                    request.menu_candidates[0].name if request.menu_candidates else None
-                ),
             ),
             fallback_source=effective_fallback_source,
         )
 
 
-class FakeReferenceCaptionRetrieverService:
-    def __init__(
-        self,
-        result: ReferenceCaptionRetrievalResult | None = None,
-        error: Exception | None = None,
-    ) -> None:
-        self.result = result or ReferenceCaptionRetrievalResult()
-        self.error = error
-        self.calls: list[dict[str, object]] = []
-
-    async def retrieve(
-        self,
-        *,
-        owner_persona: str,
-        utterance: str,
-        canonical_matches: list[CanonicalKeywordMatch],
-        max_references: int | None = None,
-    ) -> ReferenceCaptionRetrievalResult:
-        self.calls.append(
-            {
-                "owner_persona": owner_persona,
-                "utterance": utterance,
-                "canonical_matches": list(canonical_matches),
-                "max_references": max_references,
-            }
-        )
-        if self.error is not None:
-            raise self.error
-        return self.result
-
-
 class FakeMenuPromotionContextService:
     def __init__(
         self,
-        result: MenuPromotionContext | None = None,
+        result: MatchedMenuContext | None = None,
     ) -> None:
-        self.result = result or MenuPromotionContext()
+        self.result = result or MatchedMenuContext()
         self.calls: list[dict[str, object]] = []
 
-    async def fetch_context(
+    async def match_menu(
         self,
         *,
         store_id,
-        weather_tags: list[str],
-    ) -> MenuPromotionContext:
+        draft_keywords: list[str],
+    ) -> MatchedMenuContext:
         self.calls.append(
             {
                 "store_id": str(store_id),
-                "weather_tags": list(weather_tags),
+                "draft_keywords": list(draft_keywords),
             }
         )
         return self.result
