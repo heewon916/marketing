@@ -17,6 +17,7 @@ from app.logging import build_log_extra
 from app.perfectframe.extractors import BestFrameExtractor
 from app.perfectframe.image_processors import OpenCVImage
 from app.perfectframe.schemas import ExtractorConfig, Image, ImageExtension
+from app.perfectframe.video_processors import _import_cv2
 from app.schemas.sessions import ExtractFramesRequest
 from app.services.s3_support import build_s3_client, normalize_s3_key
 from app.services.sessions import STATUS_STARTED, STATUS_TEXT_GENERATED, session_key, upsert_content_session
@@ -124,12 +125,64 @@ class FrameExtractionService:
         self.temp_root = temp_root
 
     @staticmethod
+    def _resolve_download_video_path(session_dir: Path, video_key: str) -> Path:
+        suffix = Path(video_key).suffix.lower()
+        if suffix in {"", "."}:
+            suffix = ".mp4"
+        return session_dir / f"input-video{suffix}"
+
+    @staticmethod
     def _build_debug_fields(session_dir: Path, video_key: str, video_path: Path) -> dict[str, str]:
         return {
             "debug:video_key": video_key,
             "debug:session_dir": str(session_dir),
             "debug:video_path": str(video_path),
         }
+
+    @staticmethod
+    def _inspect_downloaded_video(video_path: Path) -> dict[str, object]:
+        metadata: dict[str, object] = {
+            "video_extension": video_path.suffix.lower() or ".mp4",
+        }
+
+        if not video_path.exists():
+            metadata["video_metadata_status"] = "missing"
+            return metadata
+
+        metadata["video_size_bytes"] = video_path.stat().st_size
+        metadata["video_size_mb"] = round(video_path.stat().st_size / (1024 * 1024), 2)
+
+        try:
+            cv2 = _import_cv2()
+            capture = cv2.VideoCapture(str(video_path))
+        except Exception as exc:
+            metadata["video_metadata_status"] = "probe_error"
+            metadata["video_metadata_error"] = exc.__class__.__name__
+            return metadata
+
+        try:
+            if not capture.isOpened():
+                metadata["video_metadata_status"] = "open_failed"
+                return metadata
+
+            width = round(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = round(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = capture.get(cv2.CAP_PROP_FPS)
+            frame_count = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+
+            metadata["video_metadata_status"] = "ok"
+            if width > 0 and height > 0:
+                metadata["video_resolution"] = f"{width}x{height}"
+                metadata["video_width"] = width
+                metadata["video_height"] = height
+            if fps and fps > 0:
+                metadata["video_fps"] = round(fps, 3)
+            if frame_count and frame_count > 0:
+                metadata["video_frame_count"] = round(frame_count)
+        finally:
+            capture.release()
+
+        return metadata
 
     def _s3_failure_result(
         self,
@@ -188,8 +241,17 @@ class FrameExtractionService:
         )
         await self.downloader.download_video(video_key, video_path)
         debug_fields["debug:downloaded"] = str(video_path.exists()).lower()
-        if video_path.exists():
-            debug_fields["debug:video_size_bytes"] = str(video_path.stat().st_size)
+        metadata = self._inspect_downloaded_video(video_path)
+        if "video_size_bytes" in metadata:
+            debug_fields["debug:video_size_bytes"] = str(metadata["video_size_bytes"])
+        if "video_resolution" in metadata:
+            debug_fields["debug:video_resolution"] = str(metadata["video_resolution"])
+        if "video_fps" in metadata:
+            debug_fields["debug:video_fps"] = str(metadata["video_fps"])
+        if "video_frame_count" in metadata:
+            debug_fields["debug:video_frame_count"] = str(metadata["video_frame_count"])
+        if "video_metadata_status" in metadata:
+            debug_fields["debug:video_metadata_status"] = str(metadata["video_metadata_status"])
 
         logger.info(
             "Video downloaded for frame extraction.",
@@ -202,7 +264,7 @@ class FrameExtractionService:
                 video_key=video_key,
                 video_path=str(video_path),
                 video_exists=video_path.exists(),
-                video_size_bytes=video_path.stat().st_size if video_path.exists() else 0,
+                **metadata,
                 elapsed_ms=int((time.perf_counter() - download_started_at) * 1000),
             ),
         )
@@ -216,6 +278,7 @@ class FrameExtractionService:
     ) -> list[tuple[Image, float]] | None:
         debug_fields["debug:stage"] = "extract_frame"
         extract_started_at = time.perf_counter()
+        metadata = self._inspect_downloaded_video(video_path)
         logger.info(
             "Running top-k frame extraction.",
             extra=build_log_extra(
@@ -227,6 +290,7 @@ class FrameExtractionService:
                 video_key=video_key,
                 video_path=str(video_path),
                 top_k=DRAFT_TOP_K,
+                **metadata,
             ),
         )
         extracted = await asyncio.to_thread(
@@ -364,7 +428,7 @@ class FrameExtractionService:
     ) -> ExtractFramesResult:
         session_dir = self.temp_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
-        video_path = session_dir / "input-video.mp4"
+        video_path = self._resolve_download_video_path(session_dir, video_key)
         debug_fields = self._build_debug_fields(session_dir, video_key, video_path)
 
         try:
