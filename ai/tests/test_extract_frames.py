@@ -121,6 +121,36 @@ def test_extract_frames_returns_fail_when_service_fails(
     assert saved["video"] == payload["video"]
 
 
+def test_extract_frames_persists_webm_video_key(
+    client: TestClient,
+    fake_redis_sync: fakeredis.FakeStrictRedis,
+) -> None:
+    original_service = app.state.frame_extraction_service
+    session_id = str(uuid4())
+    payload = {"session_id": session_id, "video": "/inputs/test-session/test-video.webm"}
+    fake_service = FakeFrameExtractionService(
+        ExtractFramesResult(
+            status="FRAME_EXTRACTED",
+            drafts=["/ai-drafts/session-123/draft-001.png"],
+        )
+    )
+    app.state.frame_extraction_service = fake_service
+
+    try:
+        response = client.post(
+            f"/ai/sessions/{session_id}/extract-frames",
+            json=payload,
+        )
+    finally:
+        app.state.frame_extraction_service = original_service
+
+    assert response.status_code == 200
+    assert fake_service.calls == [(session_id, payload["video"])]
+
+    saved = fake_redis_sync.hgetall(session_key(session_id))
+    assert saved["video"] == payload["video"]
+
+
 def test_extract_frames_rejects_mismatched_session_id(client: TestClient) -> None:
     payload = dict(VALID_EXTRACT_PAYLOAD)
     payload["session_id"] = str(uuid4())

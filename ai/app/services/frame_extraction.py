@@ -124,6 +124,13 @@ class FrameExtractionService:
         self.temp_root = temp_root
 
     @staticmethod
+    def _resolve_download_video_path(session_dir: Path, video_key: str) -> Path:
+        suffix = Path(video_key).suffix.lower()
+        if suffix in {"", "."}:
+            suffix = ".mp4"
+        return session_dir / f"input-video{suffix}"
+
+    @staticmethod
     def _build_debug_fields(session_dir: Path, video_key: str, video_path: Path) -> dict[str, str]:
         return {
             "debug:video_key": video_key,
@@ -364,7 +371,7 @@ class FrameExtractionService:
     ) -> ExtractFramesResult:
         session_dir = self.temp_root / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
-        video_path = session_dir / "input-video.mp4"
+        video_path = self._resolve_download_video_path(session_dir, video_key)
         debug_fields = self._build_debug_fields(session_dir, video_key, video_path)
 
         try:

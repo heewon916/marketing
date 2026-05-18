@@ -228,6 +228,24 @@ async def test_frame_extraction_emits_stage_logs(tmp_path: Path) -> None:
     assert 'event="frame_extraction.cleanup_tempdir"' in output
 
 
+def test_resolve_download_video_path_preserves_known_extension(tmp_path: Path) -> None:
+    path = FrameExtractionService._resolve_download_video_path(
+        tmp_path,
+        "/inputs/test-session/draft.webm",
+    )
+
+    assert path == tmp_path / "input-video.webm"
+
+
+def test_resolve_download_video_path_falls_back_to_mp4_without_extension(tmp_path: Path) -> None:
+    path = FrameExtractionService._resolve_download_video_path(
+        tmp_path,
+        "/inputs/test-session/draft",
+    )
+
+    assert path == tmp_path / "input-video.mp4"
+
+
 @pytest.mark.asyncio
 async def test_final_edit_emits_stage_logs(tmp_path: Path) -> None:
     service = FinalEditService(
