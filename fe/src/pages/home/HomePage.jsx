@@ -19,6 +19,7 @@ const HOME_GREETING_AUDIO_SRC = homeGreetingAudio
 function HomePage() {
   const [isTyping, setIsTyping] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [greetingText, setGreetingText] = useState(HOME_GREETING_TEXT)
   const navigate = useNavigate()
   const setStep = usePostCreateStore((state) => state.setStep)
   const setGenerationContext = usePostCreateStore((state) => state.setGenerationContext)
@@ -45,6 +46,12 @@ function HomePage() {
 
   const handleSubmitUtterance = async (utterance) => {
     const result = await requestCaptionGeneration(utterance)
+
+    if (result.status === 'GENERAL_CHAT') {
+      setGreetingText(result.caption)
+      speak(result.caption)
+      return
+    }
 
     setGenerationContext({
       requestId: result.requestId,
@@ -77,7 +84,7 @@ function HomePage() {
 
         {/* 상단 글 영역 */}
         <section className="flex h-40 items-center justify-center">
-          <TitleText text={HOME_GREETING_TEXT} />
+          <TitleText text={greetingText} />
         </section>
 
         {/* 캐릭터 영역 */}

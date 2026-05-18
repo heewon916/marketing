@@ -11,6 +11,8 @@ const MIN_LOADING_TIME = 2000;
 
 const POS_SYNC_ERROR_MESSAGE =
   'POS 연결 중 오류가 발생했습니다.\n다시 시도해 주세요.';
+const POS_AUTH_MISSING_MESSAGE =
+  'POS 인증 정보가 없습니다.\n다시 인증해 주세요.';
 
 const wait = (ms) =>
   new Promise((resolve) => {
@@ -26,23 +28,31 @@ const waitRemainingTime = async (startedAt) => {
   }
 };
 
-function LoadingStep({ onNext, onPrev }) {
+function LoadingStep({ onNext, onPrev, onStatusChange }) {
   const hasSyncedRef = useRef(false);
   const [status, setStatus] = useState('loading');
   const [errorMessage, setErrorMessage] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   const merchantId = useOnboardingStore((state) => state.merchantId);
   const setPosSyncResult = useOnboardingStore(
     (state) => state.setPosSyncResult
   );
 
-  const displayErrorMessage =
-    errorMessage ||
-    (!merchantId ? 'POS 인증 정보가 없습니다.\n다시 인증해 주세요.' : '');
+  const displayErrorMessage = errorMessage;
 
   useEffect(() => {
-    if (!merchantId || hasSyncedRef.current) return;
+    if (!merchantId) {
+      setStatus('error');
+      setErrorMessage(POS_AUTH_MISSING_MESSAGE);
+      return;
+    }
+
+    if (hasSyncedRef.current) return;
 
     const syncStore = async () => {
       const startedAt = Date.now();

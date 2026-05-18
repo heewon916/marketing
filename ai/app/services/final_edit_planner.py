@@ -13,8 +13,8 @@ from redis.asyncio import Redis
 from app.core.config import LlamaModelClientSettings, settings
 from app.services.final_edit_tools import (
     AESTHETIC_TARGET_TONE_PROFILE,
-    SUPPORTED_TOOL_SPECS,
     ToolName,
+    supported_tool_specs,
     supported_tool_names,
 )
 from app.services.remote_model_client import RemoteModelClient
@@ -91,13 +91,15 @@ class FinalEditPlanningError(RuntimeError):
     """Raised when the final-edit planner cannot build a usable plan."""
 
 
-def build_upscale_only_plan(
+def build_default_final_edit_plan(
     image_index: int,
     *,
     owner_persona: str = DEFAULT_OWNER_PERSONA,
     content: str = "draft image",
-    strategy: str = "Apply minimum color grading before mandatory Real-ESRGAN upscale.",
+    strategy: str = "Apply minimum color grading for a safe final-edit fallback.",
+    upscale_enabled: bool | None = None,
 ) -> ImageEditPlan:
+    upscale_enabled = settings.FINAL_EDIT_ENABLE_UPSCALE if upscale_enabled is None else upscale_enabled
     resolved_persona, resolved_target, _used_fallback, target_kind = (
         resolve_owner_persona_target(owner_persona)
     )
@@ -106,28 +108,40 @@ def build_upscale_only_plan(
         if target_kind == TARGET_PROFILE_KIND_TONE
         else dict(resolved_target)
     )
+    tools: list[ToolName] = ["color_grading"]
+    params: dict[str, dict[str, Any]] = {
+        "color_grading": color_grading_params,
+    }
+    if upscale_enabled:
+        tools.append("upscale")
+        params["upscale"] = {"scale": 2}
     return ImageEditPlan(
         image_index=image_index,
         content=content,
         strategy=strategy,
-        tools=["color_grading", "upscale"],
-        params={
-            "color_grading": color_grading_params,
-            "upscale": {"scale": 2},
-        },
+        tools=tools,
+        params=params,
     )
 
 
-def normalize_image_edit_plan(plan: ImageEditPlan) -> ImageEditPlan:
+def normalize_image_edit_plan(
+    plan: ImageEditPlan,
+    *,
+    upscale_enabled: bool | None = None,
+    owner_persona: str = DEFAULT_OWNER_PERSONA,
+) -> ImageEditPlan:
+    upscale_enabled = settings.FINAL_EDIT_ENABLE_UPSCALE if upscale_enabled is None else upscale_enabled
     seen_tools: set[ToolName] = set()
     deduplicated_tools: list[ToolName] = []
     for tool_name in plan.tools:
+        if tool_name == "upscale" and not upscale_enabled:
+            continue
         if tool_name in seen_tools:
             continue
         deduplicated_tools.append(tool_name)
         seen_tools.add(tool_name)
 
-    if "upscale" not in seen_tools:
+    if upscale_enabled and "upscale" not in seen_tools:
         deduplicated_tools.append("upscale")
         seen_tools.add("upscale")
 
@@ -142,6 +156,14 @@ def normalize_image_edit_plan(plan: ImageEditPlan) -> ImageEditPlan:
             ),
         )
     ]
+    if not ordered_tools:
+        return build_default_final_edit_plan(
+            plan.image_index,
+            owner_persona=owner_persona,
+            content=plan.content,
+            strategy=plan.strategy,
+            upscale_enabled=upscale_enabled,
+        )
     normalized_params: dict[str, dict[str, Any]] = {}
     for tool_name in ordered_tools:
         if tool_name == "upscale":
@@ -250,7 +272,7 @@ async def load_final_edit_session_context(
 
 def _tool_catalog_text() -> str:
     lines = ["[supported tools]"]
-    for index, spec in enumerate(SUPPORTED_TOOL_SPECS, start=1):
+    for index, spec in enumerate(supported_tool_specs(), start=1):
         lines.append(f"{index}. {spec.name} - {spec.description}")
         params_text = ", ".join(
             f"{key}: {value}" for key, value in spec.params_schema.items()
@@ -274,7 +296,8 @@ def _target_preset_text(context: FinalEditSessionContext) -> str:
 
 
 def _few_shot_example() -> str:
-    return """
+    if settings.FINAL_EDIT_ENABLE_UPSCALE:
+        return """
 Example output:
 [
   {
@@ -295,6 +318,30 @@ Example output:
       },
       "sharpen": {"strength": 0.35},
       "upscale": {"scale": 2}
+    }
+  }
+]
+""".strip()
+    return """
+Example output:
+[
+  {
+    "image_index": 0,
+    "content": "A signature cake placed on a bright cafe table.",
+    "strategy": "The image is brighter and more saturated than the target aesthetic preset, so denoise first, gently lower highlights, mute color, and lift shadows only enough to approach the preset.",
+    "tools": ["denoise", "color_grading", "sharpen"],
+    "params": {
+      "denoise": {"strength": 0.5},
+      "color_grading": {
+        "contrast": -10,
+        "highlights": -14,
+        "shadows": 12,
+        "vibrance": -18,
+        "saturation": -12,
+        "temperature": "cool",
+        "tone_curve_shadow_lift": 8
+      },
+      "sharpen": {"strength": 0.35}
     }
   }
 ]
@@ -324,11 +371,15 @@ def build_final_edit_prompt(
         "8. If color_grading is used, fill contrast, highlights, shadows, vibrance, saturation, temperature, and tone_curve_shadow_lift explicitly.\n"
         "9. The output params should represent the per-image adjustment needed to move toward the preset, not the preset value itself.\n"
         "10. If denoise is used, it must appear before any filter tool.\n"
-        "11. Upscale must be included for every image, it is 2x only, and it must appear exactly once as the last tool.\n"
-        "12. Do not place upscale on an image unless at least one filter tool precedes it.\n"
-        "13. Denoise alone is not enough to justify upscale; insert a filter before upscale.\n"
-        "14. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
-        "15. Output only a JSON array.\n\n"
+        + (
+            "11. Upscale must be included for every image, it is 2x only, and it must appear exactly once as the last tool.\n"
+            "12. Do not place upscale on an image unless at least one filter tool precedes it.\n"
+            "13. Denoise alone is not enough to justify upscale; insert a filter before upscale.\n"
+            if settings.FINAL_EDIT_ENABLE_UPSCALE
+            else "11. Upscale is temporarily disabled. Do not use the upscale tool.\n"
+        )
+        + "14. Treat color_grading, sharpen, and background_blur as filter tools for ordering.\n"
+        + "15. Output only a JSON array.\n\n"
         f"{_few_shot_example()}"
     )
 
@@ -358,7 +409,13 @@ def _extract_json_array(raw_output: str) -> str:
     return match.group(0)
 
 
-def parse_image_edit_plans(raw_output: str) -> list[ImageEditPlan]:
+def parse_image_edit_plans(
+    raw_output: str,
+    *,
+    upscale_enabled: bool | None = None,
+    owner_persona: str = DEFAULT_OWNER_PERSONA,
+) -> list[ImageEditPlan]:
+    upscale_enabled = settings.FINAL_EDIT_ENABLE_UPSCALE if upscale_enabled is None else upscale_enabled
     try:
         payload = json.loads(_extract_json_array(raw_output))
     except json.JSONDecodeError as exc:
@@ -367,7 +424,7 @@ def parse_image_edit_plans(raw_output: str) -> list[ImageEditPlan]:
     if not isinstance(payload, list):
         raise FinalEditPlanningError("Planner payload must be a list.")
 
-    allowed_tools = set(supported_tool_names())
+    allowed_tools = set(supported_tool_names(True))
     seen_indexes: set[int] = set()
     plans: list[ImageEditPlan] = []
 
@@ -424,7 +481,9 @@ def parse_image_edit_plans(raw_output: str) -> list[ImageEditPlan]:
                     strategy=strategy,
                     tools=normalized_tools,
                     params=normalized_params,
-                )
+                ),
+                upscale_enabled=upscale_enabled,
+                owner_persona=owner_persona,
             )
         )
 
@@ -466,7 +525,11 @@ class FinalEditPlannerClient:
 
         raw_output = await self._request_plan(image_paths, context)
         self.last_raw_output = raw_output
-        plans = parse_image_edit_plans(raw_output)
+        plans = parse_image_edit_plans(
+            raw_output,
+            upscale_enabled=settings.FINAL_EDIT_ENABLE_UPSCALE,
+            owner_persona=context.owner_persona,
+        )
         if len(plans) > len(image_paths):
             raise FinalEditPlanningError("Planner returned too many image plans.")
         for plan in plans:

@@ -13,6 +13,8 @@ const MIN_SAVING_TIME = 2000;
 
 const ONBOARDING_SAVE_ERROR_MESSAGE =
   '온보딩 정보를 저장하는 중 오류가 발생했습니다.';
+const STORE_INFO_MISSING_MESSAGE =
+  '가게 정보가 없습니다.';
 
 const wait = (ms) =>
   new Promise((resolve) => {
@@ -28,7 +30,7 @@ const waitRemainingTime = async (startedAt) => {
   }
 };
 
-function CompleteStep({ onPrev, onRestartPos }) {
+function CompleteStep({ onPrev, onRestartPos, onStatusChange }) {
   const navigate = useNavigate();
   const hasSubmittedRef = useRef(false);
 
@@ -36,6 +38,10 @@ function CompleteStep({ onPrev, onRestartPos }) {
   const [status, setStatus] = useState('saving');
   const [errorMessage, setErrorMessage] = useState('');
   const [retryCount, setRetryCount] = useState(0);
+
+  useEffect(() => {
+    onStatusChange?.(status);
+  }, [status, onStatusChange]);
 
   const storeId = useOnboardingStore((state) => state.storeId);
   const getOnboardingPayload = useOnboardingStore(
@@ -45,12 +51,16 @@ function CompleteStep({ onPrev, onRestartPos }) {
     (state) => state.resetOnboarding
   );
 
-  const displayErrorMessage =
-    errorMessage ||
-    (!storeId ? '가게 정보가 없습니다.' : '');
+  const displayErrorMessage = errorMessage;
 
   useEffect(() => {
-    if (!storeId || hasSubmittedRef.current) return;
+    if (!storeId) {
+      setStatus('error');
+      setErrorMessage(STORE_INFO_MISSING_MESSAGE);
+      return;
+    }
+
+    if (hasSubmittedRef.current) return;
 
     const completeOnboarding = async () => {
       const startedAt = Date.now();

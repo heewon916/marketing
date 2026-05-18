@@ -11,7 +11,7 @@ const DESCRIPTION_CONTENT = {
   },
   visitIntent: {
     title: '방문 관심도',
-    content: `게시물을 본 사람들이\n가게에 관심을 보인 정도예요.\n저장, 공유 수를 도달 수로 나누어\n계산해요.`,
+    content: `게시물을 본 사람들이\n가게에 관심을 보인 정도예요.\n저장, 좋아요, 도달 수를 반영해\n계산해요.`,
   },
 };
 
@@ -151,7 +151,7 @@ export default function WeeklyInsightCard({
     ? DESCRIPTION_CONTENT[selectedDescription]
     : null;
 
-  const visitIntentDiffRate = (Number(visitIntentScore) - 1) * 100;
+  const visitIntentDiffRate = visitIntentScore;
   const visitIntentPrefix =
     visitIntentDiffRate > 0 ? '▲' : visitIntentDiffRate < 0 ? '▼' : '';
   const visitIntentValue = Math.abs(visitIntentDiffRate);

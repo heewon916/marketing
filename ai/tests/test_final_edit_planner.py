@@ -1,12 +1,13 @@
 import pytest
 
+from app.core.config import settings
 from app.services.final_edit_planner import (
     TARGET_PROFILE_KIND_TONE,
     FinalEditPlannerClient,
     FinalEditPlanningError,
     FinalEditSessionContext,
     ImageEditPlan,
-    build_upscale_only_plan,
+    build_default_final_edit_plan,
     build_final_edit_prompt,
     load_final_edit_session_context,
     normalize_image_edit_plan,
@@ -118,7 +119,10 @@ def test_build_final_edit_prompt_uses_aesthetic_tone_profile() -> None:
     assert "[target_profile_kind] tone_profile" in prompt
     assert "\"brightness\"" in prompt
     assert "\"tolerance\"" in prompt
-    assert "\"target\": 81.69" in prompt
+    assert (
+        f"\"target\": {AESTHETIC_TARGET_TONE_PROFILE['brightness']['target']}"
+        in prompt
+    )
 
 
 def test_resolve_owner_persona_preset_falls_back_to_aesthetic() -> None:
@@ -198,8 +202,8 @@ def test_normalize_image_edit_plan_deduplicates_upscale_to_single_last_step() ->
     assert normalized.params["upscale"] == {"scale": 2}
 
 
-def test_build_upscale_only_plan_uses_default_two_x_scale() -> None:
-    plan = build_upscale_only_plan(1)
+def test_build_default_final_edit_plan_uses_default_two_x_scale() -> None:
+    plan = build_default_final_edit_plan(1)
 
     assert plan.image_index == 1
     assert plan.tools == ["color_grading", "upscale"]
@@ -207,11 +211,89 @@ def test_build_upscale_only_plan_uses_default_two_x_scale() -> None:
     assert plan.params["upscale"] == {"scale": 2}
 
 
-def test_build_upscale_only_plan_uses_persona_preset_for_non_aesthetic() -> None:
-    plan = build_upscale_only_plan(1, owner_persona="friendly")
+def test_build_default_final_edit_plan_uses_persona_preset_for_non_aesthetic() -> None:
+    plan = build_default_final_edit_plan(1, owner_persona="friendly")
 
     assert plan.tools == ["color_grading", "upscale"]
     assert plan.params["color_grading"]["temperature"] == "warm"
+
+
+def test_build_default_final_edit_plan_omits_upscale_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+
+    plan = build_default_final_edit_plan(1, owner_persona="friendly")
+
+    assert plan.tools == ["color_grading"]
+    assert "upscale" not in plan.params
+    assert plan.params["color_grading"]["temperature"] == "warm"
+
+
+def test_build_final_edit_prompt_omits_upscale_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="friendly",
+            caption="cake",
+            keywords=["dessert"],
+        ),
+        1,
+    )
+
+    assert "Upscale is temporarily disabled" in prompt
+    assert "Upscale must be included for every image" not in prompt
+
+
+def test_normalize_image_edit_plan_drops_upscale_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+
+    normalized = normalize_image_edit_plan(
+        ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="upscale first",
+            tools=["upscale", "sharpen", "denoise"],
+            params={
+                "upscale": {"scale": 4},
+                "sharpen": {"strength": 0.3},
+                "denoise": {"strength": 0.4},
+            },
+        )
+    )
+
+    assert normalized.tools == ["denoise", "sharpen"]
+    assert "upscale" not in normalized.params
+
+
+def test_parse_image_edit_plans_replaces_upscale_only_plan_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+
+    plans = parse_image_edit_plans(
+        """
+        [
+          {
+            "image_index": 0,
+            "content": "cake",
+            "strategy": "upscale only",
+            "tools": ["upscale"],
+            "params": {"upscale": {"scale": 2}}
+          }
+        ]
+        """,
+        owner_persona="friendly",
+    )
+
+    assert len(plans) == 1
+    assert plans[0].tools == ["color_grading"]
+    assert plans[0].params["color_grading"]["temperature"] == "warm"
 
 
 def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:

@@ -132,13 +132,15 @@ def _mark_final_edit_unavailable(app: FastAPI, reason: str) -> None:
     app.state.final_edit_service = None
     app.state.final_edit_planner_client = None
     app.state.final_edit_available = False
+    app.state.final_edit_upscale_enabled = settings.FINAL_EDIT_ENABLE_UPSCALE
     app.state.final_edit_unavailable_reason = reason
 
 
 def _initialize_final_edit_service(app: FastAPI, temp_root: Path) -> None:
     try:
         import_cv2()
-        ensure_final_edit_upscaler_available()
+        if settings.FINAL_EDIT_ENABLE_UPSCALE:
+            ensure_final_edit_upscaler_available()
         from app.services.final_edit import (
             FinalEditService,
             S3DraftImageDownloader,
@@ -149,6 +151,7 @@ def _initialize_final_edit_service(app: FastAPI, temp_root: Path) -> None:
             downloader=S3DraftImageDownloader(),
             uploader=S3FinalImageUploader(),
             temp_root=temp_root / "final-edit",
+            upscale_enabled=settings.FINAL_EDIT_ENABLE_UPSCALE,
         )
     except Exception as exc:
         reason = summarize_unavailable_reason(exc)
@@ -172,6 +175,7 @@ def _initialize_final_edit_service(app: FastAPI, temp_root: Path) -> None:
     app.state.final_edit_service = service
     app.state.final_edit_planner_client = service.planner_client
     app.state.final_edit_available = True
+    app.state.final_edit_upscale_enabled = settings.FINAL_EDIT_ENABLE_UPSCALE
     app.state.final_edit_unavailable_reason = None
 
 
@@ -221,7 +225,11 @@ def _log_service_configuration(app: FastAPI) -> None:
     )
     if getattr(app.state, "final_edit_available", False):
         logger.info(
-            "Final edit planner configured.",
+            (
+                "Final edit planner configured."
+                if getattr(app.state, "final_edit_upscale_enabled", True)
+                else "Final edit planner configured with upscale disabled."
+            ),
             extra=build_log_extra(
                 "app.startup.final_edit_planner_configured",
                 component="startup",
@@ -239,6 +247,9 @@ def _log_service_configuration(app: FastAPI) -> None:
                 ),
                 final_edit_model_name=settings.FINAL_EDIT_MODEL_NAME,
                 final_edit_available="true",
+                final_edit_upscale_enabled=str(
+                    getattr(app.state, "final_edit_upscale_enabled", True)
+                ).lower(),
             ),
         )
     else:
@@ -250,6 +261,9 @@ def _log_service_configuration(app: FastAPI) -> None:
                 stage="final_edit_config",
                 outcome="failed",
                 final_edit_available="false",
+                final_edit_upscale_enabled=str(
+                    getattr(app.state, "final_edit_upscale_enabled", True)
+                ).lower(),
                 final_edit_unavailable_reason=getattr(
                     app.state,
                     "final_edit_unavailable_reason",

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import CharacterLove from '@/assets/character/CharacterLove.mp4';
+import { IoPerson } from 'react-icons/io5';
 import Modal from '@/components/common/Modal';
 
 export default function MyPageHeader({
@@ -13,10 +13,13 @@ export default function MyPageHeader({
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
+  const [isProfileImageError, setIsProfileImageError] = useState(false);
 
   const instagramUrl = instagramUsername
     ? `https://www.instagram.com/${instagramUsername.replace(/^@/, '')}`
     : null;
+
+  const hasProfileImage = profileImageUrl && !isProfileImageError;
 
   const handleInstagramUpdate = async () => {
     if (isUpdating) return;
@@ -106,19 +109,19 @@ export default function MyPageHeader({
               )}
             </div>
 
-            <div className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full border border-gray-300 bg-surface-100">
-              <video
-                src={profileImageUrl || CharacterLove}
-                alt="프로필"
-                className="h-full w-full object-cover"
-                onError={(event) => {
-                  event.currentTarget.src = CharacterLove;
-                }}
-                autoPlay
-                loop
-                muted
-                playsInline
-              />
+            <div className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full bg-gray-300">
+              {hasProfileImage ? (
+                <img
+                  src={profileImageUrl}
+                  alt="프로필"
+                  className="h-full w-full object-cover"
+                  onError={() => setIsProfileImageError(true)}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <IoPerson className="translate-y-3 text-[70px] text-gray-100" />
+                </div>
+              )}
             </div>
           </div>
         )}

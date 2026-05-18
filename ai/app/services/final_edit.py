@@ -21,7 +21,7 @@ from app.services.final_edit_planner import (
     FinalEditPlannerClient,
     FinalEditSessionContext,
     ImageEditPlan,
-    build_upscale_only_plan,
+    build_default_final_edit_plan,
     build_final_edit_planner_client,
     load_final_edit_session_context,
     normalize_image_edit_plan,
@@ -44,13 +44,14 @@ _PREVIEW_MAX_LENGTH = 120
 _PRE_UPSCALE_FILTER_TOOLS = {"color_grading", "sharpen", "background_blur"}
 
 
-def _build_default_agent(tool_event_sink):
+def _build_default_agent(tool_event_sink, upscale_enabled: bool):
     from app.services.final_edit_agent import FinalEditAgent
     from app.services.final_edit_tools import FinalEditToolRegistry
 
     return FinalEditAgent(
-        FinalEditToolRegistry(),
+        FinalEditToolRegistry(upscale_enabled=upscale_enabled),
         tool_event_sink=tool_event_sink,
+        upscale_enabled=upscale_enabled,
     )
 
 
@@ -106,8 +107,16 @@ def _resolve_image_suffix(image_path: str, default_suffix: str = ".png") -> str:
 def _ensure_filter_before_upscale(
     plan: ImageEditPlan,
     owner_persona: str,
+    *,
+    upscale_enabled: bool,
 ) -> ImageEditPlan:
-    plan = normalize_image_edit_plan(plan)
+    plan = normalize_image_edit_plan(
+        plan,
+        upscale_enabled=upscale_enabled,
+        owner_persona=owner_persona,
+    )
+    if not upscale_enabled:
+        return plan
     if "upscale" not in plan.tools:
         return plan
 
@@ -118,11 +127,12 @@ def _ensure_filter_before_upscale(
     if has_filter_before_upscale:
         return plan
 
-    fallback_plan = build_upscale_only_plan(
+    fallback_plan = build_default_final_edit_plan(
         plan.image_index,
         owner_persona=owner_persona,
         content=plan.content,
         strategy=plan.strategy,
+        upscale_enabled=upscale_enabled,
     )
     fallback_params = dict(fallback_plan.params["color_grading"])
     merged_params = dict(plan.params)
@@ -144,7 +154,9 @@ def _ensure_filter_before_upscale(
             strategy=plan.strategy,
             tools=enforced_tools,
             params=merged_params,
-        )
+        ),
+        upscale_enabled=upscale_enabled,
+        owner_persona=owner_persona,
     )
 
 
@@ -231,15 +243,24 @@ class FinalEditService:
         temp_root: Path,
         planner_client: FinalEditPlannerClient | None = None,
         agent: FinalEditAgent | None = None,
+        upscale_enabled: bool | None = None,
     ) -> None:
         self.downloader = downloader
         self.uploader = uploader
         self.temp_root = temp_root
+        self.upscale_enabled = (
+            settings.FINAL_EDIT_ENABLE_UPSCALE
+            if upscale_enabled is None
+            else upscale_enabled
+        )
         self.planner_client = planner_client or build_final_edit_planner_client()
-        self.agent = agent or _build_default_agent(self._log_tool_event)
+        self.agent = agent or _build_default_agent(
+            self._log_tool_event,
+            self.upscale_enabled,
+        )
 
-    @staticmethod
     def _build_debug_fields(
+        self,
         session_dir: Path,
         drafts: list[str],
         context: FinalEditSessionContext,
@@ -258,6 +279,7 @@ class FinalEditService:
             "debug:planner_mode": "json_batch",
             "debug:planner_response_received": "false",
             "debug:planned_indexes": "",
+            "debug:upscale_enabled": str(self.upscale_enabled).lower(),
         }
 
     def _s3_failure_result(
@@ -418,7 +440,12 @@ class FinalEditService:
                 )
             else:
                 plans_by_index = {
-                    plan.image_index: normalize_image_edit_plan(plan) for plan in plans
+                    plan.image_index: normalize_image_edit_plan(
+                        plan,
+                        upscale_enabled=self.upscale_enabled,
+                        owner_persona=context.owner_persona,
+                    )
+                    for plan in plans
                 }
                 debug_fields["debug:planner_response_received"] = str(
                     bool(getattr(self.planner_client, "last_raw_output", None))
@@ -478,21 +505,32 @@ class FinalEditService:
                 fallback_reason = (
                     "planner_fallback" if planner_fallback else "plan_missing_for_image"
                 )
-                plan = build_upscale_only_plan(
+                plan = build_default_final_edit_plan(
                     image_index,
                     owner_persona=context.owner_persona,
                     content="draft image",
                     strategy=(
-                        "Planner fallback; apply minimum color grading before "
-                        "mandatory Real-ESRGAN upscale."
+                        "Planner fallback; apply minimum color grading for a safe "
+                        "final-edit fallback."
                         if planner_fallback
                         else "No plan returned for this image; apply minimum color "
-                        "grading before mandatory Real-ESRGAN upscale."
+                        "grading for a safe final-edit fallback."
                     ),
+                    upscale_enabled=self.upscale_enabled,
                 )
                 debug_fields[f"debug:plan_source:{image_index + 1}"] = fallback_reason
             else:
-                plan = _ensure_filter_before_upscale(plan, context.owner_persona)
+                plan = _ensure_filter_before_upscale(
+                    plan,
+                    context.owner_persona,
+                    upscale_enabled=self.upscale_enabled,
+                )
+
+            plan = normalize_image_edit_plan(
+                plan,
+                upscale_enabled=self.upscale_enabled,
+                owner_persona=context.owner_persona,
+            )
 
             debug_fields[f"debug:tool_count:{image_index + 1}"] = str(len(plan.tools))
             debug_fields[f"debug:tools:{image_index + 1}"] = ",".join(plan.tools)
@@ -516,6 +554,11 @@ class FinalEditService:
             tone_debug = image_state.metadata.get("aesthetic_tone_debug")
             debug_fields[f"debug:aesthetic_tone_applied:{image_index + 1}"] = str(
                 bool(image_state.metadata.get("aesthetic_tone_target_applied"))
+            ).lower()
+            debug_fields[
+                f"debug:aesthetic_spotlight_protection:{image_index + 1}"
+            ] = str(
+                bool(image_state.metadata.get("aesthetic_spotlight_protection_applied"))
             ).lower()
             if isinstance(tone_debug, dict):
                 debug_fields[f"debug:aesthetic_current_tone:{image_index + 1}"] = (
