@@ -152,13 +152,11 @@ class FakeFinalEditService:
 class FakeKeywordExtractionService:
     def __init__(
         self,
-        purpose: str = "\uba54\ub274 \ud64d\ubcf4",
         draft_keywords: list[str] | None = None,
         final_keywords: list[str] | None = None,
         error: Exception | None = None,
         healthy: bool = True,
     ) -> None:
-        self.purpose = purpose
         self.draft_keywords = (
             draft_keywords
             if draft_keywords is not None
@@ -179,7 +177,6 @@ class FakeKeywordExtractionService:
         if self.error is not None:
             raise self.error
         return KeywordExtractionResult(
-            purpose=self.purpose,
             draft_keywords=self.draft_keywords,
             final_keywords=self.final_keywords,
         )
@@ -286,7 +283,6 @@ class FakeCaptionGenerationService:
     ) -> CaptionGenerationResult:
         self.calls.append(
             {
-                "purpose": request.purpose,
                 "keywords": list(request.keywords),
                 "owner_persona": request.owner_persona,
                 "weather_tags": list(request.weather_tags),
@@ -305,7 +301,6 @@ class FakeCaptionGenerationService:
     ) -> CaptionFallbackResult:
         self.fallback_calls.append(
             {
-                "purpose": request.purpose,
                 "keywords": list(request.keywords),
                 "fallback_keywords": list(request.fallback_keywords),
                 "owner_persona": request.owner_persona,

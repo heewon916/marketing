@@ -27,7 +27,6 @@ from app.services.reference_caption_retriever import (
     RetrievedReferenceCaption,
 )
 from app.services.sessions import (
-    DAILY_SHARE_PURPOSE,
     HEALTH_CHECK_FAILURE_CAPTION,
     HEALTH_CHECK_FAILURE_GUIDE_TEXT,
     MENU_PROMOTION_PURPOSE,
@@ -146,7 +145,6 @@ def test_caption_fallback_result_uses_default_guide_without_keywords() -> None:
 
     fallback_result = service.build_fallback_result(
         CaptionGenerationRequest(
-            purpose=DAILY_SHARE_PURPOSE,
             keywords=[],
             owner_persona="calm",
             weather_tags=[],
@@ -333,7 +331,6 @@ def test_process_utterance_fallback_uses_draft_keywords_for_text(
     original_caption_service = app.state.caption_generation_service
     original_canonical_service = app.state.canonical_keyword_resolver_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        purpose=MENU_PROMOTION_PURPOSE,
         draft_keywords=["draft menu", "draft notice"],
     )
     app.state.canonical_keyword_resolver_service = FakeCanonicalKeywordResolverService(
@@ -417,7 +414,6 @@ def test_process_utterance_passes_human_readable_keywords_to_caption_request(
     original_caption_service = app.state.caption_generation_service
     original_canonical_service = app.state.canonical_keyword_resolver_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        purpose=MENU_PROMOTION_PURPOSE,
         draft_keywords=["signature menu", "evening notice"],
     )
     app.state.canonical_keyword_resolver_service = FakeCanonicalKeywordResolverService(
@@ -482,7 +478,7 @@ def test_process_utterance_fetches_menu_candidates_for_menu_promotion(
     assert fake_caption_service.calls[0]["menu_candidates"][0].name == "\ud30c\uc804"
 
 
-def test_process_utterance_skips_menu_candidates_for_non_menu_purpose(
+def test_process_utterance_always_fetches_menu_candidates(
     client: TestClient,
 ) -> None:
     session_id = "sess-menu-candidates-2"
@@ -490,7 +486,6 @@ def test_process_utterance_skips_menu_candidates_for_non_menu_purpose(
     original_caption_service = app.state.caption_generation_service
     original_menu_service = app.state.menu_promotion_context_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        purpose="other-purpose",
         draft_keywords=["notice"],
     )
     fake_caption_service = FakeCaptionGenerationService()
@@ -524,8 +519,8 @@ def test_process_utterance_skips_menu_candidates_for_non_menu_purpose(
         app.state.menu_promotion_context_service = original_menu_service
 
     assert response.status_code == 200
-    assert fake_menu_service.calls == []
-    assert fake_caption_service.calls[0]["menu_candidates"] == []
+    assert fake_menu_service.calls[0]["store_id"] == VALID_PAYLOAD["store_id"]
+    assert fake_caption_service.calls[0]["menu_candidates"][0].name == "\ud30c\uc804"
 
 
 def test_process_utterance_stores_menu_context_debug_fields(
@@ -741,7 +736,6 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
     original_keyword_service = app.state.keyword_extraction_service
     original_caption_service = app.state.caption_generation_service
     app.state.keyword_extraction_service = FakeKeywordExtractionService(
-        purpose=DAILY_SHARE_PURPOSE,
         draft_keywords=[],
     )
     fake_service = FakeCaptionGenerationService()
@@ -761,7 +755,7 @@ def test_process_utterance_uses_default_guide_when_no_keywords(
     assert DEFAULT_FALLBACK_GUIDE_TEXT == EXPECTED_DEFAULT_FALLBACK_GUIDE_TEXT
     assert body["guide_text"] == EXPECTED_DEFAULT_FALLBACK_GUIDE_TEXT
     saved = fake_redis_sync.hgetall(session_key(session_id))
-    assert saved["debug:purpose"] == DAILY_SHARE_PURPOSE
+    assert saved["debug:purpose"] == MENU_PROMOTION_PURPOSE
     assert "draft_keyword:1" not in saved
     assert fake_service.fallback_calls[0]["fallback_source"] is None
 
@@ -771,7 +765,6 @@ def test_caption_fallback_result_falls_back_to_keywords_when_fallback_keywords_m
 
     fallback_result = service.build_fallback_result(
         CaptionGenerationRequest(
-            purpose=DAILY_SHARE_PURPOSE,
             keywords=["readable keyword"],
             owner_persona="calm",
             weather_tags=[],

@@ -66,7 +66,6 @@ def test_caption_generation_service_calls_remote_server_successfully(
     result = _run_immediate(
         service.generate_text(
             CaptionGenerationRequest(
-                purpose="메뉴 홍보",
                 keywords=["signature menu"],
                 owner_persona="aesthetic",
                 weather_tags=["PRECIP_CLEAR"],
@@ -115,7 +114,6 @@ def test_caption_generation_service_retries_without_response_format(
     result = _run_immediate(
         service.generate_text(
             CaptionGenerationRequest(
-                purpose="메뉴 홍보",
                 keywords=["막걸리"],
                 owner_persona="warm",
                 weather_tags=["PRECIP_RAIN"],
@@ -155,7 +153,6 @@ def test_caption_generation_service_does_not_retry_on_validation_error(
         _run_immediate(
             service.generate_text(
                 CaptionGenerationRequest(
-                    purpose="메뉴 홍보",
                     keywords=["막걸리"],
                     owner_persona="warm",
                     weather_tags=["PRECIP_RAIN"],
@@ -197,7 +194,6 @@ def test_caption_generation_service_caches_response_format_unsupported(
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
     request = CaptionGenerationRequest(
-        purpose="메뉴 홍보",
         keywords=["막걸리"],
         owner_persona="warm",
         weather_tags=["PRECIP_RAIN"],
@@ -210,7 +206,7 @@ def test_caption_generation_service_caches_response_format_unsupported(
     assert service._response_format_supported is False
 
 
-def test_caption_generation_service_selects_prompt_by_purpose(
+def test_caption_generation_service_uses_menu_promotion_prompt_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = CaptionGenerationService(base_url="http://caption-server:8002")
@@ -230,24 +226,21 @@ def test_caption_generation_service_selects_prompt_by_purpose(
 
     monkeypatch.setattr(service, "_post_chat_completion", fake_post_chat_completion)
 
-    for purpose in ("메뉴 홍보", "영업 공지", "일상 공유"):
-        _run_immediate(
-            service.generate_text(
-                CaptionGenerationRequest(
-                    purpose=purpose,
-                    keywords=["keyword"],
-                    owner_persona="warm",
-                    weather_tags=["PRECIP_CLEAR"],
-                )
+    _run_immediate(
+        service.generate_text(
+            CaptionGenerationRequest(
+                keywords=["keyword"],
+                owner_persona="warm",
+                weather_tags=["PRECIP_CLEAR"],
             )
         )
+    )
 
+    assert len(prompts) == 1
     assert '게시물 목적은 "메뉴 홍보"입니다.' in prompts[0]
     assert "실제로 판매하는 것만 홍보" in prompts[0]
-    assert '게시물 목적은 "영업 공지"입니다.' in prompts[1]
-    assert "공지 내용은 명확하고 자연스럽게 전달" in prompts[1]
-    assert '게시물 목적은 "일상 공유"입니다.' in prompts[2]
-    assert "매장 분위기와 사장님의 일상" in prompts[2]
+    assert '게시물 목적은 "영업 공지"입니다.' not in prompts[0]
+    assert '게시물 목적은 "일상 공유"입니다.' not in prompts[0]
 
 
 def test_caption_generation_service_uses_korean_fallback_guide_text() -> None:
@@ -255,7 +248,6 @@ def test_caption_generation_service_uses_korean_fallback_guide_text() -> None:
 
     fallback_result = service.build_fallback_result(
         CaptionGenerationRequest(
-            purpose="메뉴 홍보",
             keywords=["signature menu"],
             owner_persona="aesthetic",
             weather_tags=[],
@@ -302,7 +294,6 @@ def test_caption_generation_service_retries_with_stricter_korean_prompt(
     result = _run_immediate(
         service.generate_text(
             CaptionGenerationRequest(
-                purpose="메뉴 홍보",
                 keywords=["signature menu"],
                 owner_persona="aesthetic",
                 weather_tags=["PRECIP_CLEAR"],
@@ -344,7 +335,6 @@ def test_caption_generation_service_raises_when_retry_still_non_korean(
         _run_immediate(
             service.generate_text(
                 CaptionGenerationRequest(
-                    purpose="메뉴 홍보",
                     keywords=["seasonal soup"],
                     owner_persona="warm",
                     weather_tags=["PRECIP_RAIN"],
@@ -410,7 +400,6 @@ def test_caption_generation_service_handles_response_format_retry_before_languag
     result = _run_immediate(
         service.generate_text(
             CaptionGenerationRequest(
-                purpose="메뉴 홍보",
                 keywords=["soup"],
                 owner_persona="warm",
                 weather_tags=["PRECIP_RAIN"],
@@ -455,9 +444,8 @@ def test_caption_generation_service_preload_raises_when_server_unreachable(
 def test_caption_generation_prompt_includes_reference_captions() -> None:
     service = CaptionGenerationService(base_url="http://caption-server:8002")
 
-    prompt = service._get_pipeline("메뉴 홍보").build_prompt(
+    prompt = service._pipeline.build_prompt(
         CaptionGenerationRequest(
-            purpose="메뉴 홍보",
             keywords=["signature menu"],
             owner_persona="aesthetic",
             weather_tags=["PRECIP_CLEAR"],
@@ -477,9 +465,8 @@ def test_caption_generation_prompt_includes_reference_captions() -> None:
 def test_caption_generation_prompt_includes_menu_candidates() -> None:
     service = CaptionGenerationService(base_url="http://caption-server:8002")
 
-    prompt = service._get_pipeline("메뉴 홍보").build_prompt(
+    prompt = service._pipeline.build_prompt(
         CaptionGenerationRequest(
-            purpose="메뉴 홍보",
             keywords=["막걸리", "파전"],
             owner_persona="warm",
             weather_tags=["PRECIP_RAIN"],
@@ -551,7 +538,6 @@ def test_caption_generation_fallback_prefers_first_menu_candidate() -> None:
 
     fallback_result = service.build_fallback_result(
         CaptionGenerationRequest(
-            purpose="메뉴 홍보",
             keywords=["막걸리"],
             owner_persona="warm",
             weather_tags=["PRECIP_RAIN"],

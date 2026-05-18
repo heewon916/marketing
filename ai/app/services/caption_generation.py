@@ -12,7 +12,7 @@ import httpx
 
 from app.core.config import settings
 from app.logging import build_log_extra, preview_text
-from app.services.content_purpose import ContentPurpose
+from app.services.content_purpose import MENU_PROMOTION_PURPOSE
 from app.services.menu_promotion_context import StoreMenuCandidate
 from app.services.remote_model_client import RemoteModelClient
 from app.services.weather_tags import (
@@ -64,48 +64,6 @@ _MENU_PROMOTION_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 메뉴 �
 - 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
 - 메뉴, 상품, 음료 또는 매장에서 실제로 판매하는 것만 홍보하세요.
 - "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 주제를 중심으로 작성하고, keywords, weather_context, menu_candidates는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords, weather_context, menu_candidates만으로 작성하세요.
-
-이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
-
-입력:
-- owner_persona: {owner_persona}
-- weather_context: {weather_context}
-- utterance: {utterance}
-- keywords: {keywords}
-"""
-
-_BUSINESS_NOTICE_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 영업 공지를 위한 한국어 인스타그램 게시물 초안용 촬영 안내문과 캡션을 작성합니다.
-
-규칙:
-- 오직 JSON 객체 텍스트만 반환하세요.
-- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
-- 게시물 목적은 "영업 공지"입니다.
-- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1문장의 한국어 문장이어야 합니다.
-- "caption"은 감성적인 한국어 인스타그램 캡션이어야 합니다.
-- 공지 내용은 명확하고 자연스럽게 전달하세요.
-- 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
-- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 공지 내용을 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
-
-이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
-
-입력:
-- owner_persona: {owner_persona}
-- weather_context: {weather_context}
-- utterance: {utterance}
-- keywords: {keywords}
-"""
-
-_DAILY_SHARE_PROMPT_TEMPLATE = """당신은 50-60대 자영업자의 일상 공유를 위한 한국어 인스타그램 게시물 초안용 촬영 안내문과 캡션을 작성합니다.
-
-규칙:
-- 오직 JSON 객체 텍스트만 반환하세요.
-- 다음 스키마를 사용하세요: {{"guide_text": "...", "caption": "..."}}.
-- 게시물 목적은 "일상 공유"입니다.
-- "guide_text"는 사장님이 사진에서 어떤 점을 강조해야 하는지 알려주는 1문장의 한국어 문장이어야 합니다.
-- "caption"은 감성적인 한국어 인스타그램 캡션이어야 합니다.
-- 매장 분위기와 사장님의 일상이 자연스럽게 드러나게 작성하세요.
-- 제공된 키워드는 자연스럽게 사용하세요. 관련 없는 상품을 임의로 만들어내지 마세요.
-- "utterance"는 사장님이 직접 입력한 게시물의 핵심 메모입니다. caption은 이 메모의 의도와 주제를 중심으로 작성하고, keywords와 weather_context는 보조적으로 활용하세요. utterance가 "(없음)"이면 keywords와 weather_context만으로 작성하세요.
 
 이제 아래 입력에 맞춰 동일한 형식의 JSON 객체 한 개만 출력하세요.
 
@@ -205,7 +163,6 @@ class CaptionGenerationResult:
 
 @dataclass
 class CaptionGenerationRequest:
-    purpose: ContentPurpose
     keywords: list[str]
     owner_persona: str
     utterance: str = ""
@@ -222,8 +179,7 @@ class CaptionFallbackResult:
 
 
 class CaptionPipeline:
-    def __init__(self, purpose: ContentPurpose, prompt_template: str) -> None:
-        self.purpose = purpose
+    def __init__(self, prompt_template: str) -> None:
         self.prompt_template = prompt_template
 
     def build_prompt(self, request: CaptionGenerationRequest) -> str:
@@ -235,7 +191,7 @@ class CaptionPipeline:
                 keywords=", ".join(request.keywords) if request.keywords else "(없음)",
             )
         ]
-        if self.purpose == "메뉴 홍보" and request.menu_candidates:
+        if request.menu_candidates:
             sections.append(self._build_menu_candidates_section(request.menu_candidates))
         if request.reference_captions:
             reference_lines = "\n".join(
@@ -369,12 +325,8 @@ class CaptionPipeline:
         return request.fallback_keywords or request.keywords
 
 
-def _build_caption_pipeline_registry() -> dict[ContentPurpose, CaptionPipeline]:
-    return {
-        "메뉴 홍보": CaptionPipeline("메뉴 홍보", _MENU_PROMOTION_PROMPT_TEMPLATE),
-        "영업 공지": CaptionPipeline("영업 공지", _BUSINESS_NOTICE_PROMPT_TEMPLATE),
-        "일상 공유": CaptionPipeline("일상 공유", _DAILY_SHARE_PROMPT_TEMPLATE),
-    }
+def _build_menu_promotion_pipeline() -> CaptionPipeline:
+    return CaptionPipeline(_MENU_PROMOTION_PROMPT_TEMPLATE)
 
 
 class CaptionGenerationService:
@@ -408,7 +360,7 @@ class CaptionGenerationService:
         )
         self._server_checked = False
         self._response_format_supported: bool = True
-        self._pipelines = _build_caption_pipeline_registry()
+        self._pipeline = _build_menu_promotion_pipeline()
 
     async def preload(self) -> None:
         await self._check_server_connection()
@@ -429,7 +381,7 @@ class CaptionGenerationService:
                 "Caption generation model is disabled."
             )
 
-        prompt = self._get_pipeline(request.purpose).build_prompt(request)
+        prompt = self._pipeline.build_prompt(request)
         started_at = time.perf_counter()
 
         logger.info(
@@ -447,14 +399,13 @@ class CaptionGenerationService:
                 caption_keywords_preview=", ".join(request.keywords[:3]),
                 caption_menu_candidate_count=len(request.menu_candidates),
                 owner_persona=request.owner_persona,
-                purpose=request.purpose,
+                purpose=MENU_PROMOTION_PURPOSE,
             ),
         )
 
         try:
             result = await self._generate_korean_result(
                 prompt,
-                purpose=request.purpose,
                 menu_candidates=request.menu_candidates,
             )
         except TimeoutError as exc:
@@ -479,7 +430,7 @@ class CaptionGenerationService:
                 guide_text_length=len(result.guide_text),
                 draft_caption_length=len(result.draft_caption),
                 selected_menu_name=result.selected_menu_name,
-                purpose=request.purpose,
+                purpose=MENU_PROMOTION_PURPOSE,
             ),
         )
         return result
@@ -489,7 +440,7 @@ class CaptionGenerationService:
         request: CaptionGenerationRequest,
         fallback_source: str | None,
     ) -> CaptionFallbackResult:
-        return self._get_pipeline(request.purpose).build_fallback(
+        return self._pipeline.build_fallback(
             request,
             fallback_source,
         )
@@ -620,20 +571,11 @@ class CaptionGenerationService:
         )
         return any(marker in body for marker in unsupported_markers)
 
-    def _get_pipeline(self, purpose: ContentPurpose) -> CaptionPipeline:
-        pipeline = self._pipelines.get(purpose)
-        if pipeline is None:
-            raise CaptionGenerationUnavailableError(
-                f"Caption pipeline is not configured for purpose: {purpose}."
-            )
-        return pipeline
-
     async def _generate(
         self,
         prompt: str,
         *,
         menu_candidates: list[StoreMenuCandidate],
-        purpose: ContentPurpose,
         strict_language: bool,
     ) -> str:
         if not self.base_url:
@@ -668,7 +610,7 @@ class CaptionGenerationService:
                         component="caption_generation",
                         stage="generate",
                         outcome="degraded",
-                        purpose=purpose,
+                        purpose=MENU_PROMOTION_PURPOSE,
                         caption_http_status=first_unsupported_status,
                     ),
                 )
@@ -709,7 +651,7 @@ class CaptionGenerationService:
                 component="caption_generation",
                 stage="generate",
                 outcome="succeeded",
-                purpose=purpose,
+                purpose=MENU_PROMOTION_PURPOSE,
                 caption_menu_candidate_count=len(menu_candidates),
                 caption_language_mode=(
                     "strict_korean_retry" if strict_language else "default"
@@ -730,12 +672,10 @@ class CaptionGenerationService:
         prompt: str,
         *,
         menu_candidates: list[StoreMenuCandidate],
-        purpose: ContentPurpose,
     ) -> CaptionGenerationResult:
         raw_output = await self._generate(
             prompt,
             menu_candidates=menu_candidates,
-            purpose=purpose,
             strict_language=False,
         )
         try:
@@ -747,20 +687,19 @@ class CaptionGenerationService:
             logger.warning(
                 "Caption generation returned non-Korean text; retrying with stricter language guidance.",
                 extra=build_log_extra(
-                    "caption_generation.language_retry.attempted",
-                    component="caption_generation",
-                    stage="language_validation",
-                    outcome="retrying",
-                    purpose=purpose,
-                    non_korean_detected=True,
-                    language_retry_attempted=True,
-                ),
+                "caption_generation.language_retry.attempted",
+                component="caption_generation",
+                stage="language_validation",
+                outcome="retrying",
+                purpose=MENU_PROMOTION_PURPOSE,
+                non_korean_detected=True,
+                language_retry_attempted=True,
+            ),
             )
 
         raw_output = await self._generate(
             prompt,
             menu_candidates=menu_candidates,
-            purpose=purpose,
             strict_language=True,
         )
         try:
@@ -772,14 +711,14 @@ class CaptionGenerationService:
             logger.warning(
                 "Caption generation retry still returned non-Korean text.",
                 extra=build_log_extra(
-                    "caption_generation.language_retry.failed",
-                    component="caption_generation",
-                    stage="language_validation",
-                    outcome="failed",
-                    purpose=purpose,
-                    non_korean_detected=True,
-                    language_retry_attempted=True,
-                    language_retry_failed=True,
+                "caption_generation.language_retry.failed",
+                component="caption_generation",
+                stage="language_validation",
+                outcome="failed",
+                purpose=MENU_PROMOTION_PURPOSE,
+                non_korean_detected=True,
+                language_retry_attempted=True,
+                language_retry_failed=True,
                 ),
             )
             raise exc

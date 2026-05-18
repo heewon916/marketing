@@ -48,7 +48,6 @@ class DefaultKeywordExtractionService:
 
     async def extract_keywords(self, utterance: str) -> KeywordExtractionResult:
         return KeywordExtractionResult(
-            purpose="\uba54\ub274 \ud64d\ubcf4",
             draft_keywords=["signature menu", "cozy table"],
             final_keywords=[],
         )

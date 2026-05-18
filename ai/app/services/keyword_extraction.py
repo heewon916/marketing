@@ -15,10 +15,6 @@ from app.core.config import (
 )
 from app.logging import build_log_extra, preview_text
 from app.services.remote_model_client import RemoteModelClient
-from app.services.content_purpose import (
-    ALLOWED_CONTENT_PURPOSES,
-    ContentPurpose,
-)
 # Legacy local GGUF bootstrap is intentionally disabled during llama-server migration.
 # from app.keyword_model_download import ensure_keyword_model_available
 
@@ -144,75 +140,23 @@ _WEATHER_CANONICAL_BY_HINT = (
     ("겨울", "겨울"),
 )
 
-_PROMPT_TEMPLATE = """You extract Instagram-worthy Korean promotional angles from a raw shop-owner utterance.
-
-Rules:
-- Return JSON object text only.
-- Use this schema: {{"draft_keywords": ["..."], "weather_signals": ["..."]}}.
-- "draft_keywords" must contain 1 to 3 short Korean noun phrases that are good Instagram content 소재.
-- "weather_signals" must contain 0 to 3 short Korean weather or season signals found in the utterance.
-- Keep "draft_keywords" focused on menu, drink, dessert, ingredient, product, prop, or seasonal promotional phrases such as "제철 음식".
-- Drop filler talk, complaints, mood-only phrases, and general situation words.
-- Preserve useful noun phrases and deduplicate everything.
-- If menu/ingredient and promotional concept both matter, keep both in "draft_keywords".
-- Do not put weather words inside "draft_keywords". Put them in "weather_signals" instead.
-
-Examples:
-Input: \uc624\ub298 \uc544\uc8fc \ube44\uc2fc \ubc14\ub2d0\ub77c\ub85c \ubc84\ud130 \ucfe0\ud0a4\ub97c \uad6c\uc6e0\ub294\ub370 \uc190\ub2d8\uc774 \uc601 \uc5c6\ub124...
-Output: {{"draft_keywords": ["\ubc84\ud130 \ucfe0\ud0a4"], "weather_signals": []}}
-
-Input: \uc624\ub298 \ube44\ub3c4 \uc624\uace0 \uc601 \ud558\ub298\uc774 \uafb8\ubb3c\uac70\ub9ac\ub294\ub370 \ub9c9\uac78\ub9ac\ub791 \ud30c\uc804\uc774 \ub531\uc774\uaca0\ub2e4
-Output: {{"draft_keywords": ["\ub9c9\uac78\ub9ac", "\ud30c\uc804"], "weather_signals": ["\ube44"]}}
-
-Input: \uc624\ub298 \ub538\ub798\ubbf8\uac00 \uc601\uad6d \ube48\ud2f0\uc9c0\uc0f5\uc5d0\uc11c \uace0\uae09 \ucc3b\uc794\uc744 \uac00\uc838\uc640\uc11c \uc9c4\uc5f4\uc7a5\uc5d0 \uc0c8\ub85c \ub460\uc5b4.
-Output: {{"draft_keywords": ["\ucc3b\uc794"], "weather_signals": []}}
-
-Input: \uc694\uc998 \uba39\uace0 \uc0b4\uae30 \ub9cc\ub9cc\uce58 \uc54a\ub2e4.. \uadf8\ub798\ub3c4 \uc81c\ucca0 \uc74c\uc2dd\uc740 \uba39\uace0 \uc0b4\uc544\uc57c\uc9c0.. \ubc24\ud638\ubc15\uc774 \uc694.uc774
-Output: {{"draft_keywords": ["\ubc24\ud638\ubc15", "\uc81c\ucca0 \uc74c\uc2dd"], "weather_signals": []}}
-
-Input: \ubd04\ubc14\ub78c \uc0b4\ub791\ubd80\ub294 \ub0a0\uc5d0\ub294 \ub538\uae30 \ub77c\ub5bc\ub791 \ubd04 \ub514\uc800\ud2b8 \uc62c\ub9ac\uace0 \uc2f6\ub2e4
-Output: {{"draft_keywords": ["\ub538\uae30 \ub77c\ub5bc", "\ubd04 \ub514\uc800\ud2b8"], "weather_signals": ["\ubd04\ubc14\ub78c"]}}
-
-Input: {utterance}
-Output:
-"""
-
-_ALLOWED_PURPOSES = ALLOWED_CONTENT_PURPOSES
-KeywordPurpose = ContentPurpose
-
-_PROMPT_TEMPLATE = """당신은 한국어로 입력된 자영업자 발화를 읽고 게시물 목적을 분류한 뒤, 재사용 가능한 키워드 1~3개를 추출하는 분류기다.
+_PROMPT_TEMPLATE = """당신은 한국어로 입력된 자영업자 발화를 읽고 메뉴 홍보 게시물에 재사용 가능한 키워드 1~3개를 추출하는 도우미다.
 
 규칙:
 - 출력은 JSON 객체 텍스트만 반환한다.
-- 반드시 다음 스키마를 사용한다: {{"purpose": "...", "keywords": ["..."]}}.
-- "purpose" 값은 반드시 다음 셋 중 하나여야 한다: "메뉴 홍보", "영업 공지", "일상 공유".
+- 반드시 다음 스키마를 사용한다: {{"keywords": ["..."]}}.
 - "keywords"는 발화에서 그대로 가져오거나 가볍게 정규화한 짧은 한국어 표현 1~3개여야 한다.
-- "keywords"는 메뉴, 식재료, 음식명, 상품, 이벤트, 공지, 일상, 매장 운영과 관련된 표현 중심으로 고른다.
+- "keywords"는 메뉴, 식재료, 음식명, 상품, 소품, 계절성 홍보 포인트와 관련된 표현 중심으로 고른다.
 - 군더더기 말, 하소연, 감정만 있는 표현, 너무 일반적인 상황 설명은 제외한다.
 - 유용한 표현은 보존하고, 중복은 제거한다.
 - 추론 과정은 설명하지 않는다.
 
-분류 기준:
-- 식재료명이나 음식명이 들어가고, 그것이 소개·추천·판매 맥락으로 언급되면 "메뉴 홍보"로 분류한다.
-- 사용자가 구체적인 기간, 날짜, 요일, 공휴일과 함께 영업시간 변경, 영업일 변경, 휴무, 정상영업 여부를 언급하면 "영업 공지"로 분류한다.
-- 특히 구체적인 기간이나 일정 변경 안내가 핵심이면, 음식명이나 메뉴명이 함께 있어도 "영업 공지"를 우선한다.
-- 위 두 경우가 아니고, 가게 운영자 개인의 생각, 일상, 감상, 근황 공유가 중심이면 "일상 공유"로 분류한다.
-
 예시:
 입력: 오늘 아주 비싼 바닐라로 버터 쿠키를 구웠는데 손님들이 좋아하셨으면 좋겠네
-출력: {{"purpose": "메뉴 홍보", "keywords": ["바닐라", "버터 쿠키"]}}
+출력: {{"keywords": ["바닐라", "버터 쿠키"]}}
 
 입력: 비 오는 날이라 막걸리랑 파전 생각나서 오늘은 이 조합 추천하고 싶어요
-출력: {{"purpose": "메뉴 홍보", "keywords": ["막걸리", "파전"]}}
-
-입력: 5월 15일부터 5월 17일까지 가게 공사로 휴무이고 5월 18일부터 정상영업합니다
-출력: {{"purpose": "영업 공지", "keywords": ["5월 15일~5월 17일 휴무", "5월 18일 정상영업"]}}
-
-입력: 어린이날이라 5월 5일은 오픈 시간을 오후 1시로 늦춥니다
-출력: {{"purpose": "영업 공지", "keywords": ["어린이날", "오후 1시 오픈"]}}
-
-입력: 오늘은 가게 마감하고 집에서 책 읽으면서 쉬고 싶네요
-출력: {{"purpose": "일상 공유", "keywords": ["가게 마감", "책 읽기"]}}
+출력: {{"keywords": ["막걸리", "파전"]}}
 
 입력: {utterance}
 출력:
@@ -225,7 +169,6 @@ class KeywordExtractionUnavailableError(RuntimeError):
 
 @dataclass
 class KeywordExtractionResult:
-    purpose: ContentPurpose
     draft_keywords: list[str]
     final_keywords: list[str] = field(default_factory=list)
 
@@ -357,7 +300,6 @@ class KeywordExtractionService:
                 stage="inference",
                 outcome="succeeded",
                 elapsed_ms=int((time.perf_counter() - started_at) * 1000),
-                purpose=result.purpose,
                 draft_keyword_count=len(result.draft_keywords),
                 draft_keywords_preview=", ".join(result.draft_keywords),
             ),
@@ -369,9 +311,7 @@ class KeywordExtractionService:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "Return only a JSON object with purpose and keywords fields."
-                    ),
+                    "content": "Return only a JSON object with a keywords field.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -385,10 +325,6 @@ class KeywordExtractionService:
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "purpose": {
-                            "type": "string",
-                            "enum": list(ALLOWED_CONTENT_PURPOSES),
-                        },
                         "keywords": {
                             "type": "array",
                             "minItems": 1,
@@ -396,7 +332,7 @@ class KeywordExtractionService:
                             "items": {"type": "string"},
                         },
                     },
-                    "required": ["purpose", "keywords"],
+                    "required": ["keywords"],
                 },
             }
         return payload
@@ -559,12 +495,14 @@ class KeywordExtractionService:
 
     def _parse_extraction_result(self, raw_output: str) -> KeywordExtractionResult:
         parsed = self._load_extraction_payload(raw_output)
-        purpose_payload, keyword_payload = self._split_extraction_payload(parsed)
-        purpose = self._validate_purpose_payload(purpose_payload)
-
+        if not isinstance(parsed, dict):
+            raise KeywordExtractionUnavailableError(
+                "Keyword extraction returned a non-object payload."
+            )
+        keyword_payload = parsed.get("keywords")
         if not isinstance(keyword_payload, list):
             raise KeywordExtractionUnavailableError(
-                "Keyword extraction returned a non-list payload."
+                "Keyword extraction returned a non-list keywords payload."
             )
         draft_keywords = self._normalize_keywords_payload(keyword_payload)
 
@@ -580,7 +518,6 @@ class KeywordExtractionService:
                 component="keyword_extraction",
                 stage="parse",
                 outcome="succeeded",
-                purpose=purpose,
                 draft_keywords_preview=", ".join(draft_keywords),
                 raw_output_preview=preview_text(
                     raw_output,
@@ -589,7 +526,6 @@ class KeywordExtractionService:
             ),
         )
         return KeywordExtractionResult(
-            purpose=purpose,
             draft_keywords=draft_keywords,
             final_keywords=[],
         )
@@ -636,19 +572,8 @@ class KeywordExtractionService:
         payload: Any,
     ) -> tuple[Any, Any]:
         if isinstance(payload, dict):
-            keyword_payload = payload.get("keywords")
-            if keyword_payload is None:
-                keyword_payload = payload.get("draft_keywords")
-            return payload.get("purpose"), keyword_payload
+            return None, payload.get("keywords")
         return None, payload
-
-    @staticmethod
-    def _validate_purpose_payload(payload: Any) -> ContentPurpose:
-        if not isinstance(payload, str) or payload not in ALLOWED_CONTENT_PURPOSES:
-            raise KeywordExtractionUnavailableError(
-                "Keyword extraction returned an invalid purpose."
-            )
-        return payload
 
     def _normalize_keywords_payload(self, payload: list[Any]) -> list[str]:
         return self._normalize_unique_values(
