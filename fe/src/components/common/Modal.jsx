@@ -1,5 +1,10 @@
 import Button from '@/components/common/Button';
 
+const TITLE_COLOR_CLASS = {
+  accent: 'text-accent-100',
+  primary: 'text-primary-100',
+};
+
 export default function Modal({
   isOpen,
   onClose,
@@ -14,8 +19,11 @@ export default function Modal({
   onConfirm,
   onCancel,
   variant = 'default',
+  titleColor = 'accent',
 
-  descriptionClassName = 'text-gray-500',
+  confirmVariant,
+  confirmDisabled = false,
+  cancelDisabled = false,
 }) {
   if (!isOpen) return null;
 
@@ -28,6 +36,8 @@ export default function Modal({
 
   // 취소 버튼 처리
   const handleCancel = () => {
+    if (cancelDisabled) return;
+
     if (onCancel) {
       onCancel();
       return;
@@ -38,6 +48,8 @@ export default function Modal({
 
   // 확인 버튼 처리
   const handleConfirm = () => {
+    if (confirmDisabled) return;
+
     if (onConfirm) {
       onConfirm();
       return;
@@ -46,9 +58,15 @@ export default function Modal({
     onClose?.();
   };
 
-  // 모달 타입별 스타일
+  // 제목 색상 처리
   const titleColorClass =
-    variant === 'danger' ? 'text-red-500' : 'text-accent-100';
+    variant === 'danger'
+      ? 'text-red-500'
+      : TITLE_COLOR_CLASS[titleColor] || TITLE_COLOR_CLASS.accent;
+
+  // 확인 버튼 색상 처리
+  const confirmButtonVariant =
+    confirmVariant || (variant === 'danger' ? 'danger' : 'primary');
 
   return (
     <div
@@ -57,7 +75,7 @@ export default function Modal({
     >
       {/* 모달 컨테이너 */}
       <div
-        className="relative w-[90%] max-w-[360px] bg-white rounded-3xl px-6 pt-12 pb-8"
+        className="relative w-[90%] max-w-[360px] rounded-3xl bg-white px-6 pb-8 pt-12"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 닫기 버튼 영역 */}
@@ -65,7 +83,7 @@ export default function Modal({
           <button
             type="button"
             onClick={onClose}
-            className="absolute top-5 right-5 text-gray-700"
+            className="absolute right-5 top-5 text-gray-700"
           >
             <span className="material-icons text-2xl">close</span>
           </button>
@@ -76,16 +94,14 @@ export default function Modal({
           <div className="text-center">
             {title && (
               <h2
-                className={`text-[22px] font-bold leading-snug whitespace-pre-line ${titleColorClass}`}
+                className={`whitespace-pre-line text-[24px] font-bold leading-snug ${titleColorClass}`}
               >
                 {title}
               </h2>
             )}
 
             {description && (
-              <p
-                className={`mt-4 whitespace-pre-line text-[17px] font-medium leading-relaxed ${descriptionClassName}`}
-              >
+              <p className="mt-4 whitespace-pre-line text-[18px] font-medium leading-relaxed text-accent-100">
                 {description}
               </p>
             )}
@@ -103,6 +119,7 @@ export default function Modal({
                 type="button"
                 size="sm"
                 variant="white"
+                disabled={cancelDisabled}
                 className="flex-1 text-[18px] font-bold"
                 onClick={handleCancel}
               >
@@ -114,7 +131,8 @@ export default function Modal({
               <Button
                 type="button"
                 size="sm"
-                variant={variant === 'danger' ? 'danger' : 'primary'}
+                variant={confirmButtonVariant}
+                disabled={confirmDisabled}
                 className="flex-1 text-[18px] font-bold"
                 onClick={handleConfirm}
               >

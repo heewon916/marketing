@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BottomTab from '@/components/common/BottomTab';
 import Modal from '@/components/common/Modal';
-import Button from '@/components/common/Button';
 import MyPageHeader from '@/features/mypage/components/MyPageHeader';
 import MyPageTabSwitcher from '@/features/mypage/components/MyPageTabSwitcher';
 import MyPageStatsSection from '@/features/mypage/sections/MyPageStatsSection';
@@ -239,30 +238,12 @@ export default function MyPage() {
           isOpen={isEditWarningModalOpen}
           onClose={handleCloseEditWarningModal}
           showClose={false}
-        >
-          <div className="text-center">
-            <h2 className="text-[22px] font-bold text-accent-100">
-              수정 중인 내용이 있어요
-            </h2>
-
-            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
-              저장하거나 취소한 뒤
-              <br />
-              다른 화면으로 이동해주세요.
-            </p>
-
-            <div className="mt-7 flex justify-center">
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={handleCloseEditWarningModal}
-                className="text-[18px] font-bold"
-              >
-                확인
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          title="수정 중인 내용이 있어요"
+          description={`저장하거나 취소한 뒤\n다른 화면으로 이동해주세요.`}
+          titleColor="primary"
+          confirmText="확인"
+          onConfirm={handleCloseEditWarningModal}
+        />
       )}
     </div>
   );
