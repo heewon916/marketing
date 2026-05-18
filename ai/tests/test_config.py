@@ -63,6 +63,7 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAPTION_MODEL_SERVER_PORT", "8102")
     monkeypatch.setenv("CAPTION_MODEL_CTX_SIZE", "4096")
     monkeypatch.setenv("CAPTION_MODEL_GPU_LAYERS", "24")
+    monkeypatch.setenv("FINAL_EDIT_ENABLE_UPSCALE", "true")
     monkeypatch.setenv("CANONICAL_KEYWORD_RESOLVER_ENABLED", "true")
     monkeypatch.setenv(
         "CANONICAL_KEYWORD_EMBEDDING_MODEL_NAME",
@@ -115,6 +116,7 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.caption_model_client.temperature == 0.6
     assert settings.caption_model_client.top_p == 0.88
     assert settings.caption_model_client.enabled is True
+    assert settings.FINAL_EDIT_ENABLE_UPSCALE is True
 
     assert settings.caption_model_server.host_dir == "./.models/custom-caption"
     assert settings.caption_model_server.hf_repo_id == "Qwen/custom-caption"
@@ -333,6 +335,17 @@ def test_reference_caption_rag_env_vars_are_applied(
 
     assert settings.REFERENCE_CAPTION_RAG_ENABLED is False
     assert settings.REFERENCE_CAPTION_MAX_REFERENCES == 4
+
+
+def test_final_edit_upscale_flag_env_var_is_applied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_required_postgres(monkeypatch)
+    monkeypatch.setenv("FINAL_EDIT_ENABLE_UPSCALE", "false")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.FINAL_EDIT_ENABLE_UPSCALE is False
 
 
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:

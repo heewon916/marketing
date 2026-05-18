@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.main import app
+from app.core.config import settings
 from app.schemas.sessions import FinalEditResponse
 from app.bootstrap import _initialize_final_edit_service
 from app.services.final_edit import FinalEditResult, FinalEditService
@@ -299,6 +300,30 @@ def test_initialize_final_edit_service_marks_unavailable_on_upscaler_error(
     )
 
 
+def test_initialize_final_edit_service_skips_upscaler_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    startup_app = FastAPI()
+
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+    monkeypatch.setattr("app.bootstrap.import_cv2", lambda: object())
+
+    def fail_upscaler():
+        raise AssertionError("upscaler should not be preloaded when disabled")
+
+    monkeypatch.setattr(
+        "app.bootstrap.ensure_final_edit_upscaler_available",
+        fail_upscaler,
+    )
+
+    _initialize_final_edit_service(startup_app, tmp_path)
+
+    assert startup_app.state.final_edit_service is not None
+    assert startup_app.state.final_edit_available is True
+    assert startup_app.state.final_edit_upscale_enabled is False
+
+
 def test_final_edit_response_limits_results_to_three() -> None:
     with pytest.raises(ValidationError):
         FinalEditResponse(
@@ -369,6 +394,7 @@ def test_final_edit_service_marks_planner_fallback_on_planner_error(
     assert result.debug_fields["debug:planner_failure_type"] == "RuntimeError"
     assert result.debug_fields["debug:planner_response_received"] == "false"
     assert result.debug_fields["debug:planned_indexes"] == ""
+    assert result.debug_fields["debug:upscale_enabled"] == "true"
     assert result.debug_fields["debug:tools:1"] == "color_grading,upscale"
     assert result.debug_fields["debug:executed_tools:1"] == "color_grading,upscale"
     assert result.debug_fields["debug:plan_source:1"] == "planner_fallback"
@@ -709,6 +735,88 @@ def test_final_edit_service_marks_persona_preset_fallback_for_unknown_persona(
     assert result.debug_fields["debug:target_preset_fallback"] == "true"
 
 
+def test_final_edit_service_omits_upscale_in_fallback_when_disabled(
+    tmp_path: Path,
+    service_loop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FailingPlannerClient(),
+        upscale_enabled=False,
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-no-upscale-fallback-1",
+            drafts=["/ai-drafts/session-no-upscale-fallback-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                owner_persona="friendly",
+                caption="cake",
+                keywords=["dessert"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:upscale_enabled"] == "false"
+    assert result.debug_fields["debug:tools:1"] == "color_grading"
+    assert result.debug_fields["debug:executed_tools:1"] == "color_grading"
+
+
+def test_final_edit_service_strips_upscale_from_planner_plan_when_disabled(
+    tmp_path: Path,
+    service_loop,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "FINAL_EDIT_ENABLE_UPSCALE", False)
+    uploader = CapturingFinalUploader()
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=FakePlannerClient(
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="cake",
+                    strategy="denoise then upscale",
+                    tools=["denoise", "upscale"],
+                    params={
+                        "denoise": {"strength": 0.4},
+                        "upscale": {"scale": 2},
+                    },
+                )
+            ]
+        ),
+        upscale_enabled=False,
+    )
+
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-no-upscale-plan-1",
+            drafts=["/ai-drafts/session-no-upscale-plan-1/draft-001.png"],
+            context=FinalEditSessionContext(
+                caption="cake",
+                keywords=["dessert"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:upscale_enabled"] == "false"
+    assert result.debug_fields["debug:tools:1"] == "denoise"
+    assert result.debug_fields["debug:executed_tools:1"] == "denoise"
+
+
 def test_final_edit_service_records_aesthetic_tone_debug_fields(
     tmp_path: Path,
     service_loop,
@@ -757,6 +865,7 @@ def test_final_edit_service_records_aesthetic_tone_debug_fields(
     assert result.status == "PHOTO_EDITED"
     assert result.debug_fields is not None
     assert result.debug_fields["debug:aesthetic_tone_applied:1"] == "true"
+    assert "debug:aesthetic_spotlight_protection:1" in result.debug_fields
     current_tone = json.loads(result.debug_fields["debug:aesthetic_current_tone:1"])
     target_tone = json.loads(result.debug_fields["debug:aesthetic_target_tone:1"])
     tolerance = json.loads(result.debug_fields["debug:aesthetic_tolerance:1"])

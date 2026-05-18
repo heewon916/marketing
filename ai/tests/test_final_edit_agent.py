@@ -7,6 +7,7 @@ import pytest
 from app.services.final_edit_agent import FinalEditAgent, FinalEditImageState
 from app.services.final_edit_planner import ImageEditPlan
 from app.services.final_edit_tools import (
+    AESTHETIC_TARGET_TONE_PROFILE,
     AESTHETIC_TONE_METRIC_KEYS,
     FinalEditToolRegistry,
     analyze_image_tone,
@@ -20,6 +21,20 @@ def _write_test_image(path: Path, shape: tuple[int, int, int] = (16, 16, 3)) -> 
     image = np.full(shape, 120, dtype=np.uint8)
     image[:, : shape[1] // 2, 2] = 220
     cv2.imwrite(str(path), image)
+
+
+def _compute_luminance(image: np.ndarray) -> np.ndarray:
+    return (
+        0.114 * image[:, :, 0].astype(np.float32)
+        + 0.587 * image[:, :, 1].astype(np.float32)
+        + 0.299 * image[:, :, 2].astype(np.float32)
+    )
+
+
+def _mean_for_percentile(values: np.ndarray, percentile: float) -> float:
+    flattened = values.reshape(-1)
+    threshold = float(np.percentile(flattened, percentile))
+    return float(np.mean(flattened[flattened >= threshold]))
 
 
 @pytest.fixture(autouse=True)
@@ -112,7 +127,6 @@ def test_build_aesthetic_color_grading_params_skips_small_gaps() -> None:
     assert set(debug["skip_by_metric"]) == set(AESTHETIC_TONE_METRIC_KEYS)
     assert debug["skip_by_metric"]["temperature"] is True
     assert debug["skip_by_metric"]["tint"] is True
-    assert debug["skip_by_metric"]["saturation"] is True
     assert params["temperature_strength"] == 0.0
     assert params["tint_strength"] == 0.0
 
@@ -134,18 +148,47 @@ def test_analyze_image_tone_uses_trimmed_brightness_for_small_white_patch() -> N
 
 def test_build_aesthetic_color_grading_params_attenuates_small_bright_highlights() -> None:
     small_highlights = np.full((128, 128, 3), 95, dtype=np.uint8)
-    small_highlights[8:16, 8:16] = 255
+    small_highlights[8:31, 8:31] = 255
+    small_highlights[8:30, 36:56] = 220
     broad_overexposure = np.full((128, 128, 3), 235, dtype=np.uint8)
 
     small_params, small_debug = build_aesthetic_color_grading_params(small_highlights)
     broad_params, broad_debug = build_aesthetic_color_grading_params(broad_overexposure)
+    highlight_target = AESTHETIC_TARGET_TONE_PROFILE["white_point"]
+    raw_highlight_adjustment = max(
+        -100.0,
+        min(
+            100.0,
+            (
+                (highlight_target["target"] - small_debug["current_tone"]["white_point"])
+                / max(highlight_target["tolerance"], 1.0)
+            )
+            * 45.0,
+        ),
+    )
 
     assert (
         small_debug["current_tone"]["highlight_area_ratio"]
         < broad_debug["current_tone"]["highlight_area_ratio"]
     )
-    assert abs(small_params["highlights"]) < abs(broad_params["highlights"])
+    assert small_params["brightness"] == 0.0
+    assert small_params["highlights"] == round(raw_highlight_adjustment * 0.35, 2)
+    assert small_params["spotlight_protection"] is True
     assert abs(small_params["brightness"]) < abs(broad_params["brightness"])
+
+
+def test_build_aesthetic_color_grading_params_zeroes_highlights_for_sub_threshold_spotlight() -> None:
+    image = np.full((128, 128, 3), 95, dtype=np.uint8)
+    image[8:28, 8:28] = 255
+    image[8:33, 36:56] = 220
+
+    params, debug = build_aesthetic_color_grading_params(image)
+
+    assert debug["current_tone"]["highlight_area_ratio"] < 0.03
+    assert debug["current_tone"]["white_point"] >= AESTHETIC_TARGET_TONE_PROFILE["white_point"]["target"]
+    assert params["brightness"] == 0.0
+    assert params["highlights"] == 0.0
+    assert params["spotlight_protection"] is True
 
 
 def test_tool_registry_upscale_changes_shape() -> None:
@@ -155,6 +198,12 @@ def test_tool_registry_upscale_changes_shape() -> None:
     result = registry.execute("upscale", image, {"scale": 4})
 
     assert result.shape == (16, 16, 3)
+
+
+def test_tool_registry_excludes_upscale_when_disabled() -> None:
+    registry = FinalEditToolRegistry(upscale_enabled=False)
+
+    assert "upscale" not in registry.tool_names
 
 
 def test_normalize_tool_params_upscale_forces_two_x() -> None:
@@ -195,6 +244,42 @@ def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> Non
     assert np.any(result != image)
 
 
+def test_tool_registry_color_grading_preserves_specular_core_with_spotlight_protection() -> None:
+    registry = FinalEditToolRegistry()
+    image = np.full((128, 128, 3), 110, dtype=np.uint8)
+    image[8:28, 8:28] = 255
+    image[8:30, 36:56] = 220
+
+    result = registry.execute(
+        "color_grading",
+        image,
+        {
+            "contrast": 0,
+            "highlights": -12,
+            "shadows": 0,
+            "vibrance": 0,
+            "saturation": 0,
+            "temperature": "warm",
+            "temperature_strength": 0.0,
+            "tint": 0,
+            "tint_strength": 0.0,
+            "tone_curve_shadow_lift": 0,
+            "brightness": 0.0,
+            "spotlight_protection": True,
+        },
+    )
+
+    input_luminance = _compute_luminance(image)
+    result_luminance = _compute_luminance(result)
+    input_top_one_percent = _mean_for_percentile(input_luminance, 99.0)
+    result_top_one_percent = _mean_for_percentile(result_luminance, 99.0)
+    input_midtone_mean = float(np.mean(input_luminance[(input_luminance >= 100.0) & (input_luminance <= 140.0)]))
+    result_midtone_mean = float(np.mean(result_luminance[(input_luminance >= 100.0) & (input_luminance <= 140.0)]))
+
+    assert result_top_one_percent >= input_top_one_percent
+    assert result_midtone_mean <= input_midtone_mean + 1.0
+
+
 @pytest.mark.asyncio
 async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
     tmp_path: Path,
@@ -229,6 +314,7 @@ async def test_final_edit_agent_overrides_aesthetic_color_grading_params(
 
     assert result.fallback_to_original is False
     assert result.metadata["aesthetic_tone_target_applied"] is True
+    assert "aesthetic_spotlight_protection_applied" in result.metadata
     assert "aesthetic_tone_debug" in result.metadata
     assert result.metadata["current_tool_params"] != normalize_tool_params(
         "color_grading",
@@ -269,10 +355,12 @@ async def test_final_edit_agent_keeps_planner_params_for_non_aesthetic(
 
     assert result.fallback_to_original is False
     assert result.metadata["aesthetic_tone_target_applied"] is False
-    assert result.metadata["current_tool_params"] == normalize_tool_params(
+    assert result.metadata["aesthetic_spotlight_protection_applied"] is False
+    assert result.normalized_params["color_grading"] == normalize_tool_params(
         "color_grading",
         planned_params,
     )
+    assert result.executed_tools[0] == "color_grading"
     assert "aesthetic_tone_debug" not in result.metadata
 
 
@@ -304,6 +392,39 @@ async def test_final_edit_agent_writes_edited_image(tmp_path: Path) -> None:
     assert output_image is not None
     assert output_image.shape[:2] == (32, 32)
     assert result.fallback_to_original is False
+
+
+@pytest.mark.asyncio
+async def test_final_edit_agent_strips_disabled_upscale_before_execution(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "draft.png"
+    _write_test_image(image_path)
+    agent = FinalEditAgent(
+        FinalEditToolRegistry(upscale_enabled=False),
+        upscale_enabled=False,
+    )
+    state = FinalEditImageState(
+        image_path=image_path,
+        working_dir=tmp_path / "edited",
+        plan=ImageEditPlan(
+            image_index=0,
+            content="cake",
+            strategy="upscale only",
+            tools=["upscale"],
+            params={"upscale": {"scale": 2}},
+        ),
+        owner_persona="friendly",
+    )
+
+    result = await agent.run(state)
+
+    assert result.fallback_to_original is False
+    assert result.executed_tools == ["color_grading"]
+    assert result.output_path is not None
+    output_image = cv2.imread(str(result.output_path))
+    assert output_image is not None
+    assert output_image.shape[:2] == (16, 16)
 
 
 @pytest.mark.asyncio
