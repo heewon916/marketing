@@ -397,6 +397,7 @@ class FinalEditService:
     ) -> tuple[bool, dict[int, object]]:
         planner_fallback = not bool(context.caption or context.keywords)
         plans_by_index: dict[int, object] = {}
+        planner_response_received = False
 
         logger.info(
             "Loading final edit session context.",
@@ -444,15 +445,34 @@ class FinalEditService:
                 ),
             )
             try:
-                plans = await self.planner_client.build_plans(
-                    [str(path) for path in downloaded_drafts],
-                    context,
-                )
+                for image_index, draft_path in enumerate(downloaded_drafts):
+                    plans = await self.planner_client.build_plans(
+                        [str(draft_path)],
+                        context,
+                    )
+                    planner_response_received = planner_response_received or bool(
+                        getattr(self.planner_client, "last_raw_output", None)
+                    )
+                    if not plans:
+                        continue
+                    remapped_plan = ImageEditPlan(
+                        image_index=image_index,
+                        content=plans[0].content,
+                        strategy=plans[0].strategy,
+                        tools=plans[0].tools,
+                        params=plans[0].params,
+                    )
+                    plans_by_index[image_index] = normalize_image_edit_plan(
+                        remapped_plan,
+                        upscale_enabled=self.upscale_enabled,
+                        owner_persona=context.owner_persona,
+                    )
             except Exception as exc:
                 planner_fallback = True
+                plans_by_index = {}
                 debug_fields["debug:planner_failure_type"] = exc.__class__.__name__
                 debug_fields["debug:planner_response_received"] = str(
-                    bool(getattr(self.planner_client, "last_raw_output", None))
+                    planner_response_received
                 ).lower()
                 logger.warning(
                     "Final edit planner failed. Falling back to original drafts.",
@@ -470,19 +490,11 @@ class FinalEditService:
                     ),
                 )
             else:
-                plans_by_index = {
-                    plan.image_index: normalize_image_edit_plan(
-                        plan,
-                        upscale_enabled=self.upscale_enabled,
-                        owner_persona=context.owner_persona,
-                    )
-                    for plan in plans
-                }
                 debug_fields["debug:planner_response_received"] = str(
-                    bool(getattr(self.planner_client, "last_raw_output", None))
+                    planner_response_received
                 ).lower()
                 debug_fields["debug:planned_indexes"] = ",".join(
-                    str(plan.image_index) for plan in plans_by_index.values()
+                    str(image_index) for image_index in sorted(plans_by_index)
                 )
                 logger.info(
                     "Planned final edit sequence.",
@@ -493,16 +505,14 @@ class FinalEditService:
                         session_id=session_id,
                         outcome="succeeded",
                         planned_image_count=len(plans_by_index),
-                        planned_indexes=[
-                            plan.image_index for plan in plans_by_index.values()
-                        ],
+                        planned_indexes=sorted(plans_by_index),
                         planned_tools_by_image={
-                            str(plan.image_index): plan.tools
-                            for plan in plans_by_index.values()
+                            str(image_index): plan.tools
+                            for image_index, plan in sorted(plans_by_index.items())
                         },
                         planned_strategy_preview_by_image={
-                            str(plan.image_index): _preview_or_empty(plan.strategy)
-                            for plan in plans_by_index.values()
+                            str(image_index): _preview_or_empty(plan.strategy)
+                            for image_index, plan in sorted(plans_by_index.items())
                         },
                         caption_preview=_preview_or_empty(context.caption),
                         keyword_preview=_preview_keywords(context.keywords),

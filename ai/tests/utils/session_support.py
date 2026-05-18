@@ -409,6 +409,43 @@ class FakePlannerClient:
         return self.plans
 
 
+class RecordingPlannerClient:
+    def __init__(self, plans_by_call: list[list[ImageEditPlan]]) -> None:
+        self.plans_by_call = plans_by_call
+        self.calls: list[list[str]] = []
+        self.last_raw_output = (
+            '[{"image_index":0,"content":"cake","strategy":"denoise",'
+            '"tools":["denoise"],"params":{"denoise":{"strength":0.4}}}]'
+        )
+
+    async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
+        self.calls.append(list(image_paths))
+        call_index = len(self.calls) - 1
+        if call_index >= len(self.plans_by_call):
+            return []
+        return self.plans_by_call[call_index]
+
+
+class FailOnCallPlannerClient(RecordingPlannerClient):
+    def __init__(
+        self,
+        plans_by_call: list[list[ImageEditPlan]],
+        *,
+        fail_on_call: int,
+    ) -> None:
+        super().__init__(plans_by_call)
+        self.fail_on_call = fail_on_call
+
+    async def build_plans(self, image_paths, context) -> list[ImageEditPlan]:
+        self.calls.append(list(image_paths))
+        call_index = len(self.calls) - 1
+        if call_index == self.fail_on_call:
+            raise RuntimeError("planner_failed")
+        if call_index >= len(self.plans_by_call):
+            return []
+        return self.plans_by_call[call_index]
+
+
 class FailingUploader:
     is_configured = True
 

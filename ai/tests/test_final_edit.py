@@ -19,12 +19,14 @@ from app.services.final_edit_planner import FinalEditSessionContext, ImageEditPl
 from app.services.sessions import session_key
 from tests.utils.session_support import (
     CapturingFinalUploader,
+    FailOnCallPlannerClient,
     FakeFinalEditService,
     FakeUpscaler,
     FakePlannerClient,
     FailingPlannerClient,
     FailingUploader,
     FallbackAgent,
+    RecordingPlannerClient,
     StubDraftDownloader,
     VALID_PAYLOAD,
 )
@@ -498,6 +500,158 @@ def test_final_edit_service_marks_edited_upload_source_when_agent_succeeds(
     assert result.debug_fields["debug:upload_source_kind:1"] == "edited"
     assert "edited-000.png" in result.debug_fields["debug:output_path:1"]
     assert "edited-000.png" in uploader.source_paths[0]
+
+
+def test_final_edit_service_calls_planner_once_per_image_and_remaps_indexes(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    planner_client = RecordingPlannerClient(
+        [
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="first image",
+                    strategy="denoise first",
+                    tools=["denoise"],
+                    params={"denoise": {"strength": 0.4}},
+                )
+            ],
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="second image",
+                    strategy="sharpen second",
+                    tools=["sharpen"],
+                    params={"sharpen": {"strength": 0.3}},
+                )
+            ],
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="third image",
+                    strategy="color grade third",
+                    tools=["color_grading"],
+                    params={"color_grading": {"contrast": -6}},
+                )
+            ],
+        ]
+    )
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=planner_client,
+        upscale_enabled=False,
+    )
+
+    drafts = [
+        "/ai-drafts/session-multi-plan-1/draft-001.png",
+        "/ai-drafts/session-multi-plan-1/draft-002.png",
+        "/ai-drafts/session-multi-plan-1/draft-003.png",
+    ]
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-multi-plan-1",
+            drafts=drafts,
+            context=FinalEditSessionContext(
+                caption="dessert showcase",
+                keywords=["cake"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert len(planner_client.calls) == 3
+    assert all(len(call) == 1 for call in planner_client.calls)
+    assert planner_client.calls[0][0].endswith("draft-001.png")
+    assert planner_client.calls[1][0].endswith("draft-002.png")
+    assert planner_client.calls[2][0].endswith("draft-003.png")
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:planner_fallback"] == "false"
+    assert result.debug_fields["debug:planned_image_count"] == "3"
+    assert result.debug_fields["debug:planned_indexes"] == "0,1,2"
+    assert result.debug_fields["debug:tools:1"] == "denoise"
+    assert result.debug_fields["debug:tools:2"] == "sharpen"
+    assert result.debug_fields["debug:tools:3"] == "color_grading"
+
+
+def test_final_edit_service_falls_back_all_images_when_any_planner_call_fails(
+    tmp_path: Path,
+    service_loop,
+) -> None:
+    uploader = CapturingFinalUploader()
+    planner_client = FailOnCallPlannerClient(
+        [
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="first image",
+                    strategy="denoise first",
+                    tools=["denoise"],
+                    params={"denoise": {"strength": 0.4}},
+                )
+            ],
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="second image",
+                    strategy="sharpen second",
+                    tools=["sharpen"],
+                    params={"sharpen": {"strength": 0.3}},
+                )
+            ],
+            [
+                ImageEditPlan(
+                    image_index=0,
+                    content="third image",
+                    strategy="color grade third",
+                    tools=["color_grading"],
+                    params={"color_grading": {"contrast": -6}},
+                )
+            ],
+        ],
+        fail_on_call=1,
+    )
+    service = FinalEditService(
+        downloader=StubDraftDownloader(),
+        uploader=uploader,
+        temp_root=tmp_path,
+        planner_client=planner_client,
+        upscale_enabled=False,
+    )
+
+    drafts = [
+        "/ai-drafts/session-plan-fail-1/draft-001.png",
+        "/ai-drafts/session-plan-fail-1/draft-002.png",
+        "/ai-drafts/session-plan-fail-1/draft-003.png",
+    ]
+    result = _run_service(
+        service_loop,
+        service.edit_and_upload(
+            session_id="session-plan-fail-1",
+            drafts=drafts,
+            context=FinalEditSessionContext(
+                caption="dessert showcase",
+                keywords=["cake"],
+            ),
+        ),
+    )
+
+    assert result.status == "PHOTO_EDITED"
+    assert len(planner_client.calls) == 2
+    assert all(len(call) == 1 for call in planner_client.calls)
+    assert planner_client.calls[0][0].endswith("draft-001.png")
+    assert planner_client.calls[1][0].endswith("draft-002.png")
+    assert result.debug_fields is not None
+    assert result.debug_fields["debug:planner_fallback"] == "true"
+    assert result.debug_fields["debug:planned_image_count"] == "0"
+    assert result.debug_fields["debug:planned_indexes"] == ""
+    assert result.debug_fields["debug:plan_source:1"] == "planner_fallback"
+    assert result.debug_fields["debug:plan_source:2"] == "planner_fallback"
+    assert result.debug_fields["debug:plan_source:3"] == "planner_fallback"
 
 
 def test_final_edit_service_applies_crop_and_records_debug_fields(
