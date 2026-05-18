@@ -4,7 +4,6 @@ import BottomTab from "@/components/common/BottomTab"
 import InputBar from "@/components/common/InputBar"
 import Character from "@/components/common/Character"
 import TitleText from "@/components/common/TitleText"
-import TTSMuteButton from "@/components/common/TTSMuteButton"
 import { registerFcmToken } from "@/features/notification/api/FcmApi"
 import { requestCaptionGeneration } from "@/features/home/api/HomeApi"
 import { usePostCreateStore } from "@/features/postCreate/store/postCreateStore"
@@ -38,11 +37,6 @@ function HomePage() {
   }, [])
 
   const isActive = isTyping || isRecording
-  const handleFcmRegisterClick = () => {
-    console.log("FCM 권한 요청 및 토큰 등록 시도")
-    showToast('FCM 권한 요청 및 토큰 등록 시도.','info');
-    void registerFcmToken()
-  }
 
   const handleSubmitUtterance = async (utterance) => {
     const result = await requestCaptionGeneration(utterance)
@@ -67,19 +61,10 @@ function HomePage() {
   return (
     <main className="relative flex h-dvh justify-center bg-surface-50">
       <div className="relative h-full w-full max-w-md px-5 py-6 pb-60">
-        <section className="absolute right-5 top-6 z-20">
-          <TTSMuteButton className="backdrop-blur-[2px]" />
-        </section>
 
         {/* 상단 여백 */}
-        <section className="flex justify-center pt-2">
-          <button
-            type="button"
-            onClick={handleFcmRegisterClick}
-            className="h-7 rounded-full border border-slate-300 px-3 text-xs font-medium text-slate-700"
-          >
-            임시 FCM 권한/토큰 요청
-          </button>
+        <section className="flex justify-center pt-7">
+          
         </section>
 
         {/* 상단 글 영역 */}
@@ -92,7 +77,6 @@ function HomePage() {
           <Character
             type={isActive ? "listen" : "ddabong"}
             className="h-full max-h-[40vh] max-w-[80vw] w-auto"
-            onClick={() => navigate("/post-create")}
           />
         </section>
 

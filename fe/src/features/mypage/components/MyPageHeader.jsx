@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { IoPerson } from 'react-icons/io5';
 import Modal from '@/components/common/Modal';
+import Button from '@/components/common/Button';
+import { registerFcmToken } from '@/features/notification/api/FcmApi';
 
 export default function MyPageHeader({
   title,
@@ -109,7 +111,10 @@ export default function MyPageHeader({
               )}
             </div>
 
-            <div className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full bg-gray-300">
+            <div
+              className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full bg-gray-300"
+              onClick={() => registerFcmToken({ requestPermission: true })}
+            >
               {hasProfileImage ? (
                 <img
                   src={profileImageUrl}
