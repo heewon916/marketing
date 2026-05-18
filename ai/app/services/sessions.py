@@ -17,7 +17,6 @@ from app.services.keyword_extraction import KeywordExtractionService
 from app.services.menu_promotion_context import (
     MatchedMenuContext,
     MenuPromotionContextService,
-    StoreMenuCandidate,
 )
 from app.services.session_store import RedisSessionStore, session_key
 from app.services.weather_tags import evaluate_weather_tags
@@ -54,7 +53,6 @@ class TextGenerationOutcome:
     guide_text: str
     stored_caption: str
     fallback_source: str | None
-    selected_menu_name: str | None
 
 
 @dataclass
@@ -169,7 +167,6 @@ def _build_final_keyword_state(
 
 def _build_process_utterance_debug_fields(
     matched_menu_context: MatchedMenuContext | None = None,
-    selected_menu_name: str | None = None,
 ) -> dict[str, str]:
     debug_fields = {
         "debug:purpose": MENU_PROMOTION_PURPOSE,
@@ -183,8 +180,6 @@ def _build_process_utterance_debug_fields(
             debug_fields["debug:matched_keyword"] = matched_menu_context.matched_keyword
         if matched_menu_context.menu_name is not None:
             debug_fields["debug:matched_menu_name"] = matched_menu_context.menu_name
-    if selected_menu_name is not None:
-        debug_fields["debug:selected_menu_name"] = selected_menu_name
     return debug_fields
 
 
@@ -342,11 +337,11 @@ async def _prepare_caption_request(
         session_id=session_id,
     )
     caption_request = CaptionGenerationRequest(
-        keywords=list(draft_keywords),
+        draft_keywords=list(draft_keywords),
         owner_persona=payload.owner_persona,
+        today=payload.date.isoformat(),
         utterance=payload.utterance,
         weather_tags=weather_tags,
-        fallback_keywords=list(draft_keywords),
     )
     return CaptionPreparation(
         draft_keywords=draft_keywords,
@@ -363,17 +358,12 @@ async def _attach_matched_menu(
 ) -> MatchedMenuContext:
     matched_menu_context = await menu_promotion_context_service.match_menu(
         store_id=payload.store_id,
-        draft_keywords=caption_request.fallback_keywords,
+        draft_keywords=caption_request.draft_keywords,
     )
-    if matched_menu_context.matched and matched_menu_context.menu_name is not None:
-        caption_request.menu_candidates = [
-            StoreMenuCandidate(
-                id=matched_menu_context.menu_id or "",
-                name=matched_menu_context.menu_name,
-                price=None,
-                description=matched_menu_context.menu_description,
-            )
-        ]
+    if matched_menu_context.matched:
+        caption_request.menu_name = matched_menu_context.menu_name
+        caption_request.menu_description = matched_menu_context.menu_description
+        caption_request.matched_keyword = matched_menu_context.matched_keyword
     logger.info(
         "Matched menu retrieval completed.",
         extra=build_log_extra(
@@ -404,7 +394,6 @@ def _fallback_text_generation_outcome(
         guide_text=fallback_result.result.guide_text,
         stored_caption=fallback_result.result.stored_caption,
         fallback_source=fallback_result.fallback_source,
-        selected_menu_name=fallback_result.result.selected_menu_name,
     )
 
 
@@ -414,7 +403,7 @@ async def _generate_text_outcome(
     caption_request: CaptionGenerationRequest,
     caption_service: CaptionGenerationService,
 ) -> TextGenerationOutcome:
-    if not caption_request.keywords:
+    if not caption_request.draft_keywords:
         outcome = _fallback_text_generation_outcome(
             caption_service,
             caption_request,
@@ -430,7 +419,6 @@ async def _generate_text_outcome(
                 outcome="fallback",
                 text_generation_source="default_guide",
                 purpose=MENU_PROMOTION_PURPOSE,
-                selected_menu_name=outcome.selected_menu_name,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(outcome.draft_caption),
@@ -446,7 +434,6 @@ async def _generate_text_outcome(
             guide_text=result.guide_text,
             stored_caption=result.stored_caption,
             fallback_source=None,
-            selected_menu_name=result.selected_menu_name,
         )
         logger.info(
             "Built text generation result from caption model.",
@@ -458,7 +445,6 @@ async def _generate_text_outcome(
                 outcome="succeeded",
                 text_generation_source="caption_model",
                 purpose=MENU_PROMOTION_PURPOSE,
-                selected_menu_name=outcome.selected_menu_name,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(outcome.draft_caption),
@@ -485,7 +471,6 @@ async def _generate_text_outcome(
                 text_generation_source="rule_based_fallback",
                 error_type=exc.__class__.__name__,
                 purpose=MENU_PROMOTION_PURPOSE,
-                selected_menu_name=outcome.selected_menu_name,
                 weather_tag_count=len(weather_tags),
                 weather_tags_preview=", ".join(weather_tags[:3]),
                 draft_caption_length=len(outcome.draft_caption),
@@ -551,7 +536,6 @@ async def process_utterance(
 
     debug_fields = _build_process_utterance_debug_fields(
         matched_menu_context=matched_menu_context,
-        selected_menu_name=text_outcome.selected_menu_name,
     )
     if text_outcome.fallback_source is not None:
         debug_fields["debug:text_generation_fallback_source"] = (
