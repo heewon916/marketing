@@ -8,6 +8,7 @@ const VIDEO_TYPES = [
 
 const MAX_RECORD_SECONDS = 60
 const TARGET_ASPECT_RATIO = 3 / 4
+const OUTPUT_FPS = 30
 
 export default function CameraStep({ onRecorded, onClose }) {
   const videoRef = useRef(null)
@@ -421,7 +422,7 @@ export default function CameraStep({ onRecorded, onClose }) {
       chunksRef.current = []
       setRemainingSeconds(MAX_RECORD_SECONDS)
 
-      const canvasStream = canvasRef.current.captureStream()
+      const canvasStream = canvasRef.current.captureStream(OUTPUT_FPS)
       canvasStreamRef.current = canvasStream
 
       const recordingStream = new MediaStream()
