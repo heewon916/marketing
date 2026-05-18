@@ -28,7 +28,7 @@ const DESCRIPTION_CONTENT = {
           가게에 관심을 보인 정도예요.
         </span>
         <span>
-          저장, 공유 수를 도달 수로 나누어
+          저장, 좋아요, 도달 수를 반영해
           <br />
           계산해요.
         </span>
@@ -174,7 +174,7 @@ export default function WeeklyInsightCard({
     ? DESCRIPTION_CONTENT[selectedDescription]
     : null;
 
-  const visitIntentDiffRate = (Number(visitIntentScore) - 1) * 100;
+  const visitIntentDiffRate = visitIntentScore;
   const visitIntentPrefix =
     visitIntentDiffRate > 0 ? '▲' : visitIntentDiffRate < 0 ? '▼' : '';
   const visitIntentValue = Math.abs(visitIntentDiffRate);
