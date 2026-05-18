@@ -200,132 +200,68 @@ export default function AccountInfoSection({
         )}
       </section>
 
+      {/* 로그아웃 모달 */}
       {isLogoutModalOpen && (
         <Modal
           isOpen={isLogoutModalOpen}
           onClose={handleCancelLogout}
           showClose={false}
           closeOnBackdrop={!isLoggingOut}
-        >
-          <div className="text-center">
-            <h2 className="text-[22px] font-bold text-accent-100">
-              로그아웃할까요?
-            </h2>
-
-            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
-              다시 이용하려면 로그인이 필요합니다.
-            </p>
-
-            <div className="mt-7 flex justify-center gap-3">
-              <Button
-                size="sm"
-                variant="white"
-                onClick={handleCancelLogout}
-                disabled={isLoggingOut}
-                className="text-[18px] font-bold"
-              >
-                취소
-              </Button>
-
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={handleConfirmLogout}
-                disabled={isLoggingOut}
-                className="text-[18px] font-bold"
-              >
-                {isLoggingOut ? '로그아웃 중' : '로그아웃'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          title="로그아웃할까요?"
+          description="다시 이용하려면 로그인이 필요합니다."
+          cancelText="취소"
+          confirmText={isLoggingOut ? '로그아웃 중' : '로그아웃'}
+          variant="danger"
+          confirmVariant="danger"
+          cancelDisabled={isLoggingOut}
+          confirmDisabled={isLoggingOut}
+          onCancel={handleCancelLogout}
+          onConfirm={handleConfirmLogout}
+        />
       )}
 
+      {/* 회원탈퇴 확인 모달 */}
       {isDeleteConfirmModalOpen && (
         <Modal
           isOpen={isDeleteConfirmModalOpen}
           onClose={handleCancelDeleteConfirm}
           showClose={false}
           closeOnBackdrop={!isDeletingAccount}
-        >
-          <div className="text-center">
-            <h2 className="text-[22px] font-bold text-accent-100">
-              회원탈퇴할까요?
-            </h2>
-
-            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
-              맡케팅 이용을 그만두시겠어요?
-            </p>
-
-            <div className="mt-7 flex justify-center gap-3">
-              <Button
-                size="sm"
-                variant="white"
-                onClick={handleCancelDeleteConfirm}
-                disabled={isDeletingAccount}
-                className="text-[18px] font-bold"
-              >
-                취소
-              </Button>
-
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={handleOpenDeleteWarning}
-                disabled={isDeletingAccount}
-                className="text-[18px] font-bold"
-              >
-                확인
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          variant="danger"
+          title="회원탈퇴할까요?"
+          description="맡케팅 이용을 그만두시겠어요?"
+          cancelText="취소"
+          confirmText="확인"
+          confirmVariant="danger"
+          cancelDisabled={isDeletingAccount}
+          confirmDisabled={isDeletingAccount}
+          onCancel={handleCancelDeleteConfirm}
+          onConfirm={handleOpenDeleteWarning}
+        />
       )}
 
+      {/* 회원탈퇴 경고 모달 */}
       {isDeleteWarningModalOpen && (
         <Modal
           isOpen={isDeleteWarningModalOpen}
           onClose={handleCancelDeleteWarning}
           showClose={false}
           closeOnBackdrop={!isDeletingAccount}
+          variant="danger"
+          title="정말 탈퇴하시겠어요?"
+          description={`탈퇴하면 계정, 매장 정보,\n마케팅 기록 등 모든 정보가 사라져요.`}
+          cancelText="취소"
+          confirmText={isDeletingAccount ? '탈퇴 중' : '탈퇴'}
+          titleColor="danger"
+          confirmVariant="danger"
+          cancelDisabled={isDeletingAccount}
+          confirmDisabled={isDeletingAccount}
+          onCancel={handleCancelDeleteWarning}
+          onConfirm={handleConfirmDeleteAccount}
         >
-          <div className="text-center">
-            <h2 className="text-[22px] font-bold text-red-500">
-              정말 탈퇴하시겠어요?
-            </h2>
-
-            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
-              탈퇴하면 계정, 매장 정보,
-              <br />
-              마케팅 기록 등 모든 정보가 사라져요.
-            </p>
-
-            <p className="mt-2 text-[15px] leading-relaxed text-red-400">
-              삭제된 정보는 다시 복구할 수 없습니다.
-            </p>
-
-            <div className="mt-7 flex justify-center gap-3">
-              <Button
-                size="sm"
-                variant="white"
-                onClick={handleCancelDeleteWarning}
-                disabled={isDeletingAccount}
-                className="text-[18px] font-bold"
-              >
-                취소
-              </Button>
-
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={handleConfirmDeleteAccount}
-                disabled={isDeletingAccount}
-                className="text-[18px] font-bold"
-              >
-                {isDeletingAccount ? '탈퇴 중' : '탈퇴'}
-              </Button>
-            </div>
-          </div>
+          <p className="mt-2 text-center text-[15px] leading-relaxed text-red-400">
+            삭제된 정보는 다시 복구할 수 없습니다.
+          </p>
         </Modal>
       )}
     </>
