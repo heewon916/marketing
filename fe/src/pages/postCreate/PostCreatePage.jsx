@@ -161,7 +161,7 @@ export default function PostCreatePage() {
             } catch (error) {
               clearInterval(intervalId)
               if (isActive) {
-                showToast(error.message || "발행 상태 확인에 실패했습니다.", 'error')
+                showToast("발행 상태 확인에 실패했습니다.", 'error')
                 setStep(POST_CREATE_STEP.PUBLISH_FAIL)
               }
             }
@@ -169,7 +169,7 @@ export default function PostCreatePage() {
         } catch (error) {
           console.error("[PostCreate] publish:start failed", error)
           if (isActive) {
-            showToast(error.message || "발행 시작에 실패했습니다.", 'error')
+            showToast("발행 시작에 실패했습니다.", 'error')
             setStep(POST_CREATE_STEP.PUBLISH_FAIL)
           }
         }
@@ -281,7 +281,7 @@ export default function PostCreatePage() {
 
       setStep(POST_CREATE_STEP.PHOTO_CONFIRM)
     } catch (error) {
-      showToast(error.message || "영상 업로드에 실패했습니다.", 'error')
+      showToast("영상 업로드에 실패했습니다.", 'error')
       setStep(POST_CREATE_STEP.CAMERA_QUESTION)
     }
   }
@@ -308,7 +308,7 @@ export default function PostCreatePage() {
 
       setStep(POST_CREATE_STEP.GENERATED_POST)
     } catch (error) {
-      showToast(error.message || "임시 게시물을 불러오지 못했습니다.", 'error')
+      showToast("임시 게시물을 불러오지 못했습니다.", 'error')
     }
   }
 
@@ -328,7 +328,7 @@ export default function PostCreatePage() {
         })
       } catch (error) {
         console.error("[PostCreate] caption:edit failed", error)
-        showToast(error.message || "캡션 수정에 실패했습니다.", 'error')
+        showToast("캡션 수정에 실패했습니다.", 'error')
         return
       }
     } else if (post) {
@@ -350,7 +350,7 @@ export default function PostCreatePage() {
           updatedAt: updated.updatedAt,
         })
       } catch (error) {
-        showToast(error.message || "캡션 수정에 실패했습니다.", 'error')
+        showToast("캡션 수정에 실패했습니다.", 'error')
         return
       }
     } else if (post) {
