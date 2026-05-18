@@ -98,6 +98,8 @@ def test_build_final_edit_prompt_includes_caption_and_keywords() -> None:
     assert "\"contrast\"" in prompt
     assert "minimum adjustment needed" in prompt
     assert "color_grading" in prompt
+    assert "subject_boxes" in prompt
+    assert "3:4" in prompt
     assert "Upscale must be included for every image" in prompt
     assert "it is 2x only" in prompt
     assert "exactly once as the last tool" in prompt
@@ -125,6 +127,34 @@ def test_build_final_edit_prompt_uses_aesthetic_tone_profile() -> None:
     )
 
 
+def test_build_final_edit_prompt_marks_food_or_beverage_focus() -> None:
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="friendly",
+            caption="signature cake and coffee on a cafe table",
+            keywords=["dessert", "menu"],
+        ),
+        1,
+    )
+
+    assert "[content_focus_hint] likely_food_or_beverage" in prompt
+    assert "prefer an Instagram-friendly hero shot" in prompt
+    assert "tighter close-up" in prompt
+
+
+def test_build_final_edit_prompt_marks_general_scene_when_food_hint_missing() -> None:
+    prompt = build_final_edit_prompt(
+        FinalEditSessionContext(
+            owner_persona="friendly",
+            caption="store entrance with plants",
+            keywords=["signage", "door"],
+        ),
+        1,
+    )
+
+    assert "[content_focus_hint] general_scene" in prompt
+
+
 def test_resolve_owner_persona_preset_falls_back_to_aesthetic() -> None:
     persona, preset, used_fallback = resolve_owner_persona_preset("unknown")
 
@@ -150,17 +180,18 @@ def test_normalize_image_edit_plan_enforces_execution_order() -> None:
             image_index=0,
             content="cake",
             strategy="upscale first",
-            tools=["upscale", "sharpen", "denoise", "color_grading"],
+            tools=["upscale", "sharpen", "crop", "denoise", "color_grading"],
             params={
                 "upscale": {"scale": 4},
                 "sharpen": {"strength": 0.3},
+                "crop": {"subject_boxes": [[10, 10, 90, 110]]},
                 "denoise": {"strength": 0.4},
                 "color_grading": {"contrast": -10},
             },
         )
     )
 
-    assert normalized.tools == ["denoise", "sharpen", "color_grading", "upscale"]
+    assert normalized.tools == ["crop", "denoise", "sharpen", "color_grading", "upscale"]
     assert normalized.params["upscale"] == {"scale": 2}
 
 
@@ -307,6 +338,26 @@ def test_parse_image_edit_plans_rejects_unsupported_tool() -> None:
                 "strategy": "remove object",
                 "tools": ["object_removal"],
                 "params": {"object_removal": {"target": "logo"}}
+              }
+            ]
+            """
+        )
+
+
+def test_parse_image_edit_plans_requires_subject_boxes_for_crop() -> None:
+    with pytest.raises(FinalEditPlanningError, match="subject_boxes"):
+        parse_image_edit_plans(
+            """
+            [
+              {
+                "image_index": 0,
+                "content": "cake",
+                "strategy": "crop first",
+                "tools": ["crop", "color_grading"],
+                "params": {
+                  "crop": {},
+                  "color_grading": {"contrast": -4}
+                }
               }
             ]
             """

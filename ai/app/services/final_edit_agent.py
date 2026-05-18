@@ -148,7 +148,7 @@ class FinalEditAgent:
         if self.tool_event_sink is not None:
             self.tool_event_sink("started", state, tool_name)
         try:
-            state.current_image = self.tool_registry.execute(
+            state.current_image, tool_metadata = self.tool_registry.execute(
                 tool_name,
                 state.current_image,
                 params,
@@ -164,6 +164,9 @@ class FinalEditAgent:
 
         state.executed_tools.append(tool_name)
         state.metadata[f"tool:{state.current_tool_index}"] = tool_name
+        if tool_metadata:
+            for key, value in tool_metadata.items():
+                state.metadata[key] = value
         state.metadata["current_tool_output_shape"] = self._shape_to_string(
             state.current_image
         )

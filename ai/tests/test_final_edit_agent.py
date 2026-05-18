@@ -195,9 +195,10 @@ def test_tool_registry_upscale_changes_shape() -> None:
     registry = FinalEditToolRegistry()
     image = np.zeros((8, 8, 3), dtype=np.uint8)
 
-    result = registry.execute("upscale", image, {"scale": 4})
+    result, metadata = registry.execute("upscale", image, {"scale": 4})
 
     assert result.shape == (16, 16, 3)
+    assert metadata == {}
 
 
 def test_tool_registry_excludes_upscale_when_disabled() -> None:
@@ -214,9 +215,10 @@ def test_tool_registry_background_blur_preserves_shape() -> None:
     registry = FinalEditToolRegistry()
     image = np.zeros((12, 12, 3), dtype=np.uint8)
 
-    result = registry.execute("background_blur", image, {"blur_radius": 4})
+    result, metadata = registry.execute("background_blur", image, {"blur_radius": 4})
 
     assert result.shape == image.shape
+    assert metadata == {}
 
 
 def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> None:
@@ -225,7 +227,7 @@ def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> Non
     image[:, :, 2] = 140
     image[:, 8:, :] = 200
 
-    result = registry.execute(
+    result, metadata = registry.execute(
         "color_grading",
         image,
         {
@@ -242,6 +244,7 @@ def test_tool_registry_color_grading_changes_pixels_and_preserves_dtype() -> Non
     assert result.shape == image.shape
     assert result.dtype == np.uint8
     assert np.any(result != image)
+    assert metadata == {}
 
 
 def test_tool_registry_color_grading_preserves_specular_core_with_spotlight_protection() -> None:
@@ -250,7 +253,7 @@ def test_tool_registry_color_grading_preserves_specular_core_with_spotlight_prot
     image[8:28, 8:28] = 255
     image[8:30, 36:56] = 220
 
-    result = registry.execute(
+    result, metadata = registry.execute(
         "color_grading",
         image,
         {
@@ -278,6 +281,7 @@ def test_tool_registry_color_grading_preserves_specular_core_with_spotlight_prot
 
     assert result_top_one_percent >= input_top_one_percent
     assert result_midtone_mean <= input_midtone_mean + 1.0
+    assert metadata == {}
 
 
 @pytest.mark.asyncio

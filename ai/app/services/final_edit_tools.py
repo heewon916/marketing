@@ -10,12 +10,15 @@ from app.services.final_edit_runtime import import_cv2
 from app.services.final_edit_upscaler import get_realesrgan_upscaler
 
 ToolName = Literal[
+    "crop",
     "upscale",
     "denoise",
     "color_grading",
     "sharpen",
     "background_blur",
 ]
+CropEdge = Literal["top", "bottom", "left", "right"]
+CropOrientation = Literal["portrait", "square", "landscape"]
 
 AESTHETIC_TARGET_TONE_PROFILE: dict[str, dict[str, float]] = {
     "brightness": {"target": 82.2, "tolerance": 35.89},
@@ -44,6 +47,13 @@ _SPOTLIGHT_BROAD_HIGHLIGHT_START = 0.62
 _SPOTLIGHT_BROAD_HIGHLIGHT_END = 0.90
 _SPOTLIGHT_SPECULAR_START = 0.82
 _SPOTLIGHT_SPECULAR_END = 0.98
+_PORTRAIT_TARGET_RATIO = 3.0 / 4.0
+_SQUARE_TARGET_RATIO = 1.0
+_CROP_MARGIN_RATIO = 0.08
+_MIN_CROP_AREA_GAIN = 0.03
+_MIN_CROP_GAIN_MULTIPLIER = 1.15
+_MAX_CROP_AREA_LOSS_RATIO = 0.7
+_CROP_VALID_EDGES: tuple[CropEdge, ...] = ("top", "bottom", "left", "right")
 
 
 @dataclass(frozen=True)
@@ -55,8 +65,16 @@ class FinalEditToolSpec:
 
 SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     FinalEditToolSpec(
+        name="crop",
+        description="주 피사체를 보존하며 인스타 구도에 맞게 보수적으로 자른다.",
+        params_schema={
+            "subject_boxes": "[[x1,y1,x2,y2], ...] 1~3 boxes",
+            "keep_edges": "top|bottom|left|right list",
+        },
+    ),
+    FinalEditToolSpec(
         name="upscale",
-        description="이미지를 업스케일한다.",
+        description="이미지를 2배 업스케일한다.",
         params_schema={"scale": "2 only"},
     ),
     FinalEditToolSpec(
@@ -66,14 +84,14 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     ),
     FinalEditToolSpec(
         name="color_grading",
-        description="목표 톤에 맞춰 색온도와 채도, 명암을 미세 조정한다.",
+        description="목표 톤에 맞춰 색온도, 채도, 명암을 미세 조정한다.",
         params_schema={
             "contrast": "-100~100",
             "highlights": "-100~100",
             "shadows": "-100~100",
             "vibrance": "-100~100",
             "saturation": "-100~100",
-            "temperature": "warm 또는 cool",
+            "temperature": "warm or cool",
             "temperature_strength": "0.0~1.0 (internal)",
             "tint": "-100~100 (internal)",
             "tint_strength": "0.0~1.0 (internal)",
@@ -83,7 +101,7 @@ SUPPORTED_TOOL_SPECS: tuple[FinalEditToolSpec, ...] = (
     ),
     FinalEditToolSpec(
         name="sharpen",
-        description="샤프로 디테일을 올린다.",
+        description="디테일을 선명하게 한다.",
         params_schema={"strength": "0.0~1.0"},
     ),
     FinalEditToolSpec(
@@ -196,9 +214,7 @@ def _trimmed_mean(
     flattened = values.reshape(-1).astype(np.float64)
     lower_bound = float(np.percentile(flattened, lower_percentile))
     upper_bound = float(np.percentile(flattened, upper_percentile))
-    trimmed = flattened[
-        (flattened >= lower_bound) & (flattened <= upper_bound)
-    ]
+    trimmed = flattened[(flattened >= lower_bound) & (flattened <= upper_bound)]
     if trimmed.size == 0:
         return float(np.mean(flattened))
     return float(np.mean(trimmed))
@@ -239,6 +255,43 @@ def _smoothstep(edge0: float, edge1: float, values: np.ndarray) -> np.ndarray:
 
 
 def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[str, Any]:
+    if tool_name == "crop":
+        normalized_boxes: list[list[int]] = []
+        subject_boxes = params.get("subject_boxes", [])
+        if isinstance(subject_boxes, list):
+            for raw_box in subject_boxes[:3]:
+                if not isinstance(raw_box, (list, tuple)) or len(raw_box) != 4:
+                    continue
+                try:
+                    x1, y1, x2, y2 = [int(round(float(value))) for value in raw_box]
+                except (TypeError, ValueError):
+                    continue
+                left = min(x1, x2)
+                top = min(y1, y2)
+                right = max(x1, x2)
+                bottom = max(y1, y2)
+                if right - left <= 1 or bottom - top <= 1:
+                    continue
+                normalized_boxes.append([left, top, right, bottom])
+
+        normalized_edges: list[CropEdge] = []
+        keep_edges = params.get("keep_edges", [])
+        if isinstance(keep_edges, list):
+            for raw_edge in keep_edges:
+                edge = str(raw_edge).strip().lower()
+                if edge in _CROP_VALID_EDGES and edge not in normalized_edges:
+                    normalized_edges.append(cast(CropEdge, edge))
+
+        orientation = str(params.get("anchor_orientation", "")).strip().lower()
+        anchor_orientation: CropOrientation | None = None
+        if orientation in {"portrait", "square", "landscape"}:
+            anchor_orientation = cast(CropOrientation, orientation)
+
+        return {
+            "subject_boxes": normalized_boxes,
+            "keep_edges": normalized_edges,
+            "anchor_orientation": anchor_orientation,
+        }
     if tool_name == "upscale":
         return {"scale": 2}
     if tool_name == "denoise":
@@ -291,6 +344,257 @@ def normalize_tool_params(tool_name: ToolName, params: dict[str, Any]) -> dict[s
     raise ValueError(f"Unsupported tool: {tool_name}")
 
 
+def _classify_crop_orientation(
+    width: int,
+    height: int,
+    anchor_orientation: CropOrientation | None = None,
+) -> CropOrientation:
+    if anchor_orientation is not None:
+        return anchor_orientation
+    if width == height:
+        return "square"
+    if height > width:
+        return "portrait"
+    return "landscape"
+
+
+def _target_ratio_for_orientation(
+    orientation: CropOrientation,
+    width: int,
+    height: int,
+) -> float:
+    if orientation == "portrait":
+        return _PORTRAIT_TARGET_RATIO
+    if orientation == "square":
+        return _SQUARE_TARGET_RATIO
+    return width / max(height, 1)
+
+
+def _clamp_box_to_image(
+    box: tuple[int, int, int, int],
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int] | None:
+    x1, y1, x2, y2 = box
+    x1 = max(0, min(width - 1, x1))
+    y1 = max(0, min(height - 1, y1))
+    x2 = max(1, min(width, x2))
+    y2 = max(1, min(height, y2))
+    if x2 - x1 <= 1 or y2 - y1 <= 1:
+        return None
+    return (x1, y1, x2, y2)
+
+
+def _union_subject_boxes(
+    subject_boxes: list[list[int]],
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int] | None:
+    clamped_boxes: list[tuple[int, int, int, int]] = []
+    for raw_box in subject_boxes:
+        clamped = _clamp_box_to_image(
+            (raw_box[0], raw_box[1], raw_box[2], raw_box[3]),
+            width,
+            height,
+        )
+        if clamped is not None:
+            clamped_boxes.append(clamped)
+    if not clamped_boxes:
+        return None
+    return (
+        min(box[0] for box in clamped_boxes),
+        min(box[1] for box in clamped_boxes),
+        max(box[2] for box in clamped_boxes),
+        max(box[3] for box in clamped_boxes),
+    )
+
+
+def _expand_subject_box(
+    box: tuple[int, int, int, int],
+    width: int,
+    height: int,
+) -> tuple[int, int, int, int]:
+    x1, y1, x2, y2 = box
+    margin = int(round(max(x2 - x1, y2 - y1) * _CROP_MARGIN_RATIO))
+    if margin <= 0:
+        return box
+    return (
+        max(0, x1 - margin),
+        max(0, y1 - margin),
+        min(width, x2 + margin),
+        min(height, y2 + margin),
+    )
+
+
+def _adjust_crop_position(
+    start: int,
+    size: int,
+    limit: int,
+    box_start: int,
+    box_end: int,
+    pin_start: bool,
+    pin_end: bool,
+) -> int:
+    if size >= limit:
+        return 0
+    if pin_start:
+        return 0
+    if pin_end:
+        return limit - size
+    adjusted = start
+    if adjusted > box_start:
+        adjusted = box_start
+    if adjusted + size < box_end:
+        adjusted = box_end - size
+    return max(0, min(limit - size, adjusted))
+
+
+def _build_crop_window(
+    union_box: tuple[int, int, int, int],
+    width: int,
+    height: int,
+    target_ratio: float,
+    keep_edges: list[CropEdge],
+) -> tuple[int, int, int, int] | None:
+    x1, y1, x2, y2 = union_box
+    box_width = x2 - x1
+    box_height = y2 - y1
+    if box_width <= 1 or box_height <= 1:
+        return None
+
+    crop_width = box_width
+    crop_height = int(round(crop_width / target_ratio))
+    if crop_height < box_height:
+        crop_height = box_height
+        crop_width = int(round(crop_height * target_ratio))
+    crop_width = max(crop_width, box_width)
+    crop_height = max(crop_height, box_height)
+
+    if crop_width > width or crop_height > height:
+        return None
+
+    center_x = (x1 + x2) / 2.0
+    center_y = (y1 + y2) / 2.0
+    start_x = int(round(center_x - crop_width / 2.0))
+    start_y = int(round(center_y - crop_height / 2.0))
+    start_x = _adjust_crop_position(
+        start_x,
+        crop_width,
+        width,
+        x1,
+        x2,
+        "left" in keep_edges,
+        "right" in keep_edges,
+    )
+    start_y = _adjust_crop_position(
+        start_y,
+        crop_height,
+        height,
+        y1,
+        y2,
+        "top" in keep_edges,
+        "bottom" in keep_edges,
+    )
+    end_x = start_x + crop_width
+    end_y = start_y + crop_height
+    if start_x > x1 or start_y > y1 or end_x < x2 or end_y < y2:
+        return None
+    return (start_x, start_y, end_x, end_y)
+
+
+def _crop_quality_gate(
+    union_box: tuple[int, int, int, int],
+    crop_box: tuple[int, int, int, int],
+    image_width: int,
+    image_height: int,
+) -> tuple[bool, str]:
+    subject_area = float((union_box[2] - union_box[0]) * (union_box[3] - union_box[1]))
+    image_area = float(image_width * image_height)
+    crop_area = float((crop_box[2] - crop_box[0]) * (crop_box[3] - crop_box[1]))
+    if subject_area <= 0.0 or crop_area <= 0.0 or image_area <= 0.0:
+        return False, "invalid_geometry"
+
+    current_ratio = subject_area / image_area
+    cropped_ratio = subject_area / crop_area
+    if cropped_ratio - current_ratio < _MIN_CROP_AREA_GAIN:
+        return False, "gain_too_small"
+    if cropped_ratio < current_ratio * _MIN_CROP_GAIN_MULTIPLIER:
+        return False, "gain_ratio_too_small"
+
+    area_loss_ratio = 1.0 - (crop_area / image_area)
+    if area_loss_ratio > _MAX_CROP_AREA_LOSS_RATIO:
+        return False, "crop_too_aggressive"
+    return True, "applied"
+
+
+def _tool_crop(
+    image: np.ndarray,
+    params: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    height, width = image.shape[:2]
+    subject_boxes = cast(list[list[int]], params.get("subject_boxes", []))
+    keep_edges = cast(list[CropEdge], params.get("keep_edges", []))
+    anchor_orientation = cast(CropOrientation | None, params.get("anchor_orientation"))
+    native_orientation = _classify_crop_orientation(width, height, None)
+
+    if not subject_boxes:
+        return image, {
+            "crop_applied": False,
+            "crop_reason": "missing_subject_boxes",
+            "crop_output_ratio": round(width / max(height, 1), 4),
+        }
+
+    if anchor_orientation is not None and anchor_orientation != native_orientation:
+        return image, {
+            "crop_applied": False,
+            "crop_reason": "orientation_locked",
+            "crop_output_ratio": round(width / max(height, 1), 4),
+        }
+
+    union_box = _union_subject_boxes(subject_boxes, width, height)
+    if union_box is None:
+        return image, {
+            "crop_applied": False,
+            "crop_reason": "invalid_subject_boxes",
+            "crop_output_ratio": round(width / max(height, 1), 4),
+        }
+
+    expanded_box = _expand_subject_box(union_box, width, height)
+    orientation = _classify_crop_orientation(width, height, anchor_orientation)
+    target_ratio = _target_ratio_for_orientation(orientation, width, height)
+    crop_box = _build_crop_window(
+        expanded_box,
+        width,
+        height,
+        target_ratio,
+        keep_edges,
+    )
+    if crop_box is None:
+        return image, {
+            "crop_applied": False,
+            "crop_reason": "constraints_not_satisfied",
+            "crop_output_ratio": round(width / max(height, 1), 4),
+        }
+
+    allowed, reason = _crop_quality_gate(expanded_box, crop_box, width, height)
+    if not allowed:
+        return image, {
+            "crop_applied": False,
+            "crop_reason": reason,
+            "crop_output_ratio": round(width / max(height, 1), 4),
+        }
+
+    x1, y1, x2, y2 = crop_box
+    cropped = image[y1:y2, x1:x2]
+    return cropped, {
+        "crop_applied": True,
+        "crop_reason": reason,
+        "crop_box": [x1, y1, x2, y2],
+        "crop_output_ratio": round((x2 - x1) / max(y2 - y1, 1), 4),
+        "crop_orientation": orientation,
+    }
+
+
 def _tool_upscale(image: np.ndarray, params: dict[str, Any]) -> np.ndarray:
     return get_realesrgan_upscaler().upscale(image, 2)
 
@@ -322,9 +626,7 @@ def analyze_image_tone(image: np.ndarray) -> dict[str, float]:
         _TRIMMED_BRIGHTNESS_LOWER_PERCENTILE,
         _TRIMMED_BRIGHTNESS_UPPER_PERCENTILE,
     )
-    highlight_area_ratio = float(
-        np.mean(l_channel >= _HIGHLIGHT_PIXEL_THRESHOLD)
-    )
+    highlight_area_ratio = float(np.mean(l_channel >= _HIGHLIGHT_PIXEL_THRESHOLD))
 
     return {
         "brightness": round(brightness, 2),
@@ -568,6 +870,7 @@ class FinalEditToolRegistry:
         self._upscale_enabled = _resolve_upscale_enabled(upscale_enabled)
         self._tool_names = supported_tool_names(self._upscale_enabled)
         self._tool_functions = {
+            "crop": _tool_crop,
             "denoise": _tool_denoise,
             "color_grading": _tool_color_grading,
             "sharpen": _tool_sharpen,
@@ -585,8 +888,18 @@ class FinalEditToolRegistry:
         tool_name: ToolName,
         image: np.ndarray,
         params: dict[str, Any],
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         if tool_name not in self._tool_functions:
             raise ValueError(f"Unsupported tool: {tool_name}")
         normalized_params = normalize_tool_params(tool_name, params)
-        return self._tool_functions[tool_name](image, normalized_params)
+        result = self._tool_functions[tool_name](image, normalized_params)
+        if (
+            isinstance(result, tuple)
+            and len(result) == 2
+            and isinstance(result[0], np.ndarray)
+            and isinstance(result[1], dict)
+        ):
+            return result
+        if isinstance(result, np.ndarray):
+            return result, {}
+        raise TypeError(f"Unexpected tool result type for {tool_name}: {type(result)!r}")
