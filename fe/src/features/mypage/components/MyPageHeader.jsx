@@ -15,10 +15,13 @@ export default function MyPageHeader({
 }) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
+  const [isProfileImageError, setIsProfileImageError] = useState(false);
 
   const instagramUrl = instagramUsername
     ? `https://www.instagram.com/${instagramUsername.replace(/^@/, '')}`
     : null;
+
+  const hasProfileImage = profileImageUrl && !isProfileImageError;
 
   const handleInstagramUpdate = async () => {
     if (isUpdating) return;
@@ -38,9 +41,11 @@ export default function MyPageHeader({
     }
   };
 
-  const [isProfileImageError, setIsProfileImageError] = useState(false);
-
-  const hasProfileImage = profileImageUrl && !isProfileImageError;
+  const handleInstagramModalClose = () => {
+    if (!isUpdating) {
+      setIsInstagramModalOpen(false);
+    }
+  };
 
   return (
     <>
@@ -82,27 +87,26 @@ export default function MyPageHeader({
                     </span>
                   </a>
 
-                  {/* 새로고침(업데이트) 버튼 */}
+                  {/* 새로고침 버튼 영역 */}
                   <button
                     type="button"
                     onClick={() => setIsInstagramModalOpen(true)}
                     disabled={isUpdating}
                     className={[
-                      'flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 border border-gray-200 transition-all',
+                      'flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-gray-100 transition-all',
                       isUpdating
                         ? 'cursor-not-allowed opacity-50'
-                        : 'text-gray-500 active:scale-90 active:bg-surface-100 active:text-primary-100 active:border-primary-100',
+                        : 'text-gray-500 active:scale-90 active:border-primary-100 active:bg-surface-100 active:text-primary-100',
                     ].join(' ')}
                     aria-label="인스타그램 정보 업데이트"
                   >
-                  <span
-                    className={`material-icons ${isUpdating ? 'animate-spin' : ''}`}
-                    style={{ fontSize: '16px' }}
-                  >
-                    sync
-                  </span>
+                    <span
+                      className={`material-icons ${isUpdating ? 'animate-spin' : ''}`}
+                      style={{ fontSize: '16px' }}
+                    >
+                      sync
+                    </span>
                   </button>
-                  {/* 끝: 새로고침(업데이트) 버튼 */}
                 </div>
               )}
             </div>
@@ -128,56 +132,19 @@ export default function MyPageHeader({
         )}
       </header>
 
-      {isInstagramModalOpen && (
-        <Modal
-          isOpen={isInstagramModalOpen}
-          onClose={() => {
-            if (!isUpdating) {
-              setIsInstagramModalOpen(false);
-            }
-          }}
-          showClose={false}
-          closeOnBackdrop={!isUpdating}
-        >
-          <div className="text-center">
-            <h2 className="text-[20px] font-bold text-accent-100">
-              인스타그램 정보를 업데이트할까요?
-            </h2>
-
-            <p className="mt-3 text-[18px] leading-relaxed text-gray-500">
-              프로필 사진과 계정명을
-              <br />
-              최신 정보로 불러옵니다.
-            </p>
-
-            <div className="mt-7 flex justify-center gap-3">
-              <Button
-                size="sm"
-                variant="white"
-                onClick={() => {
-                  if (!isUpdating) {
-                    setIsInstagramModalOpen(false);
-                  }
-                }}
-                disabled={isUpdating}
-                className="text-[18px] font-bold"
-              >
-                취소
-              </Button>
-
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={handleInstagramUpdate}
-                disabled={isUpdating}
-                className="text-[18px] font-bold"
-              >
-                {isUpdating ? '업데이트 중' : '업데이트'}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <Modal
+        isOpen={isInstagramModalOpen}
+        onClose={handleInstagramModalClose}
+        showClose={false}
+        closeOnBackdrop={!isUpdating}
+        title={`인스타그램 정보를\n업데이트할까요?`}
+        description={`프로필 사진과 계정명을\n최신 정보로 불러옵니다.`}
+        titleColor="primary"
+        cancelText="취소"
+        confirmText={isUpdating ? '업데이트 중' : '업데이트'}
+        onCancel={handleInstagramModalClose}
+        onConfirm={handleInstagramUpdate}
+      />
     </>
   );
 }

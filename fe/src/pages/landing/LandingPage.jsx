@@ -11,7 +11,7 @@ import {
 
 const AUTH_ERROR_MESSAGE = {
   LOGIN_FAILED: {
-    title: '인스타그램 로그인에 실패했어요',
+    title: '로그인에 실패했어요',
     description: '로그인을 다시 시도해주세요.',
   },
   NEEDS_ONBOARDING: {
@@ -64,10 +64,11 @@ function LandingPage() {
       setAuthError(AUTH_ERROR_MESSAGE.NEEDS_ONBOARDING);
       setAuthRedirectTo('/auth/onboarding');
     } catch (error) {
+      console.error('인스타그램 로그인 실패:', error);
+
       setAuthError({
         title: AUTH_ERROR_MESSAGE.LOGIN_FAILED.title,
-        description:
-          error?.message || AUTH_ERROR_MESSAGE.LOGIN_FAILED.description,
+        description: AUTH_ERROR_MESSAGE.LOGIN_FAILED.description,
       });
     } finally {
       setIsLoggingIn(false);
@@ -131,24 +132,12 @@ function LandingPage() {
         onClose={handleCloseAuthErrorModal}
         showClose={false}
         closeOnBackdrop={false}
-      >
-        <div className="text-center">
-          <h3 className="text-xl font-bold text-gray-900">
-            {authError?.title}
-          </h3>
-
-          <p className="mt-4 text-base leading-6 text-gray-500 whitespace-pre-line">
-            {authError?.description}
-          </p>
-
-          <Button
-            onClick={handleCloseAuthErrorModal}
-            className="mt-8 w-full font-bold"
-          >
-            확인
-          </Button>
-        </div>
-      </Modal>
+        title={authError?.title}
+        description={authError?.description}
+        titleColor='primary'
+        confirmText="확인"
+        onConfirm={handleCloseAuthErrorModal}
+      />
     </main>
   );
 }
