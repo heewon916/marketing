@@ -1,4 +1,4 @@
-import Character from '@/assets/character/CharacterDdabong.png';
+import Character from '@/assets/character/CharacterDdabong.mp4';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
 import OnboardingFooterButtons from '../components/OnboardingFooterButtons.jsx';
@@ -40,9 +40,12 @@ function PosSuccessStep({ onNext, onPrev }) {
       }
     >
       <div className="w-full flex justify-center mt-10">
-        <img
+        <video
           src={Character}
-          alt="character"
+          autoPlay
+          loop
+          muted
+          playsInline
           className="w-full max-w-[320px]"
         />
       </div>

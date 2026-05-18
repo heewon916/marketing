@@ -34,9 +34,11 @@ export async function requestDeleteContentImage(sessionId, deletedImageKey) {
 	}
 
 	try {
-		const response = await api.post(`/api/v1/contents/${sessionId}/images/delete`, {
-			session_id: sessionId,
-			deleted_image_key: deletedImageKey,
+		const response = await api.delete(`/api/v1/contents/${sessionId}/images/delete`, {
+			data: {
+				session_id: sessionId,
+				deleted_image_key: deletedImageKey,
+			},
 		})
 
 		const data = response.data ?? {}

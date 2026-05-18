@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import CharacterLove from '@/assets/character/CharacterLove.png';
+import CharacterLove from '@/assets/character/CharacterLove.mp4';
 import Modal from '@/components/common/Modal';
 import Button from '@/components/common/Button';
 
@@ -103,13 +103,17 @@ export default function MyPageHeader({
             </div>
 
             <div className="h-[80px] w-[80px] shrink-0 overflow-hidden rounded-full border border-gray-300 bg-surface-100">
-              <img
+              <video
                 src={profileImageUrl || CharacterLove}
                 alt="프로필"
                 className="h-full w-full object-cover"
                 onError={(event) => {
-                event.currentTarget.src = CharacterLove;
-              }}
+                  event.currentTarget.src = CharacterLove;
+                }}
+                autoPlay
+                loop
+                muted
+                playsInline
               />
             </div>
           </div>

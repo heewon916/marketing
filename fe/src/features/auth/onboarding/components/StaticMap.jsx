@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { renderToString } from 'react-dom/server';
-import { RiMapPinFill } from "react-icons/ri";
+import { RiMapPinFill } from 'react-icons/ri';
 import { loadKakaoMap } from '@/utils/loadKakaoMap.js';
 
 const DEFAULT_POSITION = {
@@ -8,13 +8,56 @@ const DEFAULT_POSITION = {
   longitude: 126.9786567,
 };
 
+const isValidCoordinate = (latitude, longitude) => {
+  if (
+    latitude === null ||
+    latitude === undefined ||
+    latitude === '' ||
+    longitude === null ||
+    longitude === undefined ||
+    longitude === ''
+  ) {
+    return false;
+  }
+
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  return !Number.isNaN(lat) && !Number.isNaN(lng);
+};
+
+const getPositionByAddress = (kakao, address) =>
+  new Promise((resolve) => {
+    if (!address?.trim()) {
+      resolve(null);
+      return;
+    }
+
+    const geocoder = new kakao.maps.services.Geocoder();
+
+    geocoder.addressSearch(address, (result, status) => {
+      if (status !== kakao.maps.services.Status.OK || result.length === 0) {
+        resolve(null);
+        return;
+      }
+
+      const { y, x } = result[0];
+
+      resolve({
+        latitude: Number(y),
+        longitude: Number(x),
+      });
+    });
+  });
+
 export default function StaticMap({ storeLocation }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const markerRef = useRef(null);
 
-  const latitude = storeLocation?.latitude ?? DEFAULT_POSITION.latitude;
-  const longitude = storeLocation?.longitude ?? DEFAULT_POSITION.longitude;
+  const latitude = storeLocation?.latitude;
+  const longitude = storeLocation?.longitude;
+  const address = storeLocation?.address;
 
   useEffect(() => {
     const renderMap = async () => {
@@ -22,7 +65,22 @@ export default function StaticMap({ storeLocation }) {
         if (!mapRef.current) return;
 
         const kakao = await loadKakaoMap();
-        const position = new kakao.maps.LatLng(latitude, longitude);
+
+        let nextPosition = null;
+
+        if (isValidCoordinate(latitude, longitude)) {
+          nextPosition = {
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+          };
+        } else {
+          nextPosition = await getPositionByAddress(kakao, address);
+        }
+
+        const position = new kakao.maps.LatLng(
+          nextPosition?.latitude ?? DEFAULT_POSITION.latitude,
+          nextPosition?.longitude ?? DEFAULT_POSITION.longitude
+        );
 
         if (!mapInstanceRef.current) {
           const map = new kakao.maps.Map(mapRef.current, {
@@ -41,10 +99,10 @@ export default function StaticMap({ storeLocation }) {
 
           // 2. CustomOverlay 생성
           const customOverlay = new kakao.maps.CustomOverlay({
-            position: position,
+            position,
             content: iconHtml,
             yAnchor: 1,
-            map: map,
+            map,
           });
 
           mapInstanceRef.current = map;
@@ -59,14 +117,14 @@ export default function StaticMap({ storeLocation }) {
         }
 
         mapInstanceRef.current.setCenter(position);
-        markerRef.current.setPosition(position);
+        markerRef.current?.setPosition(position);
       } catch (error) {
         console.error('카카오맵 렌더링 실패:', error);
       }
     };
 
     renderMap();
-  }, [latitude, longitude]);
+  }, [latitude, longitude, address]);
 
   return (
     <div className="relative mt-3 h-[340px] w-full shrink-0 overflow-hidden rounded-[24px] border border-gray-200/80 bg-surface-100 shadow-sm">
@@ -74,7 +132,7 @@ export default function StaticMap({ storeLocation }) {
       <div ref={mapRef} className="h-full w-full" />
 
       {/* 플로팅 정보 카드 */}
-      <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex items-center gap-3 rounded-2xl bg-white/90 px-4 py-3.5 shadow-md backdrop-blur-lg border border-white/30">
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 z-10 flex items-center gap-3 rounded-2xl border border-white/30 bg-white/90 px-4 py-3.5 shadow-md backdrop-blur-lg">
 
         {/* 포인트 아이콘 */}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-100 text-primary-100">
@@ -83,10 +141,10 @@ export default function StaticMap({ storeLocation }) {
 
         {/* 텍스트 정보 */}
         <div className="flex flex-col">
-          <p className="text-[15px] font-bold text-accent-100 leading-tight">
-            {storeLocation?.placeName || '가게 위치'}
+          <p className="text-[15px] font-bold leading-tight text-accent-100">
+            {storeLocation?.storeName || storeLocation?.placeName || '가게 위치'}
           </p>
-          <p className="mt-1 text-[13px] font-medium text-gray-500 leading-tight">
+          <p className="mt-1 text-[13px] font-medium leading-tight text-gray-500">
             {storeLocation?.address || '주소 정보가 없습니다'}
           </p>
         </div>

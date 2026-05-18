@@ -1,9 +1,9 @@
-import CharacterCamera from "@/assets/character/CharacterCamera.png"
-import CharacterDdabong from "@/assets/character/CharacterDdabong.png"
-import CharacterFail from "@/assets/character/CharacterFail.png"
-import CharacterListen from "@/assets/character/CharacterListen.png"
-import CharacterLove from "@/assets/character/CharacterLove.png"
-import CharacterRun from "@/assets/character/CharacterRun.png"
+import CharacterCamera from "@/assets/character/CharacterCamera.mp4"
+import CharacterDdabong from "@/assets/character/CharacterDdabong.mp4"
+import CharacterFail from "@/assets/character/CharacterFail.mp4"
+import CharacterListen from "@/assets/character/CharacterListen.mp4"
+import CharacterLove from "@/assets/character/CharacterLove.mp4"
+import CharacterRun from "@/assets/character/CharacterRun.mp4"
 
 export const CHARACTER = {
   camera: CharacterCamera,
@@ -15,14 +15,18 @@ export const CHARACTER = {
 }
 
 function Character({ type, src, onClick, className = "" }) {
-  const imageSrc = src ?? CHARACTER[type] ?? CHARACTER.ddabong
+  const videoSrc = src ?? CHARACTER[type] ?? CHARACTER.ddabong
 
   return (
-    <img
-      src={imageSrc}
+    <video
+      src={videoSrc}
       alt="똑디 캐릭터"
       className={`object-contain ${className}`}
       onClick={onClick}
+      autoPlay
+      loop
+      muted
+      playsInline
     />
   )
 }

@@ -76,6 +76,12 @@ export async function speak(text, options = {}) {
       return;
     }
 
+    console.log("[TTS] request", {
+      endpoint: "/api/v1/contents/tts",
+      text,
+      textLength: text.length,
+    });
+
     const response = await api.post(
       "/api/v1/contents/tts",
       { text },
@@ -83,6 +89,13 @@ export async function speak(text, options = {}) {
         responseType: "blob",
       },
     );
+
+    console.log("[TTS] response", {
+      endpoint: "/api/v1/contents/tts",
+      status: response.status,
+      size: response.data?.size,
+      type: response.data?.type,
+    });
 
     const audioBlob = response.data;
     const audioUrl = URL.createObjectURL(audioBlob);
@@ -94,6 +107,12 @@ export async function speak(text, options = {}) {
     currentAudio = audio;
     await audio.play();
   } catch (error) {
+    console.error("[TTS] request failed", {
+      endpoint: "/api/v1/contents/tts",
+      message: error?.message,
+      status: error?.response?.status,
+    });
+
     if (error?.name === "AbortError") {
       return;
     }

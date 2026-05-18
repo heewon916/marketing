@@ -61,6 +61,15 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(ErrorCode.INVALID_REQUEST));
     }
 
+    // 지원하지 않는 HTTP 메서드로 요청 시 405 Method Not Allowed 응답을 반환한다.
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException exception) {
+        log.warn("[MethodNotAllowed] method={}, supportedMethods={}", exception.getMethod(), exception.getSupportedHttpMethods());
+        return ResponseEntity
+                .status(ErrorCode.METHOD_NOT_ALLOWED.getStatus())
+                .body(ErrorResponse.of(ErrorCode.METHOD_NOT_ALLOWED));
+    }
+
     @ExceptionHandler({
             org.springframework.web.bind.MissingServletRequestParameterException.class,
             org.springframework.web.multipart.support.MissingServletRequestPartException.class

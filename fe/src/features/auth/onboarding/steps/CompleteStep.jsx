@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import Button from '@/components/common/Button.jsx';
 import OnboardingLayout from '../components/OnboardingLayout.jsx';
 import OnboardingHeader from '../components/OnboardingHeader.jsx';
-import CharacterLove from '@/assets/character/CharacterLove.png';
-import CharacterRun from '@/assets/character/CharacterRun.png';
-import CharacterFail from '@/assets/character/CharacterFail.png';
+import CharacterLove from '@/assets/character/CharacterLove.mp4';
+import CharacterRun from '@/assets/character/CharacterRun.mp4';
+import CharacterFail from '@/assets/character/CharacterFail.mp4';
 import { onboardingApi } from '@/features/auth/onboarding/api.js';
 import { useOnboardingStore } from '@/features/auth/onboarding/store/onboardingStore.js';
 
@@ -126,7 +126,7 @@ function CompleteStep({ onPrev, onRestartPos }) {
   const isError = status === 'error' || !!displayErrorMessage;
   const isSaving = status === 'saving' && !isError;
 
-  const characterImage = isSuccess
+  const characterVideo = isSuccess
     ? CharacterLove
     : isError
       ? CharacterFail
@@ -209,10 +209,12 @@ function CompleteStep({ onPrev, onRestartPos }) {
       }
     >
       <div className="w-full flex justify-center mt-10">
-        <img
-          src={characterImage}
-          alt="character"
-          className="w-full max-w-[320px]"
+        <video
+          src={characterVideo}
+          className="w-full max-w-[340px] mb-12"
+          autoPlay
+          loop
+          muted
         />
       </div>
 

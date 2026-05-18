@@ -55,7 +55,7 @@ const createOperatingHoursRequestBody = (hours) => {
   }, {});
 };
 
-export default function OperatingHoursSection({ operatingHours, onRefresh }) {
+export default function OperatingHoursSection({ operatingHours, onRefresh, onEditingChange }) {
   const [isEditing, setIsEditing] = useState(false);
   const [hours, setHours] = useState(() =>
     createHoursFromApi(operatingHours)
@@ -69,11 +69,13 @@ export default function OperatingHoursSection({ operatingHours, onRefresh }) {
   const handleEditClick = () => {
     setHours(createHoursFromApi(operatingHours));
     setIsEditing(true);
+    onEditingChange?.(true);
   };
 
   const handleCancelClick = () => {
     setHours(createHoursFromApi(operatingHours));
     setIsEditing(false);
+    onEditingChange?.(false);
   };
 
   const handleSaveClick = async (nextHours = hours) => {
@@ -93,6 +95,7 @@ export default function OperatingHoursSection({ operatingHours, onRefresh }) {
       }
 
       setIsEditing(false);
+      onEditingChange?.(false);
     } catch (error) {
       console.error('영업시간 수정 실패:', error);
       alert('영업시간을 수정하지 못했습니다. 잠시 후 다시 시도해 주세요.');

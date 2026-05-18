@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import argparse
+import sys
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 
-from sqlalchemy import text
-
-from app.db.postgres import dispose_engine, get_session_factory
+from app.db.postgres import dispose_engine
+from scripts.backfill_utils import (
+    load_all_rows,
+    load_rows,
+    run_embedding_backfill,
+    update_embedding_rows,
+)
 from app.services.canonical_keyword_resolver import (
     build_canonical_keyword_resolver_service,
 )
@@ -13,56 +20,49 @@ from app.services.canonical_keyword_resolver import (
 BATCH_SIZE = 32
 
 
-async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
-    query = text(
-        """
-        SELECT id, code, display_name, created_at
-        FROM canonical_keywords
-        ORDER BY id ASC
-        OFFSET :offset
-        LIMIT :limit
-        """
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Backfill canonical keyword embeddings and dump INSERT SQL.",
     )
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(query, {"offset": offset, "limit": limit})
-        return [dict(row) for row in result.mappings().all()]
+    parser.add_argument(
+        "--ids",
+        nargs="*",
+        type=int,
+        help="Optional canonical keyword ids to backfill and dump.",
+    )
+    return parser.parse_args()
+
+
+def _configure_stdout() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+
+async def _load_rows(offset: int, limit: int) -> list[dict[str, object]]:
+    return await load_rows(
+        table_name="canonical_keywords",
+        select_columns="id, code, display_name, created_at",
+        order_by="id ASC",
+        offset=offset,
+        limit=limit,
+    )
 
 
 async def _update_rows(rows: list[dict[str, object]], embeddings: list[list[float]]) -> None:
-    update_query = text(
-        """
-        UPDATE canonical_keywords
-        SET embedding = CAST(:embedding AS vector)
-        WHERE id = :id
-        """
+    await update_embedding_rows(
+        table_name="canonical_keywords",
+        rows=rows,
+        embeddings=embeddings,
     )
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        for row, embedding in zip(rows, embeddings, strict=True):
-            vector_literal = "[" + ",".join(f"{value:.8f}" for value in embedding) + "]"
-            await session.execute(
-                update_query,
-                {
-                    "id": row["id"],
-                    "embedding": vector_literal,
-                },
-            )
-        await session.commit()
 
 
-async def _load_dump_rows() -> list[dict[str, object]]:
-    query = text(
-        """
-        SELECT id, code, display_name, embedding::text AS embedding_text, created_at
-        FROM canonical_keywords
-        ORDER BY id ASC
-        """
+async def _load_dump_rows(ids: list[int] | None = None) -> list[dict[str, object]]:
+    return await load_all_rows(
+        table_name="canonical_keywords",
+        select_columns="id, code, display_name, embedding::text AS embedding_text, created_at",
+        order_by="id ASC",
+        ids=ids,
     )
-    session_factory = get_session_factory()
-    async with session_factory() as session:
-        result = await session.execute(query)
-        return [dict(row) for row in result.mappings().all()]
 
 
 def _escape_sql_string(value: str) -> str:
@@ -83,26 +83,44 @@ def _build_insert_statement(row: dict[str, object]) -> str:
         f"'{_escape_sql_string(str(row['code']))}', "
         f"'{_escape_sql_string(str(row['display_name']))}', "
         f"'{row['embedding_text']}', "
-        f"'{_format_timestamp(row['created_at'])}');"
+        f"'{_format_timestamp(row['created_at'])}') "
+        "ON CONFLICT (id) DO NOTHING;"
     )
 
 
+def _build_filtered_batch_loader(
+    rows: list[dict[str, object]],
+) -> Callable[[int, int], Awaitable[list[dict[str, object]]]]:
+    async def _load_filtered_rows(offset: int, limit: int) -> list[dict[str, object]]:
+        return rows[offset : offset + limit]
+
+    return _load_filtered_rows
+
+
 async def main() -> None:
+    args = _parse_args()
+    _configure_stdout()
+
     resolver = build_canonical_keyword_resolver_service()
     await resolver.preload()
 
-    offset = 0
-    while True:
-        rows = await _load_rows(offset, BATCH_SIZE)
-        if not rows:
-            break
-
+    async def _embed_rows(rows: list[dict[str, object]]) -> list[list[float]]:
         display_names = [str(row["display_name"]) for row in rows]
-        embeddings = await resolver.embed_display_names(display_names)
-        await _update_rows(rows, embeddings)
-        offset += len(rows)
+        return await resolver.embed_display_names(display_names)
 
-    dump_rows = await _load_dump_rows()
+    load_batch = _load_rows
+    if args.ids:
+        filtered_rows = await _load_dump_rows(args.ids)
+        load_batch = _build_filtered_batch_loader(filtered_rows)
+
+    await run_embedding_backfill(
+        batch_size=BATCH_SIZE,
+        load_batch=load_batch,
+        embed_batch=_embed_rows,
+        update_batch=_update_rows,
+    )
+
+    dump_rows = await _load_dump_rows(args.ids)
     for row in dump_rows:
         print(_build_insert_statement(row))
 

@@ -16,6 +16,9 @@ function StoreNameStep({
   const storeName = useOnboardingStore((state) => state.storeName);
   const setStoreName = useOnboardingStore((state) => state.setStoreName);
   const setLocation = useOnboardingStore((state) => state.setLocation);
+  const setOperatingHours = useOnboardingStore(
+    (state) => state.setOperatingHours
+  );
 
   const [inputValue, setInputValue] = useState(() => storeName || value || '');
   const [isLoading, setIsLoading] = useState(false);
@@ -43,6 +46,7 @@ function StoreNameStep({
         latitude: null,
         longitude: null,
       });
+      setOperatingHours({});
     }
 
     setStoreName(trimmedValue);
@@ -85,7 +89,7 @@ function StoreNameStep({
               입력해주세요
             </>
           }
-          subtitle="입력한 상호명으로 계속 진행할게요"
+          subtitle="상호명은 온보딩 완료 후에는 변경할 수 없어요."
         />
       }
       footer={

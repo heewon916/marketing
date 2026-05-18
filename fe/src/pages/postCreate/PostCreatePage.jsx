@@ -12,15 +12,20 @@ import GeneratedPostStep from "@/features/postCreate/steps/GeneratedPostStep"
 import GeneratedPostEditStep from "@/features/postCreate/steps/GeneratedPostEditStep"
 import PublishResultStep from "@/features/postCreate/steps/PublishResultStep"
 import { useBlocker, useNavigate } from "react-router-dom"
-import CharacterListen from "@/assets/character/CharacterListen.png"
-import CharacterCamera from "@/assets/character/CharacterCamera.png"
+import CharacterListen from "@/assets/character/CharacterListen.mp4"
+import CharacterCamera from "@/assets/character/CharacterCamera.mp4"
 import PostCreateLeaveHomeModal from "@/features/postCreate/components/PostCreateLeaveHomeModal"
 import { requestVideoUpload } from "@/features/postCreate/api/VideoApi"
 import { requestDraftPost, requestEditDraftCaption } from "@/features/postCreate/api/PostApi"
 import { requestPublishStart, requestPublishStatus } from "@/features/postCreate/api/PublishApi"
 import { showToast } from '@/utils/toast';
 import { speak, stopTTS } from '@/utils/tts'
-import homeGreetingAudio from "@/assets/TTS/homePage_TTS.mp3"
+import {
+  questionStepTTS,
+  publishResultSuccessTTS,
+  publishResultFailTTS,
+  homeTTS
+} from "@/assets/TTS"
 
 const POST_QUESTION_TITLE = "이 이야기를 바탕으로 메뉴 홍보 게시글을 써볼까요?"
 const CAMERA_QUESTION_FALLBACK_TITLE = "치킨의 바삭한 날개와 촉촉한 속을 대비되게 촬영하세요."
@@ -118,7 +123,9 @@ export default function PostCreatePage() {
 
       const startPublishAndPoll = async () => {
         try {
+          console.log("[PostCreate] publish:start request", { sessionId })
           await requestPublishStart(sessionId)
+          console.log("[PostCreate] publish:start success", { sessionId })
 
           if (!isActive) {
             return
@@ -160,6 +167,7 @@ export default function PostCreatePage() {
             }
           }, 1000)
         } catch (error) {
+          console.error("[PostCreate] publish:start failed", error)
           if (isActive) {
             showToast(error.message || "발행 시작에 실패했습니다.", 'error')
             setStep(POST_CREATE_STEP.PUBLISH_FAIL)
@@ -187,13 +195,31 @@ export default function PostCreatePage() {
       return
     }
 
+    // 로딩 단계에서는 TTS를 비활성화
+    if (
+      step === POST_CREATE_STEP.POST_LOADING ||
+      step === POST_CREATE_STEP.EXTRACT_LOADING ||
+      step === POST_CREATE_STEP.PUBLISH_LOADING
+    ) {
+      stopTTS();
+      return;
+    }
+
     if (FIXED_AUDIO_STEPS.has(step)) {
+      let audioSrc = homeTTS;
+      if (step === POST_CREATE_STEP.POST_QUESTION) {
+        audioSrc = questionStepTTS;
+      } else if (step === POST_CREATE_STEP.PUBLISH_SUCCESS) {
+        audioSrc = publishResultSuccessTTS;
+      } else if (step === POST_CREATE_STEP.PUBLISH_FAIL) {
+        audioSrc = publishResultFailTTS;
+      }
       void speak(getFixedAudioFallbackText(step), {
         source: "file",
-        audioSrc: homeGreetingAudio,
+        audioSrc,
         fallbackToTTS: true,
-      })
-      return
+      });
+      return;
     }
 
     stopTTS()
@@ -287,9 +313,13 @@ export default function PostCreatePage() {
   }
 
   const handlePublish = async (post) => {
+    console.log("[PostCreate] publish:clicked", { hasContent: post?.content !== undefined })
+
     if (post?.content !== undefined) {
       try {
+        console.log("[PostCreate] caption:edit request", { sessionId })
         const updated = await requestEditDraftCaption(sessionId, post.content)
+        console.log("[PostCreate] caption:edit success", { sessionId, updatedAt: updated.updatedAt })
         setGeneratedPost({
           ...(generatedPost ?? {}),
           ...post,
@@ -297,10 +327,12 @@ export default function PostCreatePage() {
           updatedAt: updated.updatedAt,
         })
       } catch (error) {
+        console.error("[PostCreate] caption:edit failed", error)
         showToast(error.message || "캡션 수정에 실패했습니다.", 'error')
         return
       }
     } else if (post) {
+      console.log("[PostCreate] caption:edit skipped", { reason: "content is undefined" })
       setGeneratedPost(post)
     }
 

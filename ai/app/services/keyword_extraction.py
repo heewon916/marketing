@@ -14,6 +14,7 @@ from app.core.config import (
     settings,
 )
 from app.logging import build_log_extra, preview_text
+from app.services.remote_model_client import RemoteModelClient
 from app.services.content_purpose import (
     ALLOWED_CONTENT_PURPOSES,
     ContentPurpose,
@@ -251,6 +252,13 @@ class KeywordExtractionService:
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
         self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
+        self._remote_client = RemoteModelClient(
+            base_url=self.base_url,
+            chat_endpoint=self.chat_endpoint,
+            health_endpoint=self.health_endpoint,
+            api_key=self.api_key,
+            timeout_seconds=self.timeout_seconds,
+        )
         self._server_checked = False
         self._morph_analyzer: Any = None
         self._morph_analyzer_initialized = False
@@ -394,18 +402,15 @@ class KeywordExtractionService:
         return payload
 
     def _build_request_headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        return headers
+        return self._remote_client.build_headers()
 
     @property
     def _chat_url(self) -> str:
-        return f"{self.base_url}{self.chat_endpoint}"
+        return self._remote_client.chat_url
 
     @property
     def _health_url(self) -> str:
-        return f"{self.base_url}{self.health_endpoint}"
+        return self._remote_client.health_url
 
     async def _post_chat_completion(
         self,
@@ -414,12 +419,7 @@ class KeywordExtractionService:
         include_response_format: bool,
     ) -> httpx.Response:
         payload = self._build_request_payload(prompt, include_response_format)
-        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            return await client.post(
-                self._chat_url,
-                headers=self._build_request_headers(),
-                json=payload,
-            )
+        return await self._remote_client.post_chat_completion(payload)
 
     async def _check_server_connection(self) -> None:
         if not self.base_url:
@@ -428,9 +428,7 @@ class KeywordExtractionService:
             )
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-                response = await client.get(self._health_url)
-            response.raise_for_status()
+            response = await self._remote_client.check_health()
         except httpx.TimeoutException as exc:
             raise KeywordExtractionUnavailableError(
                 "Keyword extraction server connectivity check timed out."
@@ -526,12 +524,7 @@ class KeywordExtractionService:
             ) from exc
 
         self._server_checked = True
-        response_payload = response.json()
-        raw_output = (
-            response_payload.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        raw_output = self._remote_client.extract_message_content(response)
         logger.info(
             "llama-server keyword completion returned.",
             extra=build_log_extra(

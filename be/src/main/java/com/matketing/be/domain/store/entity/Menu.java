@@ -61,4 +61,8 @@ public class Menu {
         this.weatherTags = weatherTags;
         this.holidayTags = holidayTags;
     }
+
+    public void updateDescription(String description) {
+        this.description = description;
+    }
 }

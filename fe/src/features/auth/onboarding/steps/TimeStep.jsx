@@ -22,12 +22,21 @@ const dayKeyMap = {
   일: 'sunday',
 };
 
+const DEFAULT_START_TIME = '09:00';
+const DEFAULT_END_TIME = '18:00';
+
+const isValidOpenTime = (value) =>
+  typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+const isValidCloseTime = (value) =>
+  typeof value === 'string' && /^(?:[01]\d|2\d|3\d|4[0-7]):[0-5]\d$/.test(value);
+
 const createDefaultTimeData = () =>
   days.map((day) => ({
     day,
-    isOpen: true,
-    startTime: '09:00',
-    endTime: '18:00',
+    isOpen: false,
+    startTime: DEFAULT_START_TIME,
+    endTime: DEFAULT_END_TIME,
   }));
 
 const convertOperatingHoursToTimeData = (operatingHours) => {
@@ -42,16 +51,41 @@ const convertOperatingHoursToTimeData = (operatingHours) => {
     if (!savedTime) {
       return {
         day,
-        isOpen: true,
-        startTime: '09:00',
-        endTime: '18:00',
+        isOpen: false,
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
+      };
+    }
+
+    if (savedTime.isOpen === false) {
+      return {
+        day,
+        isOpen: false,
+        startTime: isValidOpenTime(savedTime.open)
+          ? savedTime.open
+          : DEFAULT_START_TIME,
+        endTime: isValidCloseTime(savedTime.close)
+          ? convertApiCloseTimeToDisplayTime(savedTime.close)
+          : DEFAULT_END_TIME,
+      };
+    }
+
+    const hasValidTimeRange =
+      isValidOpenTime(savedTime.open) && isValidCloseTime(savedTime.close);
+
+    if (!hasValidTimeRange) {
+      return {
+        day,
+        isOpen: false,
+        startTime: DEFAULT_START_TIME,
+        endTime: DEFAULT_END_TIME,
       };
     }
 
     return {
       day,
-      isOpen: savedTime.isOpen ?? true,
-      startTime: savedTime.open ?? '09:00',
+      isOpen: true,
+      startTime: savedTime.open,
       endTime: convertApiCloseTimeToDisplayTime(savedTime.close),
     };
   });
@@ -95,12 +129,23 @@ function TimeStep({ onNext, onPrev, onChange }) {
     });
   };
 
-  const handleNext = () => {
+  const saveOperatingHours = () => {
     const nextOperatingHours = convertTimeDataToOperatingHours(timeData);
 
     setOperatingHours(nextOperatingHours);
     onChange?.(nextOperatingHours);
+
+    return nextOperatingHours;
+  };
+
+  const handleNext = () => {
+    saveOperatingHours();
     onNext?.();
+  };
+
+  const handlePrev = () => {
+    saveOperatingHours();
+    onPrev?.();
   };
 
   return (
@@ -126,7 +171,7 @@ function TimeStep({ onNext, onPrev, onChange }) {
         }
         footer={
           <OnboardingFooterButtons
-            onPrev={onPrev}
+            onPrev={handlePrev}
             onNext={handleNext}
             nextText="저장"
           />
