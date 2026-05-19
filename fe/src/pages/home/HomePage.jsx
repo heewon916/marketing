@@ -14,6 +14,7 @@ import homeGreetingAudio from "@/assets/TTS/home_tts.mp3"
 
 const HOME_GREETING_TEXT = "오늘 새로 공유해주실 이야기가 있나요?"
 const HOME_GREETING_AUDIO_SRC = homeGreetingAudio
+const PENDING_NOTIF_KEY = 'pendingNotifBody'
 
 function HomePage() {
   const [isTyping, setIsTyping] = useState(false)
@@ -23,11 +24,19 @@ function HomePage() {
   const setStep = usePostCreateStore((state) => state.setStep)
   const setGenerationContext = usePostCreateStore((state) => state.setGenerationContext)
 
-  // 홈페이지 진입 시 TTS 재생
+  // 홈페이지 진입 시 TTS 재생 + 알림 클릭으로 저장된 body 표시
   useEffect(() => {
-    speak(HOME_GREETING_TEXT, {
-      source: "file",
-      audioSrc: HOME_GREETING_AUDIO_SRC,
+    const pendingNotif = localStorage.getItem(PENDING_NOTIF_KEY)
+    const textToShow = pendingNotif || HOME_GREETING_TEXT
+
+    if (pendingNotif) {
+      setGreetingText(pendingNotif)
+      localStorage.removeItem(PENDING_NOTIF_KEY)
+    }
+
+    speak(textToShow, {
+      source: pendingNotif ? "tts" : "file",
+      audioSrc: pendingNotif ? undefined : HOME_GREETING_AUDIO_SRC,
       fallbackToTTS: true,
     })
 
