@@ -30,17 +30,15 @@ public class LlamaIntentClient {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
-    private final String model;
 
     public LlamaIntentClient(
             RestClient.Builder builder,
             ObjectMapper objectMapper,
-            @Value("${spring.ai.ollama.base-url:${OLLAMA_BASE_URL:}}") String baseUrl,
-            @Value("${spring.ai.ollama.chat.model:${OLLAMA_MODEL:local-model}}") String model,
+            @Value("${spring.ai.ollama.base-url: ${CHAT_MODEL_BASE_URL}}") String baseUrl,
             @Value("${llama.intent.timeout-seconds:120}") long timeoutSeconds
     ) {
         if (baseUrl == null || baseUrl.isBlank()) {
-            throw new IllegalStateException("OLLAMA_BASE_URL is required for llama intent classification.");
+            throw new IllegalStateException("CHAT_MODEL_BASE_URL is required for llama intent classification.");
         }
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(Duration.ofSeconds(timeoutSeconds));
@@ -50,7 +48,6 @@ public class LlamaIntentClient {
                 .requestFactory(requestFactory)
                 .build();
         this.objectMapper = objectMapper;
-        this.model = model;
     }
 
     public LlamaIntentResponse classify(String utterance) {
@@ -58,7 +55,6 @@ public class LlamaIntentClient {
             ChatCompletionResponse response = restClient.post()
                     .uri("/v1/chat/completions")
                     .body(new ChatCompletionRequest(
-                            model,
                             List.of(
                                     new ChatMessage("system", SYSTEM_PROMPT),
                                     new ChatMessage("user", utterance)
@@ -138,7 +134,6 @@ public class LlamaIntentClient {
     }
 
     private record ChatCompletionRequest(
-            String model,
             List<ChatMessage> messages,
             Map<String, String> response_format,
             boolean stream,
