@@ -28,7 +28,7 @@ public class ContentController {
 
     /**
      * S3 저장 규칙
-     * 1. 사용자가 처음 찍은 영상 : /inputs/{session-id}/draft.mp4
+     * 1. 사용자가 처음 찍은 영상 : /inputs/{session-id}/draft.webm
      * 2. AI가 처음 프레임 추출한 drafts : /ai-drafts/{session-id}/draft-001.jpg
      * 3. AI가 최종 편집한 사진 : /ai-finals/{session-id}/final-001.jpg
      * 4. 레퍼런스 사진 : /references/{owner_persona}/{reference_id}/001.jpg
@@ -234,7 +234,7 @@ public class ContentController {
     /**
      * 비디오 추출 API
      * @PostMapping("/{session_id}/video")
-     * 프론트로부터 mp4파일을 받고, s3에 저장합니다.
+     * 프론트로부터 webm 파일을 받고, s3에 저장합니다.
      * ai 모델을 내부적으로 호출해 프레임을 추출, 최종 편집합니다.
      *
      * request body:
@@ -257,7 +257,7 @@ public class ContentController {
      * request body:
      * {
      *  "session_id": "uuid",
-     *  "video": "/inputs/{session-id}/test-video.mp4"
+     *  "video": "/inputs/{session-id}/test-video.webm"
      * }
      * response body:
      * -> s3 url을 돌려 받습니다.
