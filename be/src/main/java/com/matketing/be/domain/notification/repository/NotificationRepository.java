@@ -17,4 +17,5 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     Page<Notification> findByTypeAndStatus(NotificationType type, NotificationStatus status, Pageable pageable);
     Page<Notification> findByStoreId(UUID storeId, Pageable pageable);
     boolean existsByStoreIdAndTypeAndScheduledAtBetween(UUID storeId, NotificationType type, OffsetDateTime start, OffsetDateTime end);
+    void deleteAllByStoreId(UUID storeId);
 }
