@@ -66,10 +66,16 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close()
 
   const url = event.notification.data?.url || "/"
+  const notifBody = event.notification.body || ""
 
   event.waitUntil((async () => {
     const normalizedUrl = new URL(url, self.location.origin).href
     const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true })
+
+    // 열려 있는 모든 탭에 body 전달 (저장용)
+    for (const client of clientList) {
+      client.postMessage({ type: "NOTIF_BODY_CLICKED", body: notifBody })
+    }
 
     for (const client of clientList) {
       if (client.url === normalizedUrl && "focus" in client) {
@@ -78,6 +84,9 @@ self.addEventListener("notificationclick", (event) => {
       }
     }
 
-    await clients.openWindow(normalizedUrl)
+    // 열린 창이 없으면 URL에 notifBody 파라미터를 붙여서 새 창 열기
+    const targetUrl = new URL(normalizedUrl)
+    if (notifBody) targetUrl.searchParams.set("notifBody", notifBody)
+    await clients.openWindow(targetUrl.href)
   })())
 })
