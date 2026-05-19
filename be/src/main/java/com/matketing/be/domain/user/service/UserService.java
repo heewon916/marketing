@@ -109,23 +109,78 @@ public class UserService {
 
     @Transactional
     public SimpleApiResponse deleteUser(User user) {
-        deviceTokenRepository.deleteAllByUserId(user.getId());
+        log.info("[DeleteUser] 탈퇴 프로세스 시작 - userId: {}", user.getId());
+
+        try {
+            deviceTokenRepository.deleteAllByUserId(user.getId());
+            log.info("[DeleteUser] DeviceToken 삭제 성공 - userId: {}", user.getId());
+        } catch (Exception e) {
+            log.error("[DeleteUser] DeviceToken 삭제 실패 - userId: {}", user.getId(), e);
+            throw e;
+        }
 
         storeRepository.findFirstByUserId(user.getId()).ifPresent(store -> {
             UUID storeId = store.getId();
+            log.info("[DeleteUser] 매장 확인 완료 - storeId: {}, userId: {}", storeId, user.getId());
             
-            menuRepository.deleteAllByStoreId(storeId);
-            storeHoursRepository.deleteAllByStoreId(storeId);
-            accountWeeklyMetricRepository.deleteAllByStore_Id(storeId);
-            instagramMetricRepository.deleteAllByStore_Id(storeId);
+            try {
+                menuRepository.deleteAllByStoreId(storeId);
+                log.info("[DeleteUser] Menu 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] Menu 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
 
-            List<Content> contents = contentRepository.findByStoreId(storeId);
-            contentRepository.deleteAll(contents);
+            try {
+                storeHoursRepository.deleteAllByStoreId(storeId);
+                log.info("[DeleteUser] StoreHours 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] StoreHours 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
+
+            try {
+                accountWeeklyMetricRepository.deleteAllByStore_Id(storeId);
+                log.info("[DeleteUser] AccountWeeklyMetric 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] AccountWeeklyMetric 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
+
+            try {
+                instagramMetricRepository.deleteAllByStore_Id(storeId);
+                log.info("[DeleteUser] InstagramMetric 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] InstagramMetric 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
+
+            try {
+                List<Content> contents = contentRepository.findByStoreId(storeId);
+                log.info("[DeleteUser] 삭제 대상 Content 조회 완료 - {} 건", contents.size());
+                contentRepository.deleteAll(contents);
+                log.info("[DeleteUser] Content 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] Content 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
             
-            storeRepository.delete(store);
+            try {
+                storeRepository.delete(store);
+                log.info("[DeleteUser] Store 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] Store 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
         });
 
-        userRepository.delete(user);
+        try {
+            userRepository.delete(user);
+            log.info("[DeleteUser] User 삭제 성공 - userId: {}", user.getId());
+        } catch (Exception e) {
+            log.error("[DeleteUser] User 삭제 실패 - userId: {}", user.getId(), e);
+            throw e;
+        }
 
         return new SimpleApiResponse(true, "회원 탈퇴가 완료되었습니다.");
     }
