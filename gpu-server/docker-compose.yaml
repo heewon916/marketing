@@ -22,6 +22,7 @@ services:
       - huggingface-cache:/root/.cache/huggingface
     command: >
       ${EXAONE_VLLM_MODEL:-LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-AWQ}
+      --trust-remote-code
       --host 0.0.0.0
       --port 8000
       --tensor-parallel-size 1
