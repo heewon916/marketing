@@ -14,6 +14,7 @@ import com.matketing.be.domain.analytic.repository.AccountWeeklyMetricRepository
 import com.matketing.be.domain.analytic.repository.InstagramMetricRepository;
 import com.matketing.be.domain.content.repository.ContentRepository;
 import com.matketing.be.domain.notification.repository.DeviceTokenRepository;
+import com.matketing.be.domain.notification.repository.NotificationRepository;
 import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.global.auth.oauth2.InstagramApiClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,7 @@ public class UserService {
     private final InstagramMetricRepository instagramMetricRepository;
     private final ContentRepository contentRepository;
     private final DeviceTokenRepository deviceTokenRepository;
+    private final NotificationRepository notificationRepository;
 
     @Transactional(readOnly = true)
     public UserMeResponse getMe(User user) {
@@ -162,6 +164,14 @@ public class UserService {
                 log.info("[DeleteUser] Content 삭제 성공 - storeId: {}", storeId);
             } catch (Exception e) {
                 log.error("[DeleteUser] Content 삭제 실패 - storeId: {}", storeId, e);
+                throw e;
+            }
+
+            try {
+                notificationRepository.deleteAllByStoreId(storeId);
+                log.info("[DeleteUser] Notification 삭제 성공 - storeId: {}", storeId);
+            } catch (Exception e) {
+                log.error("[DeleteUser] Notification 삭제 실패 - storeId: {}", storeId, e);
                 throw e;
             }
             
