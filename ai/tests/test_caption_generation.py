@@ -86,6 +86,21 @@ def test_caption_generation_service_calls_remote_server_successfully(
     assert result.stored_caption == result.draft_caption
 
 
+def test_caption_generation_service_includes_model_name_in_payload() -> None:
+    service = CaptionGenerationService(
+        base_url="http://caption-server:8002",
+        model_name="exaone-text",
+    )
+
+    payload = service._build_request_payload(
+        "prompt",
+        include_response_format=False,
+        strict_language=False,
+    )
+
+    assert payload["model"] == "exaone-text"
+
+
 def test_caption_generation_service_retries_without_response_format(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
