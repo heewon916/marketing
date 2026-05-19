@@ -17,6 +17,10 @@ export default function CameraStep({ onRecorded, onClose }) {
   const canvasStreamRef = useRef(null)
   const drawFrameRef = useRef(null)
   const mediaRecorderRef = useRef(null)
+  const cameraDebugLoggedRef = useRef(false)
+  const cropDebugLoggedRef = useRef(false)
+  const openCameraRef = useRef(null)
+  const rearCameraOptionsRef = useRef([])
   const chunksRef = useRef([])
   const countdownTimerRef = useRef(null)
   const shouldEmitRecordingRef = useRef(true)
@@ -25,6 +29,8 @@ export default function CameraStep({ onRecorded, onClose }) {
   const [isRecording, setIsRecording] = useState(false)
   const [remainingSeconds, setRemainingSeconds] = useState(MAX_RECORD_SECONDS)
   const [errorMessage, setErrorMessage] = useState("")
+  const [rearCameraOptions, setRearCameraOptions] = useState([])
+  const [currentCameraDeviceId, setCurrentCameraDeviceId] = useState("")
 
   const mimeType = useMemo(() => {
     if (typeof MediaRecorder === "undefined") {
@@ -36,6 +42,27 @@ export default function CameraStep({ onRecorded, onClose }) {
 
   useEffect(() => {
     let isMounted = true
+
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+
+    const applyPreferredRearZoom = async (track) => {
+      const capabilities = track?.getCapabilities?.() ?? {}
+      const zoom = capabilities.zoom
+
+      if (typeof zoom?.min !== "number" || typeof zoom?.max !== "number") {
+        return
+      }
+
+      const targetZoom = clamp(1, zoom.min, zoom.max)
+
+      try {
+        await track.applyConstraints({
+          advanced: [{ zoom: targetZoom }],
+        })
+      } catch {
+        // no-op
+      }
+    }
 
     const scoreRearCameraLabel = (label) => {
       if (!label) {
@@ -60,8 +87,13 @@ export default function CameraStep({ onRecorded, onClose }) {
         score += 30
       }
 
+      // 1x 카메라 강하게 선호
+      if (/\b1x\b|1\.0x|1,0x/.test(normalized)) {
+        score += 120
+      }
+
       // 초광각 카메라 강하게 제외
-      if (/ultra|ultra\s*wide|0\.5|0,5|초광각|uw/.test(normalized)) {
+      if (/ultra|ultra\s*wide|wide\s*angle|0\.5|0,5|0\.6|0,6|초광각|uw/.test(normalized)) {
         score -= 200
       }
 
@@ -110,6 +142,11 @@ export default function CameraStep({ onRecorded, onClose }) {
       }
     }
 
+    const updateRearCameraOptions = (options) => {
+      rearCameraOptionsRef.current = options
+      setRearCameraOptions(options)
+    }
+
     const getPreferredRearCameraId = async () => {
       let probeStream = null
 
@@ -122,6 +159,8 @@ export default function CameraStep({ onRecorded, onClose }) {
 
         const fallbackDeviceId = probeStream.getVideoTracks()[0]?.getSettings?.()?.deviceId
         const devices = await navigator.mediaDevices.enumerateDevices()
+          const fallbackDevice = devices.find((device) => device.deviceId === fallbackDeviceId)
+          const fallbackGroupId = fallbackDevice?.groupId ?? null
 
         // 기존처럼 back/rear/camera0만 남기지 말고 전체 videoinput을 후보로 둠
         const videoDevices = devices.filter((device) => device.kind === "videoinput")
@@ -134,6 +173,7 @@ export default function CameraStep({ onRecorded, onClose }) {
         let bestScore = Number.NEGATIVE_INFINITY
 
         const debugRows = []
+        const rearCandidates = []
 
         for (const device of videoDevices) {
           const inspect = await inspectCamera(device.deviceId)
@@ -163,6 +203,18 @@ export default function CameraStep({ onRecorded, onClose }) {
             }
           }
 
+          if (inspect?.settings?.facingMode === "environment") {
+            score += 40
+          }
+
+          if (inspect?.settings?.facingMode === "user") {
+            score -= 300
+          }
+
+          if (fallbackGroupId && device.groupId === fallbackGroupId) {
+            score += 15
+          }
+
           debugRows.push({
             label: device.label || "(no label)",
             deviceId: device.deviceId,
@@ -174,6 +226,20 @@ export default function CameraStep({ onRecorded, onClose }) {
             facingMode: inspect?.settings?.facingMode,
           })
 
+          const isLikelyRear =
+            inspect?.settings?.facingMode === "environment" ||
+            /back|rear|environment|후면/i.test(device.label || "")
+
+          if (isLikelyRear) {
+            rearCandidates.push({
+              deviceId: device.deviceId,
+              label: device.label || "후면 카메라",
+              score,
+              minZoom: inspect?.minZoom,
+              maxZoom: inspect?.maxZoom,
+            })
+          }
+
           if (score > bestScore) {
             bestScore = score
             bestDeviceId = device.deviceId
@@ -182,7 +248,34 @@ export default function CameraStep({ onRecorded, onClose }) {
 
         console.table(debugRows)
 
-        return bestDeviceId ?? fallbackDeviceId ?? null
+        const rearCameraOptionsInOrder = rearCandidates
+          .map(({ deviceId, label, minZoom, maxZoom }) => ({
+            deviceId,
+            label,
+            minZoom,
+            maxZoom,
+          }))
+
+        if (rearCameraOptionsInOrder.length > 0) {
+          console.table(
+            rearCameraOptionsInOrder.map((candidate, index) => ({
+              priority: index + 1,
+              deviceId: candidate.deviceId,
+              label: candidate.label,
+              minZoom: candidate.minZoom,
+              maxZoom: candidate.maxZoom,
+            }))
+          )
+        }
+
+        if (isMounted) {
+          updateRearCameraOptions(rearCameraOptionsInOrder)
+        }
+
+        const secondRearCameraId = rearCameraOptionsInOrder[1]?.deviceId ?? null
+        const firstRearCameraId = rearCameraOptionsInOrder[0]?.deviceId ?? null
+
+        return secondRearCameraId ?? firstRearCameraId ?? bestDeviceId ?? fallbackDeviceId ?? null
       } catch {
         return null
       } finally {
@@ -190,10 +283,13 @@ export default function CameraStep({ onRecorded, onClose }) {
       }
     }
 
-    const setupCamera = async () => {
+    const setupCamera = async (forcedDeviceId = null) => {
       try {
-        const preferredRearCameraId = await getPreferredRearCameraId()
+        const preferredRearCameraId = forcedDeviceId ?? (await getPreferredRearCameraId())
         let stream
+
+        streamRef.current?.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
 
         try {
           stream = await navigator.mediaDevices.getUserMedia({
@@ -224,8 +320,38 @@ export default function CameraStep({ onRecorded, onClose }) {
         streamRef.current = stream
 
         const videoTrack = stream.getVideoTracks()[0]
+        await applyPreferredRearZoom(videoTrack)
+
         const settings = videoTrack?.getSettings?.()
         const capabilities = videoTrack?.getCapabilities?.()
+
+        setCurrentCameraDeviceId(settings?.deviceId ?? preferredRearCameraId ?? "")
+
+        if (!cameraDebugLoggedRef.current) {
+          const zoomRange = capabilities?.zoom
+
+          console.groupCollapsed("[CameraDebug] selected track summary")
+          console.log("preferredRearCameraId", preferredRearCameraId)
+          console.log("settings", {
+            deviceId: settings?.deviceId,
+            facingMode: settings?.facingMode,
+            width: settings?.width,
+            height: settings?.height,
+            aspectRatio: settings?.aspectRatio,
+            frameRate: settings?.frameRate,
+          })
+          console.log("zoom", {
+            min: zoomRange?.min,
+            max: zoomRange?.max,
+            step: zoomRange?.step,
+            appliedTarget: typeof zoomRange?.min === "number" && typeof zoomRange?.max === "number"
+              ? clamp(1, zoomRange.min, zoomRange.max)
+              : null,
+          })
+          console.groupEnd()
+
+          cameraDebugLoggedRef.current = true
+        }
 
         console.log("[Camera] selected settings:", settings)
         console.log("[Camera] selected capabilities:", capabilities)
@@ -241,6 +367,8 @@ export default function CameraStep({ onRecorded, onClose }) {
         setIsReady(false)
       }
     }
+
+    openCameraRef.current = setupCamera
 
     setupCamera()
 
@@ -266,8 +394,38 @@ export default function CameraStep({ onRecorded, onClose }) {
 
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
+      openCameraRef.current = null
     }
   }, [])
+
+  const handleSwitchRearCamera = async () => {
+    if (isRecording) {
+      return
+    }
+
+    const cameraOptions = rearCameraOptionsRef.current
+
+    if (cameraOptions.length <= 1) {
+      setErrorMessage("전환 가능한 후면 카메라가 없습니다.")
+      return
+    }
+
+    const currentIndex = cameraOptions.findIndex(
+      (option) => option.deviceId === currentCameraDeviceId
+    )
+
+    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % cameraOptions.length
+    const nextCamera = cameraOptions[nextIndex]
+
+    if (!nextCamera?.deviceId || !openCameraRef.current) {
+      setErrorMessage("카메라를 전환할 수 없습니다.")
+      return
+    }
+
+    setIsReady(false)
+    setErrorMessage("")
+    await openCameraRef.current(nextCamera.deviceId)
+  }
 
   useEffect(() => {
     if (!isRecording) {
@@ -342,7 +500,41 @@ export default function CameraStep({ onRecorded, onClose }) {
     }
 
     const canvas = canvasRef.current
+    const sourceWidth = video.videoWidth
+    const sourceHeight = video.videoHeight
     const { width, height } = getOutputSize(video.videoWidth, video.videoHeight)
+
+    const sourceRatio = sourceWidth / sourceHeight
+    let cropWidth = sourceWidth
+    let cropHeight = sourceHeight
+
+    if (sourceRatio > TARGET_ASPECT_RATIO) {
+      cropWidth = sourceHeight * TARGET_ASPECT_RATIO
+    } else {
+      cropHeight = sourceWidth / TARGET_ASPECT_RATIO
+    }
+
+    if (!cropDebugLoggedRef.current) {
+      console.groupCollapsed("[CameraDebug] crop summary")
+      console.log("targetAspectRatio", TARGET_ASPECT_RATIO)
+      console.log("source", {
+        width: sourceWidth,
+        height: sourceHeight,
+        aspectRatio: sourceRatio,
+      })
+      console.log("crop", {
+        width: Math.round(cropWidth),
+        height: Math.round(cropHeight),
+      })
+      console.log("outputCanvas", {
+        width,
+        height,
+        aspectRatio: width / height,
+      })
+      console.groupEnd()
+
+      cropDebugLoggedRef.current = true
+    }
 
     canvas.width = width
     canvas.height = height
@@ -524,12 +716,10 @@ export default function CameraStep({ onRecorded, onClose }) {
           autoPlay
           muted
           playsInline
-          className="h-full w-full object-cover opacity-70"
+          className="h-full w-full object-cover"
         />
 
         <canvas ref={canvasRef} className="hidden" />
-
-        <div className="absolute inset-0 bg-black/20" />
 
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-16 py-24">
           <div className="h-full w-full rounded-[12px] border-[6px] border-[#ef4444]" />
@@ -538,6 +728,19 @@ export default function CameraStep({ onRecorded, onClose }) {
 
       {errorMessage ? (
         <p className="mt-4 text-center text-sm text-red-400">{errorMessage}</p>
+      ) : null}
+
+      {!isRecording && rearCameraOptions.length > 1 ? (
+        <section className="mt-3 flex items-center justify-center">
+          <button
+            type="button"
+            onClick={handleSwitchRearCamera}
+            disabled={!isReady}
+            className="rounded-full border border-white/40 px-4 py-2 text-sm text-white disabled:opacity-40"
+          >
+            렌즈 전환
+          </button>
+        </section>
       ) : null}
 
       <section className="mt-15 flex items-center justify-center">
