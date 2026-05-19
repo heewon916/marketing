@@ -730,8 +730,8 @@ export default function CameraStep({ onRecorded, onClose }) {
         <p className="mt-4 text-center text-sm text-red-400">{errorMessage}</p>
       ) : null}
 
-      {!isRecording && rearCameraOptions.length > 1 ? (
-        <section className="mt-3 flex items-center justify-center">
+      <section className="mt-3 flex h-10 items-center justify-center">
+        {!isRecording && rearCameraOptions.length > 1 ? (
           <button
             type="button"
             onClick={handleSwitchRearCamera}
@@ -740,10 +740,10 @@ export default function CameraStep({ onRecorded, onClose }) {
           >
             렌즈 전환
           </button>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
-      <section className="mt-15 flex items-center justify-center">
+      <section className="mt-5 flex items-center justify-center">
         <button
           type="button"
           onClick={isRecording ? stopRecording : startRecording}
