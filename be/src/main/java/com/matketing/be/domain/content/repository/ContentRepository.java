@@ -32,4 +32,8 @@ public interface ContentRepository extends JpaRepository<Content, Long> {
         @org.springframework.data.repository.query.Param("startAt") java.time.OffsetDateTime startAt,
         @org.springframework.data.repository.query.Param("endAt") java.time.OffsetDateTime endAt
     );
+
+    java.util.List<Content> findByStoreId(UUID storeId);
+
+    void deleteAllByStoreId(UUID storeId);
 }

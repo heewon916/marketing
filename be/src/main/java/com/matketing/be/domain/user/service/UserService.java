@@ -8,6 +8,13 @@ import com.matketing.be.domain.user.dto.SyncInstagramResponse;
 import com.matketing.be.domain.user.dto.UserMeResponse;
 import com.matketing.be.domain.user.entity.User;
 import com.matketing.be.domain.user.repository.UserRepository;
+import com.matketing.be.domain.store.repository.MenuRepository;
+import com.matketing.be.domain.store.repository.StoreHoursRepository;
+import com.matketing.be.domain.analytic.repository.AccountWeeklyMetricRepository;
+import com.matketing.be.domain.analytic.repository.InstagramMetricRepository;
+import com.matketing.be.domain.content.repository.ContentRepository;
+import com.matketing.be.domain.notification.repository.DeviceTokenRepository;
+import com.matketing.be.domain.content.entity.Content;
 import com.matketing.be.global.auth.oauth2.InstagramApiClient;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,8 +23,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -28,6 +37,13 @@ public class UserService {
     private final StoreRepository storeRepository;
     private final ObjectMapper objectMapper;
     private final InstagramApiClient instagramApiClient;
+    
+    private final MenuRepository menuRepository;
+    private final StoreHoursRepository storeHoursRepository;
+    private final AccountWeeklyMetricRepository accountWeeklyMetricRepository;
+    private final InstagramMetricRepository instagramMetricRepository;
+    private final ContentRepository contentRepository;
+    private final DeviceTokenRepository deviceTokenRepository;
 
     @Transactional(readOnly = true)
     public UserMeResponse getMe(User user) {
@@ -93,11 +109,22 @@ public class UserService {
 
     @Transactional
     public SimpleApiResponse deleteUser(User user) {
-        // 실제 프로덕션에서는 관련된 매장, 메뉴, 운영시간 등을 CASCADE 처리하거나 Soft Delete 처리
-        // 여기서는 MVP 수준으로 Hard Delete를 가정 (또는 Repository에 맞게 처리)
-        // Store 삭제
-        storeRepository.findFirstByUserId(user.getId()).ifPresent(storeRepository::delete);
-        // User 삭제
+        deviceTokenRepository.deleteAllByUserId(user.getId());
+
+        storeRepository.findFirstByUserId(user.getId()).ifPresent(store -> {
+            UUID storeId = store.getId();
+            
+            menuRepository.deleteAllByStoreId(storeId);
+            storeHoursRepository.deleteAllByStoreId(storeId);
+            accountWeeklyMetricRepository.deleteAllByStore_Id(storeId);
+            instagramMetricRepository.deleteAllByStore_Id(storeId);
+
+            List<Content> contents = contentRepository.findByStoreId(storeId);
+            contentRepository.deleteAll(contents);
+            
+            storeRepository.delete(store);
+        });
+
         userRepository.delete(user);
 
         return new SimpleApiResponse(true, "회원 탈퇴가 완료되었습니다.");
