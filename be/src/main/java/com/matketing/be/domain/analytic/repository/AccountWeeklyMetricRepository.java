@@ -25,4 +25,6 @@ public interface AccountWeeklyMetricRepository extends JpaRepository<AccountWeek
     Optional<AccountWeeklyMetric> findActiveByStoreIdAndWeekStart(
             @Param("storeId") UUID storeId,
             @Param("weekStart") LocalDate weekStart);
+
+    void deleteAllByStore_Id(UUID storeId);
 }

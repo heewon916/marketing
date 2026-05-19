@@ -14,4 +14,6 @@ public interface InstagramMetricRepository extends JpaRepository<InstagramMetric
      * 가게 ID와 주차 시작일 기준으로 게시물별 인스타그램 지표를 조회한다.
      */
     List<InstagramMetric> findByStore_IdAndWeekStart(UUID storeId, LocalDate weekStart);
+
+    void deleteAllByStore_Id(UUID storeId);
 }
