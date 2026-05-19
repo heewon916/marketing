@@ -118,6 +118,17 @@ def test_keyword_extraction_service_calls_remote_server_successfully(
     assert result.draft_keywords == ["\ub9c9\uac78\ub9ac"]
 
 
+def test_keyword_extraction_service_includes_model_name_in_payload() -> None:
+    service = KeywordExtractionService(
+        base_url="http://llama-server:8000",
+        model_name="exaone-text",
+    )
+
+    payload = service._build_request_payload("prompt", include_response_format=False)
+
+    assert payload["model"] == "exaone-text"
+
+
 def test_keyword_extraction_service_retries_without_response_format(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
