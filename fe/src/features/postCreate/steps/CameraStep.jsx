@@ -297,9 +297,13 @@ export default function CameraStep({ onRecorded, onClose }) {
               ? {
                   deviceId: { exact: preferredRearCameraId },
                   facingMode: { ideal: "environment" },
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
                 }
               : {
                   facingMode: { ideal: "environment" },
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
                 },
             audio: true,
           })
@@ -307,6 +311,8 @@ export default function CameraStep({ onRecorded, onClose }) {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: "environment" },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
             },
             audio: true,
           })
@@ -545,6 +551,9 @@ export default function CameraStep({ onRecorded, onClose }) {
       return false
     }
 
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = "high"
+
     const draw = () => {
       if (!video.videoWidth || !video.videoHeight) {
         drawFrameRef.current = requestAnimationFrame(draw)
@@ -627,7 +636,7 @@ export default function CameraStep({ onRecorded, onClose }) {
         recordingStream.addTrack(track)
       })
 
-      const mediaRecorder = new MediaRecorder(recordingStream, { mimeType })
+      const mediaRecorder = new MediaRecorder(recordingStream, { mimeType, videoBitsPerSecond: 8_000_000 })
       mediaRecorderRef.current = mediaRecorder
 
       mediaRecorder.ondataavailable = (event) => {
@@ -730,8 +739,8 @@ export default function CameraStep({ onRecorded, onClose }) {
         <p className="mt-4 text-center text-sm text-red-400">{errorMessage}</p>
       ) : null}
 
-      {!isRecording && rearCameraOptions.length > 1 ? (
-        <section className="mt-3 flex items-center justify-center">
+      <section className="mt-3 flex h-10 items-center justify-center">
+        {!isRecording && rearCameraOptions.length > 1 ? (
           <button
             type="button"
             onClick={handleSwitchRearCamera}
@@ -740,10 +749,10 @@ export default function CameraStep({ onRecorded, onClose }) {
           >
             렌즈 전환
           </button>
-        </section>
-      ) : null}
+        ) : null}
+      </section>
 
-      <section className="mt-15 flex items-center justify-center">
+      <section className="mt-5 flex items-center justify-center">
         <button
           type="button"
           onClick={isRecording ? stopRecording : startRecording}
