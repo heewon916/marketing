@@ -297,9 +297,13 @@ export default function CameraStep({ onRecorded, onClose }) {
               ? {
                   deviceId: { exact: preferredRearCameraId },
                   facingMode: { ideal: "environment" },
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
                 }
               : {
                   facingMode: { ideal: "environment" },
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
                 },
             audio: true,
           })
@@ -307,6 +311,8 @@ export default function CameraStep({ onRecorded, onClose }) {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: "environment" },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
             },
             audio: true,
           })
@@ -545,6 +551,9 @@ export default function CameraStep({ onRecorded, onClose }) {
       return false
     }
 
+    context.imageSmoothingEnabled = true
+    context.imageSmoothingQuality = "high"
+
     const draw = () => {
       if (!video.videoWidth || !video.videoHeight) {
         drawFrameRef.current = requestAnimationFrame(draw)
@@ -627,7 +636,7 @@ export default function CameraStep({ onRecorded, onClose }) {
         recordingStream.addTrack(track)
       })
 
-      const mediaRecorder = new MediaRecorder(recordingStream, { mimeType })
+      const mediaRecorder = new MediaRecorder(recordingStream, { mimeType, videoBitsPerSecond: 8_000_000 })
       mediaRecorderRef.current = mediaRecorder
 
       mediaRecorder.ondataavailable = (event) => {
