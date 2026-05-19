@@ -287,8 +287,8 @@ public class OnboardingService {
     }
 
     public Map<String, Object> fallbackSearchPlacesViaCrawler(String keyword, Throwable t) {
-        log.error("Fallback triggered for searchPlacesViaCrawler. Keyword: {}, Error: {}", keyword, t.getMessage());
-        return Map.of("status", "error", "message", "크롤러 서버가 응답하지 않습니다. 잠시 후 다시 시도해주세요.");
+        log.error("Fallback triggered for searchPlacesViaCrawler. Keyword: {}, Error: {}", keyword, t.getMessage(), t);
+        return Map.of("status", "error", "message", "크롤러 검색 실패: " + t.getMessage());
     }
 
     @CircuitBreaker(name = "externalApi", fallbackMethod = "fallbackGetPlaceDetailViaCrawler")
