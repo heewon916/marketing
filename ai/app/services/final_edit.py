@@ -95,6 +95,37 @@ def _read_image_dimensions(image_path: Path) -> tuple[int | None, int | None]:
     return width, height
 
 
+def _classify_layout_orientation(width: int | None, height: int | None) -> str | None:
+    if width is None or height is None:
+        return None
+    if width == height:
+        return "square"
+    if height > width:
+        return "portrait"
+    return "landscape"
+
+
+def _attach_crop_context(
+    plan: ImageEditPlan,
+    *,
+    anchor_orientation: str | None,
+) -> ImageEditPlan:
+    if "crop" not in plan.tools:
+        return plan
+    merged_params = {tool_name: dict(tool_params) for tool_name, tool_params in plan.params.items()}
+    crop_params = dict(merged_params.get("crop", {}))
+    if anchor_orientation:
+        crop_params["anchor_orientation"] = anchor_orientation
+    merged_params["crop"] = crop_params
+    return ImageEditPlan(
+        image_index=plan.image_index,
+        content=plan.content,
+        strategy=plan.strategy,
+        tools=list(plan.tools),
+        params=merged_params,
+    )
+
+
 def _json_debug_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
@@ -366,6 +397,7 @@ class FinalEditService:
     ) -> tuple[bool, dict[int, object]]:
         planner_fallback = not bool(context.caption or context.keywords)
         plans_by_index: dict[int, object] = {}
+        planner_response_received = False
 
         logger.info(
             "Loading final edit session context.",
@@ -412,75 +444,106 @@ class FinalEditService:
                     keyword_count=len(context.keywords),
                 ),
             )
-            try:
-                plans = await self.planner_client.build_plans(
-                    [str(path) for path in downloaded_drafts],
-                    context,
-                )
-            except Exception as exc:
-                planner_fallback = True
-                debug_fields["debug:planner_failure_type"] = exc.__class__.__name__
-                debug_fields["debug:planner_response_received"] = str(
-                    bool(getattr(self.planner_client, "last_raw_output", None))
-                ).lower()
-                logger.warning(
-                    "Final edit planner failed. Falling back to original drafts.",
-                    extra=build_log_extra(
-                        "final_edit.planner_fallback",
-                        component="final_edit",
-                        stage="plan",
-                        session_id=session_id,
-                        outcome="fallback",
-                        error_type=exc.__class__.__name__,
-                        planner_fallback_reason="planner_exception",
-                        caption_present=bool(context.caption),
-                        keyword_count=len(context.keywords),
-                        downloaded_draft_count=len(downloaded_drafts),
-                    ),
-                )
-            else:
-                plans_by_index = {
-                    plan.image_index: normalize_image_edit_plan(
-                        plan,
+            for image_index, draft_path in enumerate(downloaded_drafts):
+                try:
+                    plans = await self.planner_client.build_plans(
+                        [str(draft_path)],
+                        context,
+                    )
+                    planner_response_received = planner_response_received or bool(
+                        getattr(self.planner_client, "last_raw_output", None)
+                    )
+                    if not plans:
+                        continue
+                    remapped_plan = ImageEditPlan(
+                        image_index=image_index,
+                        content=plans[0].content,
+                        strategy=plans[0].strategy,
+                        tools=plans[0].tools,
+                        params=plans[0].params,
+                    )
+                    plans_by_index[image_index] = normalize_image_edit_plan(
+                        remapped_plan,
                         upscale_enabled=self.upscale_enabled,
                         owner_persona=context.owner_persona,
                     )
-                    for plan in plans
-                }
-                debug_fields["debug:planner_response_received"] = str(
-                    bool(getattr(self.planner_client, "last_raw_output", None))
-                ).lower()
-                debug_fields["debug:planned_indexes"] = ",".join(
-                    str(plan.image_index) for plan in plans_by_index.values()
-                )
-                logger.info(
-                    "Planned final edit sequence.",
-                    extra=build_log_extra(
-                        "final_edit.plan.completed",
-                        component="final_edit",
-                        stage="plan",
-                        session_id=session_id,
-                        outcome="succeeded",
-                        planned_image_count=len(plans_by_index),
-                        planned_indexes=[
-                            plan.image_index for plan in plans_by_index.values()
-                        ],
-                        planned_tools_by_image={
-                            str(plan.image_index): plan.tools
-                            for plan in plans_by_index.values()
-                        },
-                        planned_strategy_preview_by_image={
-                            str(plan.image_index): _preview_or_empty(plan.strategy)
-                            for plan in plans_by_index.values()
-                        },
-                        caption_preview=_preview_or_empty(context.caption),
-                        keyword_preview=_preview_keywords(context.keywords),
-                        planner_response_preview=_preview_or_empty(
-                            getattr(self.planner_client, "last_raw_output", "") or ""
+                except Exception as exc:
+                    planner_fallback = True
+                    planner_failure_message = str(exc)
+                    planner_failure_raw_preview = _preview_or_empty(
+                        getattr(self.planner_client, "last_raw_output", "") or ""
+                    )
+                    debug_fields["debug:planner_failure_type"] = exc.__class__.__name__
+                    debug_fields["debug:planner_failure_message"] = (
+                        planner_failure_message
+                    )
+                    debug_fields["debug:planner_failure_image_index"] = str(
+                        image_index
+                    )
+                    debug_fields["debug:planner_failure_raw_preview"] = (
+                        planner_failure_raw_preview
+                    )
+                    debug_fields[
+                        f"debug:planner_failure_type:{image_index + 1}"
+                    ] = exc.__class__.__name__
+                    debug_fields[
+                        f"debug:planner_failure_message:{image_index + 1}"
+                    ] = planner_failure_message
+                    debug_fields[
+                        f"debug:planner_failure_raw_preview:{image_index + 1}"
+                    ] = planner_failure_raw_preview
+                    logger.warning(
+                        "Final edit planner failed for one image. Falling back for that image only.",
+                        extra=build_log_extra(
+                            "final_edit.planner_fallback",
+                            component="final_edit",
+                            stage="plan",
+                            session_id=session_id,
+                            outcome="fallback",
+                            error_type=exc.__class__.__name__,
+                            planner_fallback_reason="planner_exception",
+                            planner_failure_message=planner_failure_message,
+                            planner_failure_image_index=image_index,
+                            planner_failure_raw_preview=planner_failure_raw_preview,
+                            caption_present=bool(context.caption),
+                            keyword_count=len(context.keywords),
+                            downloaded_draft_count=len(downloaded_drafts),
                         ),
-                        elapsed_ms=int((time.perf_counter() - plan_started_at) * 1000),
+                    )
+
+            debug_fields["debug:planner_response_received"] = str(
+                planner_response_received
+            ).lower()
+            debug_fields["debug:planned_indexes"] = ",".join(
+                str(image_index) for image_index in sorted(plans_by_index)
+            )
+            logger.info(
+                "Planned final edit sequence.",
+                extra=build_log_extra(
+                    "final_edit.plan.completed",
+                    component="final_edit",
+                    stage="plan",
+                    session_id=session_id,
+                    outcome="succeeded",
+                    planned_image_count=len(plans_by_index),
+                    planned_indexes=sorted(plans_by_index),
+                    planned_tools_by_image={
+                        str(image_index): plan.tools
+                        for image_index, plan in sorted(plans_by_index.items())
+                    },
+                    planned_strategy_preview_by_image={
+                        str(image_index): _preview_or_empty(plan.strategy)
+                        for image_index, plan in sorted(plans_by_index.items())
+                    },
+                    caption_preview=_preview_or_empty(context.caption),
+                    keyword_preview=_preview_keywords(context.keywords),
+                    planner_response_preview=_preview_or_empty(
+                        getattr(self.planner_client, "last_raw_output", "") or ""
                     ),
-                )
+                    planner_partial_fallback=planner_fallback,
+                    elapsed_ms=int((time.perf_counter() - plan_started_at) * 1000),
+                ),
+            )
 
         debug_fields["debug:planner_fallback"] = str(planner_fallback).lower()
         debug_fields["debug:planned_image_count"] = str(len(plans_by_index))
@@ -499,6 +562,8 @@ class FinalEditService:
         from app.services.final_edit_agent import FinalEditImageState
 
         edited_paths: list[Path] = []
+        anchor_width, anchor_height = _read_image_dimensions(downloaded_drafts[0])
+        anchor_orientation = _classify_layout_orientation(anchor_width, anchor_height)
         for image_index, draft_path in enumerate(downloaded_drafts):
             plan = plans_by_index.get(image_index)
             if plan is None:
@@ -531,6 +596,10 @@ class FinalEditService:
                 upscale_enabled=self.upscale_enabled,
                 owner_persona=context.owner_persona,
             )
+            plan = _attach_crop_context(
+                plan,
+                anchor_orientation=anchor_orientation,
+            )
 
             debug_fields[f"debug:tool_count:{image_index + 1}"] = str(len(plan.tools))
             debug_fields[f"debug:tools:{image_index + 1}"] = ",".join(plan.tools)
@@ -551,6 +620,17 @@ class FinalEditService:
             )
             debug_fields[f"debug:upload_source_kind:{image_index + 1}"] = output_source
             debug_fields[f"debug:output_path:{image_index + 1}"] = str(output_path)
+            debug_fields[f"debug:crop_applied:{image_index + 1}"] = str(
+                bool(image_state.metadata.get("crop_applied"))
+            ).lower()
+            if image_state.metadata.get("crop_reason") is not None:
+                debug_fields[f"debug:crop_reason:{image_index + 1}"] = str(
+                    image_state.metadata.get("crop_reason")
+                )
+            if image_state.metadata.get("crop_output_ratio") is not None:
+                debug_fields[f"debug:crop_output_ratio:{image_index + 1}"] = str(
+                    image_state.metadata.get("crop_output_ratio")
+                )
             tone_debug = image_state.metadata.get("aesthetic_tone_debug")
             debug_fields[f"debug:aesthetic_tone_applied:{image_index + 1}"] = str(
                 bool(image_state.metadata.get("aesthetic_tone_target_applied"))
