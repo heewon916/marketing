@@ -365,6 +365,7 @@ class CaptionGenerationService:
         top_p: float = 0.9,
         timeout_seconds: float = 30.0,
         base_url: str | None = None,
+        model_name: str | None = None,
         chat_endpoint: str | None = None,
         health_endpoint: str | None = None,
         api_key: str | None = None,
@@ -375,6 +376,7 @@ class CaptionGenerationService:
         self.top_p = top_p
         self.timeout_seconds = timeout_seconds
         self.base_url = (base_url or "").rstrip("/")
+        self.model_name = model_name.strip() if model_name else None
         self.chat_endpoint = chat_endpoint or "/v1/chat/completions"
         self.health_endpoint = health_endpoint or "/health"
         self.api_key = api_key
@@ -495,6 +497,8 @@ class CaptionGenerationService:
             "top_p": self.top_p,
             "max_tokens": self.max_tokens,
         }
+        if self.model_name:
+            payload["model"] = self.model_name
         if include_response_format:
             payload["response_format"] = {
                 "type": "json_object",
@@ -775,6 +779,7 @@ def build_caption_generation_service() -> CaptionGenerationService:
         top_p=client.top_p,
         timeout_seconds=client.timeout_seconds,
         base_url=client.base_url,
+        model_name=client.model_name,
         chat_endpoint=client.chat_endpoint,
         health_endpoint=client.health_endpoint,
         api_key=client.api_key,

@@ -53,6 +53,7 @@ DEFAULT_REALESRGAN_WEIGHTS_URL = (
 @dataclass(frozen=True)
 class LlamaModelClientSettings:
     base_url: str
+    model_name: str | None
     chat_endpoint: str
     health_endpoint: str
     api_key: str | None
@@ -120,6 +121,7 @@ class Settings(BaseSettings):
     KEYWORD_MODEL_BASE_URL: str = (
         f"http://keyword-server:{DEFAULT_KEYWORD_MODEL_SERVER_PORT}"
     )
+    KEYWORD_MODEL_NAME: str | None = None
     KEYWORD_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
     KEYWORD_MODEL_HEALTH_ENDPOINT: str = DEFAULT_KEYWORD_MODEL_HEALTH_ENDPOINT
     KEYWORD_MODEL_API_KEY: str | None = None
@@ -138,6 +140,7 @@ class Settings(BaseSettings):
     CAPTION_MODEL_BASE_URL: str = (
         f"http://caption-server:{DEFAULT_CAPTION_MODEL_SERVER_PORT}"
     )
+    CAPTION_MODEL_NAME: str | None = None
     CAPTION_MODEL_CHAT_ENDPOINT: str = "/v1/chat/completions"
     CAPTION_MODEL_HEALTH_ENDPOINT: str = DEFAULT_CAPTION_MODEL_HEALTH_ENDPOINT
     CAPTION_MODEL_API_KEY: str | None = None
@@ -227,6 +230,7 @@ class Settings(BaseSettings):
     def keyword_model_client(self) -> LlamaModelClientSettings:
         return LlamaModelClientSettings(
             base_url=self.KEYWORD_MODEL_BASE_URL.rstrip("/"),
+            model_name=self.KEYWORD_MODEL_NAME,
             chat_endpoint=self.KEYWORD_MODEL_CHAT_ENDPOINT,
             health_endpoint=self.KEYWORD_MODEL_HEALTH_ENDPOINT,
             api_key=self.KEYWORD_MODEL_API_KEY,
@@ -242,6 +246,7 @@ class Settings(BaseSettings):
     def caption_model_client(self) -> LlamaModelClientSettings:
         return LlamaModelClientSettings(
             base_url=self.CAPTION_MODEL_BASE_URL.rstrip("/"),
+            model_name=self.CAPTION_MODEL_NAME,
             chat_endpoint=self.CAPTION_MODEL_CHAT_ENDPOINT,
             health_endpoint=self.CAPTION_MODEL_HEALTH_ENDPOINT,
             api_key=self.CAPTION_MODEL_API_KEY,
@@ -257,6 +262,7 @@ class Settings(BaseSettings):
     def final_edit_model_client(self) -> LlamaModelClientSettings:
         return LlamaModelClientSettings(
             base_url=self.FINAL_EDIT_MODEL_BASE_URL.rstrip("/"),
+            model_name=self.FINAL_EDIT_MODEL_NAME,
             chat_endpoint=self.FINAL_EDIT_MODEL_CHAT_ENDPOINT,
             health_endpoint=self.FINAL_EDIT_MODEL_HEALTH_ENDPOINT,
             api_key=self.FINAL_EDIT_MODEL_API_KEY,

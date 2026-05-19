@@ -36,6 +36,7 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("S3_REGION", "ap-northeast-2")
     monkeypatch.setenv("CLOUDFRONT_DOMAIN", "cdn.example.com")
     monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://keyword-server:8001")
+    monkeypatch.setenv("KEYWORD_MODEL_NAME", "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-AWQ")
     monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
     monkeypatch.setenv("KEYWORD_MODEL_HEALTH_ENDPOINT", "/ready")
     monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "45")
@@ -50,6 +51,7 @@ def env_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEYWORD_MODEL_CTX_SIZE", "3072")
     monkeypatch.setenv("KEYWORD_MODEL_GPU_LAYERS", "16")
     monkeypatch.setenv("CAPTION_MODEL_BASE_URL", "http://caption-server:8002")
+    monkeypatch.setenv("CAPTION_MODEL_NAME", "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-AWQ")
     monkeypatch.setenv("CAPTION_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
     monkeypatch.setenv("CAPTION_MODEL_HEALTH_ENDPOINT", "/readyz")
     monkeypatch.setenv("CAPTION_MODEL_TIMEOUT_SECONDS", "75")
@@ -93,6 +95,10 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.LOG_EVENT_PREVIEW_MAX_LEN == 200
 
     assert settings.keyword_model_client.base_url == "http://keyword-server:8001"
+    assert (
+        settings.keyword_model_client.model_name
+        == "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-AWQ"
+    )
     assert settings.keyword_model_client.chat_endpoint == "/v1/chat/completions"
     assert settings.keyword_model_client.health_endpoint == "/ready"
     assert settings.keyword_model_client.timeout_seconds == 45
@@ -109,6 +115,10 @@ def test_settings_parses_infra_fields(env_setup: None) -> None:
     assert settings.keyword_model_server.gpu_layers == 16
 
     assert settings.caption_model_client.base_url == "http://caption-server:8002"
+    assert (
+        settings.caption_model_client.model_name
+        == "LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct-AWQ"
+    )
     assert settings.caption_model_client.chat_endpoint == "/v1/chat/completions"
     assert settings.caption_model_client.health_endpoint == "/readyz"
     assert settings.caption_model_client.timeout_seconds == 75
@@ -278,16 +288,19 @@ def test_model_client_defaults_apply_when_env_is_missing(
     _set_required_postgres(monkeypatch)
     monkeypatch.delenv("KEYWORD_MODEL_BASE_URL", raising=False)
     monkeypatch.delenv("KEYWORD_MODEL_CHAT_ENDPOINT", raising=False)
+    monkeypatch.delenv("KEYWORD_MODEL_NAME", raising=False)
     monkeypatch.delenv("KEYWORD_MODEL_HEALTH_ENDPOINT", raising=False)
     monkeypatch.delenv("KEYWORD_MODEL_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("CAPTION_MODEL_BASE_URL", raising=False)
     monkeypatch.delenv("CAPTION_MODEL_CHAT_ENDPOINT", raising=False)
+    monkeypatch.delenv("CAPTION_MODEL_NAME", raising=False)
     monkeypatch.delenv("CAPTION_MODEL_HEALTH_ENDPOINT", raising=False)
     monkeypatch.delenv("CAPTION_MODEL_TIMEOUT_SECONDS", raising=False)
 
     settings = Settings(_env_file=None)
 
     assert settings.keyword_model_client.base_url == "http://keyword-server:8001"
+    assert settings.keyword_model_client.model_name is None
     assert settings.keyword_model_client.chat_endpoint == "/v1/chat/completions"
     assert (
         settings.keyword_model_client.health_endpoint
@@ -299,6 +312,7 @@ def test_model_client_defaults_apply_when_env_is_missing(
     )
 
     assert settings.caption_model_client.base_url == "http://caption-server:8002"
+    assert settings.caption_model_client.model_name is None
     assert settings.caption_model_client.chat_endpoint == "/v1/chat/completions"
     assert (
         settings.caption_model_client.health_endpoint
@@ -351,6 +365,7 @@ def test_final_edit_upscale_flag_env_var_is_applied(
 def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_postgres(monkeypatch)
     monkeypatch.setenv("KEYWORD_MODEL_BASE_URL", "http://host.docker.internal:8080")
+    monkeypatch.setenv("KEYWORD_MODEL_NAME", "exaone-text")
     monkeypatch.setenv("KEYWORD_MODEL_CHAT_ENDPOINT", "/v1/chat/completions")
     monkeypatch.setenv("KEYWORD_MODEL_HEALTH_ENDPOINT", "/healthz")
     monkeypatch.setenv("KEYWORD_MODEL_TIMEOUT_SECONDS", "15")
@@ -359,6 +374,7 @@ def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setenv("KEYWORD_MODEL_TOP_P", "0.75")
     monkeypatch.setenv("KEYWORD_MODEL_ENABLED", "false")
     monkeypatch.setenv("CAPTION_MODEL_BASE_URL", "http://host.docker.internal:9090")
+    monkeypatch.setenv("CAPTION_MODEL_NAME", "exaone-text")
     monkeypatch.setenv("CAPTION_MODEL_HEALTH_ENDPOINT", "/caption-health")
     monkeypatch.setenv("CAPTION_MODEL_TIMEOUT_SECONDS", "25")
     monkeypatch.setenv("CAPTION_MODEL_MAX_TOKENS", "120")
@@ -369,6 +385,7 @@ def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> 
     settings = Settings(_env_file=None)
 
     assert settings.keyword_model_client.base_url == "http://host.docker.internal:8080"
+    assert settings.keyword_model_client.model_name == "exaone-text"
     assert settings.keyword_model_client.health_endpoint == "/healthz"
     assert settings.keyword_model_client.timeout_seconds == 15
     assert settings.keyword_model_client.max_tokens == 16
@@ -377,6 +394,7 @@ def test_model_tunable_env_vars_are_applied(monkeypatch: pytest.MonkeyPatch) -> 
     assert settings.keyword_model_client.enabled is False
 
     assert settings.caption_model_client.base_url == "http://host.docker.internal:9090"
+    assert settings.caption_model_client.model_name == "exaone-text"
     assert settings.caption_model_client.health_endpoint == "/caption-health"
     assert settings.caption_model_client.timeout_seconds == 25
     assert settings.caption_model_client.max_tokens == 120
