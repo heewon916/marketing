@@ -1,4 +1,4 @@
-# S14P31A401
+# Maketing
 
 ## Branch
 - master: 배포 기준 브랜치
